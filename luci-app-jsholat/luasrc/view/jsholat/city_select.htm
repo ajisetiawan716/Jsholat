@@ -1,0 +1,124 @@
+<!-- /usr/lib/lua/luci/view/jsholat/city_select.htm -->
+
+<%+cbi/valueheader%>
+
+    <div class="cbi-value-field">
+        <select class="cbi-input-select" id="city-select" name="<%= self:cbid(section) %>">
+            <option value=""><%= translate("-- Pilih Kota --") %></option>
+        </select>
+        
+        <div id="city-loading" style="display:none;margin-top:4px;">
+            <img src="<%= resource %>/icons/loading.gif" width="16" height="16" />
+            <span><%= translate("Memuat data kota...") %></span>
+        </div>
+        
+        <div class="cbi-value-description" style="margin-top:8px;">
+            <strong><%= translate("Kota Terpilih:") %></strong>
+            <span id="saved-city-label" style="margin-left:5px;"></span>
+            <span id="city-change-notice" style="display:none;color:#ff9800;margin-left:8px;">
+                (<%= translate("Perubahan belum disimpan") %>)
+            </span>
+        </div>
+        
+        <div class="cbi-value-description" style="margin-top:8px;">
+            <strong><%= translate("Zona Waktu:") %></strong>
+            <span id="tz-display"></span>
+            <input type="hidden" name="cbid.jsholat.setting.timezone" value="" />
+        </div>
+    </div>
+
+<script type="text/javascript">
+document.addEventListener("DOMContentLoaded", function() {
+    const citySelect = document.getElementById('city-select');
+    const provinceSelect = document.querySelector('select[name="cbid.jsholat.setting.province"]');
+    
+    // 1. Load initial data
+    XHR.get('<%= url("admin/services/jsholat/get_init_data") %>', null, function(xhr, data) {
+        if (data.province && data.city) {
+            updateCityDisplay(data.city_label, data.timezone);
+            loadCities(data.province, data.city);
+        }
+    });
+    
+    // 2. Handle province change
+    if (provinceSelect) {
+        provinceSelect.addEventListener('change', function() {
+            document.getElementById('city-change-notice').style.display = 'none';
+            loadCities(this.value);
+        });
+    }
+    
+    // 3. Handle city change
+    if (citySelect) {
+        citySelect.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            if (this.value) {
+                document.getElementById('city-change-notice').style.display = 'inline';
+                updateTimezone(this.value);
+            } else {
+                document.getElementById('city-change-notice').style.display = 'none';
+            }
+        });
+    }
+});
+
+function loadCities(province, selectedCity) {
+    const loading = document.getElementById('city-loading');
+    const citySelect = document.getElementById('city-select');
+    
+    loading.style.display = 'block';
+    citySelect.disabled = true;
+    citySelect.innerHTML = '<option value=""><%= translate("-- Pilih Kota --") %></option>';
+    
+    XHR.get('<%= url("admin/services/jsholat/get_cities") %>', 
+        { province: province },
+        function(xhr, res) {
+            loading.style.display = 'none';
+            citySelect.disabled = false;
+            
+            if (res.status === "success") {
+                res.cities.forEach(function(city) {
+                    const option = new Option(city.label, city.value);
+                    option.selected = (city.value === selectedCity);
+                    citySelect.appendChild(option);
+                });
+            }
+        }
+    );
+}
+
+function updateCityDisplay(cityLabel, timezone) {
+    document.getElementById('saved-city-label').textContent = cityLabel || '';
+    document.getElementById('tz-display').textContent = timezone || 'WIB';
+    document.getElementById('timezone-field').value = timezone || 'WIB';
+}
+
+function updateTimezone(cityValue) {
+    XHR.get('<%= url("admin/services/jsholat/get_timezone") %>',
+        { city: cityValue },
+        function(xhr, res) {
+            // Update tampilan zona waktu
+            document.getElementById('tz-display').textContent = res.timezone;
+            
+            // Update field hidden sesuai struktur baru
+            document.querySelector('input[name*="timezone_value"]').value = res.timezone;
+            document.querySelector('input[name*="city_value"]').value = cityValue;
+            
+            // Update field-label jika diperlukan
+            const cityLabelField = document.querySelector('input[name*="city_label"]');
+            if (cityLabelField) {
+                cityLabelField.value = res.city_label;
+            }
+            
+            // Tambahkan log untuk debugging
+            console.log('Timezone updated:', {
+                timezone: res.timezone,
+                city_value: cityValue,
+                city_label: res.city_label
+            });
+        }
+    );
+}
+</script>
+
+<%+cbi/valuefooter%>

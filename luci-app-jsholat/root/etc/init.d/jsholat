@@ -1,0 +1,69 @@
+#!/bin/sh /etc/rc.common
+
+START=20
+USE_PROCD=1
+
+# Konfigurasi Log
+LOG_FILE="/var/log/jsholat/jsholat.log"
+LOG_MAX_SIZE=1048576  # 1MB
+LOG_TAG="jsholat-init"
+
+# Buat direktori log jika belum ada
+[ -d "/var/log/jsholat" ] || mkdir -p "/var/log/jsholat"
+
+# Fungsi Rotasi Log
+rotate_log() {
+    [ -f "$LOG_FILE" ] || touch "$LOG_FILE"
+    if [ $(stat -c%s "$LOG_FILE") -gt $LOG_MAX_SIZE ]; then
+        mv "$LOG_FILE" "${LOG_FILE}.old"
+        touch "$LOG_FILE"
+    fi
+}
+
+# Fungsi Logging Terpusat
+log() {
+    rotate_log
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $LOG_TAG: $1" >> "$LOG_FILE"
+    logger -t "$LOG_TAG" "$1"
+}
+
+# Trigger Reload
+service_triggers() {
+    procd_add_reload_trigger "jsholat"
+}
+
+start_service() {
+    local service_status=$(uci -q get jsholat.setting.service || echo "0")
+    log "Memulai service dengan status: $service_status"
+
+    if [ "$service_status" = "1" ]; then
+        log "Starting jsholat service..."
+        procd_open_instance
+        procd_set_param command /usr/bin/jsholat run
+        procd_set_param respawn 300 5 10
+        procd_set_param stdout 1
+        procd_set_param stderr 1
+        procd_close_instance
+    else
+        log "Service dimatikan via konfigurasi"
+    fi
+}
+
+stop_service() {
+    local pid=$(pgrep -f "/usr/bin/jsholat run")
+    log "INFO" "Menghentikan service (PID: ${pid:-Not Running})"
+
+    if [ -n "$pid" ]; then
+        if kill "$pid"; then
+            log "Service berhasil dihentikan"
+        else
+            log "Gagal menghentikan service (PID: $pid)"
+        fi
+    fi
+}
+
+reload_service() {
+    log "Reloading service..."
+    stop_service
+    start_service
+}

@@ -1,0 +1,226 @@
+#!/usr/bin/python3
+import os
+import json
+import subprocess
+import textwrap
+from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont
+
+def get_config():
+    """Ambil konfigurasi dari UCI"""
+    try:
+        city = subprocess.getoutput("uci get jsholat.setting.city_label")
+        province = subprocess.getoutput("uci get jsholat.setting.province")
+        jadwal_file = subprocess.getoutput("uci get jsholat.setting.file_jadwal")
+        timezone = subprocess.getoutput("uci get jsholat.setting.timezone_value")
+        
+        return {
+            'city': city if city else "Kota",
+            'province': province if province else "Provinsi",
+            'jadwal_file': jadwal_file if jadwal_file else "/root/jsholat/jadwal.txt",
+            'timezone': f"({timezone})" if timezone else ""
+        }
+    except:
+        return {
+            'city': "Kota",
+            'province': "Provinsi",
+            'jadwal_file': "/root/jsholat/jadwal.txt",
+            'timezone': ""
+        }
+
+def get_last_updated_info():
+    """Baca informasi terakhir update dari file JSON"""
+    file_path = "/usr/share/jsholat/last_updated.txt"
+    default = {
+        'last_updated': "Waktu tidak diketahui",
+        'data_source': "Sumber tidak tersedia"
+    }
+    
+    try:
+        with open(file_path, 'r') as f:
+            content = f.read()
+            if not content:
+                return default
+                
+            data = json.loads(content)
+            return {
+                'last_updated': data.get('last_updated', default['last_updated']),
+                'data_source': data.get('data_source', default['data_source'])
+            }
+    except:
+        return default
+
+def parse_jadwal_line(line):
+    """Parse format DD-MM-YYYY Imsyak Subuh Dzuhur Ashar Maghrib Isya"""
+    try:
+        parts = line.strip().split()
+        if len(parts) != 7:  # Pastikan selalu 7 kolom
+            return None
+        
+        return {
+            'date': parts[0],
+            'imsyak': parts[1],  
+            'subuh': parts[2],
+            'dzuhur': parts[3],
+            'ashar': parts[4],
+            'maghrib': parts[5],
+            'isya': parts[6]
+        }
+    except:
+        return None  # Skip baris jika error
+
+def generate_schedule_image():
+    config = get_config()
+    update_info = get_last_updated_info()
+    
+    # Warna sesuai style
+    bg_color = (255, 255, 255)  # Putih
+    text_color = (51, 51, 51)    # #333
+    header_bg_color = (242, 242, 242)  # #f2f2f2
+    header_text_color = (0, 0, 0)  # Hitam
+    today_bg_color = (212, 237, 218)  # #d4edda
+    border_color = (221, 221, 221)  # #ddd
+    update_bg_color = (248, 249, 250)  # #f8f9fa
+    update_text_color = (44, 62, 80)  # #2c3e50
+    
+    # Inisialisasi gambar
+    img_width = 900  # Lebar ditambah untuk kolom tambahan
+    img_height = 1200
+    img = Image.new('RGB', (img_width, img_height), color=bg_color)
+    draw = ImageDraw.Draw(img)
+    
+    # Load font
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/ttf-dejavu/DejaVuSans.ttf", 16)
+        font_bold = ImageFont.truetype("/usr/share/fonts/ttf-dejavu/DejaVuSans-Bold.ttf", 16)
+        font_header = ImageFont.truetype("/usr/share/fonts/ttf-dejavu/DejaVuSans-Bold.ttf", 18)
+    except:
+        font = ImageFont.load_default()
+        font_bold = font
+        font_header = font
+
+    # Header dengan judul di tengah
+    month_year = datetime.now().strftime('%B %Y')
+    header_text = f"Jadwal Sholat Wilayah {config['city']}, {config['province']}\n{month_year}"
+    
+    # Background header
+    draw.rectangle([0, 0, img_width, 80], fill=header_bg_color)
+    
+    y_offset = 20
+    for line in textwrap.wrap(header_text, width=40):
+        text_width = draw.textlength(line, font=font_header)
+        x_position = (img_width - text_width) / 2
+        draw.text((x_position, y_offset), line, fill=header_text_color, font=font_header)
+        y_offset += 25
+
+    # Garis pembatas
+    draw.line((0, 80, img_width, 80), fill=border_color, width=2)
+    y_offset = 100
+
+    # Kolom header (ditambah Imsyak)
+    headers = ["TANGGAL", "IMSYAK", "SUBUH", "DZUHUR", "ASHAR", "MAGHRIB", "ISYA"]
+    col_width = 120  # Lebar kolom disesuaikan
+    x_offset = 50
+    
+    # Background header kolom
+    draw.rectangle([40, y_offset-10, img_width-40, y_offset+30], fill=header_bg_color)
+    
+    # Gambar border untuk header
+    for i in range(len(headers)+1):
+        draw.line([40 + (i*col_width), y_offset-10, 40 + (i*col_width), y_offset+30], fill=border_color, width=1)
+    
+    for header in headers:
+        text_width = draw.textlength(header, font=font_bold)
+        draw.text((x_offset + (col_width - text_width)/2, y_offset), header, fill=header_text_color, font=font_bold)
+        x_offset += col_width
+    
+    # Garis horizontal untuk header
+    draw.line([40, y_offset-10, img_width-40, y_offset-10], fill=border_color, width=1)
+    draw.line([40, y_offset+30, img_width-40, y_offset+30], fill=border_color, width=1)
+    
+    y_offset += 30
+    row_height = 30
+    
+    # Baca file jadwal
+    current_month = datetime.now().strftime('%m-%Y')
+    today_date = datetime.now().strftime('%d-%m-%Y')
+    row_count = 0
+    
+    try:
+        with open(config['jadwal_file'], 'r') as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                    
+                jadwal = parse_jadwal_line(line)
+                if not jadwal:
+                    continue
+                    
+                # Filter bulan ini
+                if not jadwal['date'].endswith(current_month):
+                    continue
+                
+                # Gambar border vertikal untuk baris
+                for i in range(len(headers)+1):
+                    draw.line([40 + (i*col_width), y_offset-5, 40 + (i*col_width), y_offset+25], fill=border_color, width=1)
+                
+                # Warna baris bergantian
+                row_bg_color = (249, 249, 249) if row_count % 2 == 0 else (255, 255, 255)
+                draw.rectangle([40, y_offset-5, img_width-40, y_offset+25], fill=row_bg_color)
+                
+                # Highlight hari ini
+                text_color_row = text_color
+                if jadwal['date'] == today_date:
+                    draw.rectangle([40, y_offset-5, img_width-40, y_offset+25], fill=today_bg_color)
+                    text_color_row = (21, 87, 36)  # Warna teks untuk hari ini
+                
+                # Tulis data dengan center alignment (termasuk Imsyak)
+                x_offset = 50
+                for key in ['date', 'imsyak', 'subuh', 'dzuhur', 'ashar', 'maghrib', 'isya']:
+                    text = jadwal[key].split('-')[0] if key == 'date' else jadwal[key]
+                    text_width = draw.textlength(text, font=font)
+                    draw.text((x_offset + (col_width - text_width)/2, y_offset), text, fill=text_color_row, font=font)
+                    x_offset += col_width
+                
+                # Garis horizontal untuk baris
+                draw.line([40, y_offset-5, img_width-40, y_offset-5], fill=border_color, width=1)
+                draw.line([40, y_offset+25, img_width-40, y_offset+25], fill=border_color, width=1)
+                
+                y_offset += row_height
+                row_count += 1
+                
+                # Batasi jumlah baris
+                if y_offset > 1200:
+                    break
+    except FileNotFoundError:
+        draw.text((50, y_offset), "File jadwal tidak ditemukan", fill=(231, 76, 60), font=font_bold)
+        y_offset += 30
+
+    # Garis pemisah konten utama dengan footer
+    draw.line((0, y_offset+10, img_width, y_offset+10), fill=border_color, width=1)
+    y_offset += 30
+
+    # Background info update
+    draw.rectangle([0, y_offset, img_width, y_offset+80], fill=update_bg_color)
+    
+    # Informasi terakhir update dan sumber data
+    update_text = f"Terakhir diperbarui: {update_info['last_updated']} | Sumber: {update_info['data_source']}"
+    text_width = draw.textlength(update_text, font=font_bold)
+    draw.text(((img_width - text_width)/2, y_offset+10), update_text, fill=update_text_color, font=font_bold)
+    
+    # Footer
+    generated_text = "Generated by Jsholat Bot - © @ajisetiawan716"
+    generated_width = draw.textlength(generated_text, font=font)
+    draw.text(((img_width - generated_width)/2, y_offset+40), generated_text, fill=(150, 150, 150), font=font)
+    
+    time_text = datetime.now().strftime('%d %B %Y %H:%M')
+    time_width = draw.textlength(time_text, font=font)
+    draw.text(((img_width - time_width)/2, y_offset+60), time_text, fill=(150, 150, 150), font=font)
+
+    # Simpan gambar
+    output_file = "/tmp/jadwal_bulanan.png"
+    img.save(output_file, optimize=True, quality=95, dpi=(300, 300))  # Balance kualitas & ukuran
+    return output_file
+
+if __name__ == "__main__":
+    generate_schedule_image()

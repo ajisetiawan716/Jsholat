@@ -1,0 +1,7 @@
+<div class="cbi-value">
+    <label class="cbi-value-title"><%= translate(self.title) %></label>
+    <div class="cbi-value-field">
+        <span id="timezone-display"><%= self.map:get(section, "timezone") or "WIB" %></span>
+        <input type="hidden" name="cbid.jsholat.global.timezone" value="<%= self.map:get(section, "timezone") or "WIB" %>" />
+    </div>
+</div>

@@ -1,0 +1,1 @@
+{"status":"success","last_updated":"01-06-2025 07:22:57","data_source":"Jadwalsholat.org","location":{"city":"Brebes","city_value":"brebes","province":"Jawa Tengah","country":"Indonesia"}}

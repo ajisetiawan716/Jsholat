@@ -1,0 +1,71 @@
+<%+header%>
+
+<div class="cbi-map">
+    <h2><%:Pengaturan Jadwal Sholat%></h2>
+    <div class="cbi-map-descr">
+        <%:Deskripsi halaman pengaturan jadwal sholat.%>
+    </div>
+
+    <fieldset class="cbi-section">
+        <legend><%:Pengaturan Jadwal%></legend>
+        <% include("/model/cbi/jsholat") %>
+    </fieldset>
+
+    <!-- Tambahkan elemen kustom untuk output -->
+    <div id="output" style="margin-top: 10px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9;">
+        <%:Output akan ditampilkan di sini...%>
+    </div>
+</div>
+
+<script type="text/javascript">
+    // Fungsi untuk mengirim permintaan AJAX
+    function updateJadwal() {
+        console.log("Fungsi updateJadwal dipanggil!"); // Debugging
+
+        var outputDiv = document.getElementById("output");
+        outputDiv.innerHTML = "Memperbarui jadwal...";  // Tampilkan pesan loading
+
+        var url = "<%=luci.dispatcher.build_url('admin/services/jsholat/update')%>";
+        console.log("Mengirim permintaan ke:", url); // Debugging
+
+        fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                return response.text();
+            } else {
+                throw new Error("Terjadi kesalahan: " + response.status);
+            }
+        })
+        .then(data => {
+            outputDiv.innerHTML = data;
+        })
+        .catch(error => {
+            console.error("Error:", error);
+            outputDiv.innerHTML = error.message;
+        });
+    }
+
+    // Mencegah perilaku default tombol
+    document.addEventListener("DOMContentLoaded", function() {
+        console.log("DOM telah dimuat!"); // Debugging
+
+        var button = document.getElementById("update-button");
+        if (button) {
+            console.log("Tombol ditemukan!"); // Debugging
+            button.onclick = function(event) {
+                console.log("Tombol ditekan!"); // Debugging
+                event.preventDefault();  // Mencegah pengiriman form
+                updateJadwal();  // Jalankan fungsi updateJadwal
+            };
+        } else {
+            console.error("Tombol tidak ditemukan!"); // Debugging
+        }
+    });
+</script>
+
+<%+footer%>
