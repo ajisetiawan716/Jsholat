@@ -1,0 +1,50 @@
+<style>
+.label {
+   display: inline-block; 
+    padding: 0.25em 0.4em;
+    font-size: 85%;
+    font-weight: 700;
+    line-height: 2;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: 0.25rem;
+}
+
+.label-success {
+    background-color: #28a745; /* Warna hijau */
+    color: #fff;
+}
+
+.label-danger {
+    background-color: #dc3545; /* Warna merah */
+    color: #fff;
+}
+</style>
+<% 
+local fs = require "nixio.fs"
+local sys = require "luci.sys"
+
+-- Pengecekan lebih robust
+local running = false
+local enabled = false
+
+-- Cek status service
+local status_fd = io.popen("/etc/init.d/jsholat status 2>&1")
+if status_fd then
+    running = (status_fd:read("*a"):lower():find("running") ~= nil)
+    status_fd:close()
+end
+
+-- Cek apakah service enabled
+enabled = sys.init.enabled("jsholat")
+
+-- Tentukan tampilan
+local status_text = running and "Running" or "Stopped"
+local status_class = running and "label-success" or "label-danger"
+local enable_text = enabled and "Enabled" or "Disabled"
+local enable_class = enabled and "label-success" or "label-danger"
+%>
+<p>Status Jsholat:
+    <span class="label <%= status_class %>"><%= status_text %></span> | 
+    <span class="label <%= enable_class %>"><%= enable_text %></span>

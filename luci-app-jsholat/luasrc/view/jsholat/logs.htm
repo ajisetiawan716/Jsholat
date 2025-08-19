@@ -1,0 +1,110 @@
+<style>
+.log-container {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+.log-title {
+    font-size: 1.2em;
+    margin-bottom: 10px;
+    color: #495057;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 5px;
+}
+.log-content {
+    font-family: 'Courier New', monospace;
+    white-space: pre-wrap;
+    background: #212529;
+    color: #f8f9fa;
+    padding: 15px;
+    border-radius: 3px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.log-path {
+    font-size: 0.9em;
+    color: #6c757d;
+    margin-top: 5px;
+}
+</style>
+<%+header%>
+
+<div class="cbi-map">
+    <h2 name="content"><%:Log Service%></h2>
+    
+    <div class="cbi-map-descr">
+        <%:Berikut adalah log dari berbagai service terkait jadwal sholat:%>
+    </div>
+    
+    <% if next(errors) ~= nil then %>
+        <div class="cbi-section-error">
+            <% for name, msg in pairs(errors) do %>
+                <p><strong><%=name%>:</strong> <%=msg%></p>
+            <% end %>
+        </div>
+    <% end %>
+    <div style="text-align: right; margin-bottom: 10px;">
+    <button id="refresh-logs" class="cbi-button cbi-button-reload">
+        <%:Refresh Logs%>
+    </button>
+</div>
+
+    <% for name, data in pairs(logs) do %>
+        <div class="cbi-section">
+            <h3><%=name%> (<%=data.desc%>)</h3>
+            <div class="log-content">
+                <%=luci.xml.pcdata(data.content)%>
+            </div>
+            <div class="cbi-value">
+                <label class="cbi-value-title"><%:Lokasi File:%></label>
+                <div class="cbi-value-field">
+                    <code><%=data.path%></code>
+                </div>
+            </div>
+        </div>
+    <% end %>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const refreshInterval = 10000; // 10 detik
+    const refreshBtn = document.getElementById("refresh-logs");
+
+    function fetchLogs() {
+    fetch(window.location.href, { cache: "no-store" })
+        .then(response => response.text())
+        .then(html => {
+            const parser = new DOMParser();
+            const newDoc = parser.parseFromString(html, "text/html");
+            const newSections = newDoc.querySelectorAll(".cbi-section");
+            const logContainers = document.querySelectorAll(".cbi-section");
+
+            newSections.forEach((newSec, i) => {
+                const oldLog = logContainers[i].querySelector(".log-content");
+                const newLog = newSec.querySelector(".log-content");
+
+                // Cek apakah sudah dekat bagian bawah
+                const nearBottom = oldLog.scrollHeight - oldLog.scrollTop <= oldLog.clientHeight + 50;
+
+                // Update konten
+                oldLog.innerHTML = newLog.innerHTML;
+
+                // Scroll ke bawah jika sebelumnya sudah di bawah
+                if (nearBottom) {
+                    oldLog.scrollTop = oldLog.scrollHeight;
+                }
+            });
+        });
+}
+
+
+    if (refreshBtn) {
+        refreshBtn.addEventListener("click", fetchLogs);
+    }
+
+    setInterval(fetchLogs, refreshInterval);
+});
+</script>
+
+<%+footer%>

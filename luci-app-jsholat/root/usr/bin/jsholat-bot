@@ -1,0 +1,1291 @@
+#!/bin/sh
+
+# File: /usr/bin/jsholat-bot
+# Versi: 2.4
+# Jsholat Bot Manager Script
+# (C) 2025 Jsholat - @ajisetiawan716
+
+# Inisiasi pertama kali boot
+[ "$1" = "boot" ] && sleep 15
+
+# Load config UCI
+CONFIG_FILE="/etc/config/jsholat"
+[ -f "$CONFIG_FILE" ] && . $CONFIG_FILE
+
+# State management
+STATE_FILE="${1:-/tmp/last_update}"
+echo "Bot starting with state file: $STATE_FILE" >&2
+
+# Inisiasi log
+LOG_FILE="/var/log/jsholat/bot.log"
+log() {
+    local log_message="$1"
+
+    # Persingkat pesan panjang dengan mengambil baris pertama saja
+    if [[ "$log_message" == *$'\n'* ]]; then
+        log_message=$(echo "$log_message" | head -n 1 | sed 's/ - .*//')
+        log_message="$log_message..."
+    fi
+
+    # Potong pesan yang terlalu panjang (lebih dari 100 karakter)
+    if [ ${#log_message} -gt 100 ]; then
+        log_message="${log_message:0:100}..."
+    fi
+
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] - $log_message" >> "$LOG_FILE"
+}
+
+
+# Inisiasi debug mode
+DEBUG_MODE=$(uci -q get jsholat.setting.debug_mode || echo "0")
+
+# Trap errors
+#trap 'log "ERROR: Script terminated unexpectedly"; exit 1' ERR INT TERM
+
+log "=== Memulai jsholat-bot ==="
+
+# Cek dependensi
+if ! command -v jq >/dev/null 2>&1; then
+    log "ERROR: jq tidak terinstall. Silakan install package jq terlebih dahulu."
+    exit 1
+fi
+
+TELEGRAM_TOKEN=$(uci get jsholat.setting.telegram_bot_token 2>/dev/null)
+[ -z "$TELEGRAM_TOKEN" ] && {
+    log "ERROR: Token bot Telegram tidak ditemukan!"
+    exit 1
+}
+
+# Load authorized chat ID from config
+AUTHORIZED_CHAT_ID=$(uci -q get jsholat.setting.telegram_chat_id || echo "")
+
+# Fungsi untuk mengecek authorization chat ID
+check_authorization() {
+    local chat_id="$1"
+    
+    # Jika telegram_chat_id tidak di-set di config, tolak semua akses (default secure)
+    [ -z "$AUTHORIZED_CHAT_ID" ] && return 1
+    
+    # Cek apakah chat_id sesuai dengan yang di config
+    [ "$AUTHORIZED_CHAT_ID" = "$chat_id" ] && return 0
+    
+    return 1
+}
+
+# Test token bot
+#if ! curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getMe" >/dev/null 2>&1; then
+#    log "ERROR: Token bot tidak valid atau tidak bisa terhubung ke Telegram API"
+#    exit 1
+#fi
+
+# Last update id
+LAST_UPDATE_ID=0
+
+# Variabel untuk mendapatkan nama kota
+CITIES_FILE="/usr/share/jsholat/cities.json"
+LOCATION_SEARCH_CACHE="/tmp/jsholat_cache/location_search_cache.json"
+LOCATION_SEARCH_FLAG_DIR="/tmp/jsholat_cache/jsholat_search_flags"
+mkdir -p "$LOCATION_SEARCH_FLAG_DIR"
+
+# Fungsi untuk info Hijriyah
+HIJRI_CACHE_FILE="/tmp/jsholat_cache/hijri_date_cache.json"
+HIJRI_CACHE_EXPIRE=3600 # Cache berlaku selama 1 jam (3600 detik)
+
+# Fungsi untuk mendapatkan tanggal Hijriyah dengan cache
+get_hijri_date() {
+    local gregorian_date=$(date +"%Y-%m-%d")
+    local now=$(date +%s)
+    
+    # Cek cache terlebih dahulu
+    if [ -f "$HIJRI_CACHE_FILE" ]; then
+        local cache_time=$(jq -r '.cache_time' "$HIJRI_CACHE_FILE" 2>/dev/null)
+        local cached_date=$(jq -r '.hijri_date' "$HIJRI_CACHE_FILE" 2>/dev/null)
+        
+        if [ -n "$cache_time" ] && [ -n "$cached_date" ] && 
+           [ $((now - cache_time)) -lt $HIJRI_CACHE_EXPIRE ]; then
+            echo "$cached_date"
+            return 0
+        fi
+    fi
+    
+    # Jika cache tidak ada atau sudah expired, ambil dari API
+    local api_url="https://api.myquran.com/v2/cal/hijr/$gregorian_date?adj=-1"
+    local response=$(curl -s --max-time 5 "$api_url") # Timeout 5 detik
+    local status=$(echo "$response" | jq -r '.status' 2>/dev/null)
+    
+    if [ "$status" = "true" ]; then
+        local hijri_date=$(echo "$response" | jq -r '.data.date[1]' 2>/dev/null)
+        
+        # Simpan ke cache
+        echo "{\"cache_time\":$now,\"hijri_date\":\"$hijri_date\"}" > "$HIJRI_CACHE_FILE"
+        echo "$hijri_date"
+        return 0
+    else
+        log "Gagal mendapatkan tanggal Hijriyah dari API"
+        # Coba gunakan cache yang expired jika ada
+        if [ -n "$cached_date" ]; then
+            echo "$cached_date"
+            return 1
+        else
+            echo ""
+            return 1
+        fi
+    fi
+}
+
+# Fungsi untuk mencari lokasi
+search_location() {
+    local query="$1"
+    
+    if [ ! -f "$CITIES_FILE" ]; then
+        log "ERROR: File cities.json tidak ditemukan di $CITIES_FILE"
+        return 1
+    fi
+
+    # Normalisasi query yang lebih komprehensif
+    local norm_query=$(echo "$query" | perl -ne 'print lc' | perl -pe 's/[^a-z0-9 ]//g')
+    log "Mencari lokasi dengan query: '$query' (normalized: '$norm_query')"
+
+    # Pencarian utama dengan optimasi
+    jq -c --arg q "$norm_query" '
+        to_entries[] | 
+        .key as $province | 
+        .value[] | 
+        select(
+            (.label | ascii_downcase | index($q)) or
+            (.value | index($q))
+        ) | {
+            province: $province,
+            label: .label,
+            value: .value,
+            timezone: .timezone
+        }
+    ' "$CITIES_FILE" > "$LOCATION_SEARCH_CACHE"
+
+    # Fallback jika tidak ditemukan
+    if [ ! -s "$LOCATION_SEARCH_CACHE" ]; then
+        log "Mencoba pencarian alternatif..."
+        jq -c --arg q "$norm_query" '
+            to_entries[] | 
+            .key as $province | 
+            .value[] | 
+            select(
+                (.label | ascii_downcase | test(".*"+$q+".*")) or
+                (.value | test(".*"+$q+".*"))
+            ) | {
+                province: $province,
+                label: .label,
+                value: .value,
+                timezone: .timezone
+            }
+        ' "$CITIES_FILE" > "$LOCATION_SEARCH_CACHE"
+    fi
+
+    if [ -s "$LOCATION_SEARCH_CACHE" ]; then
+        log "Ditemukan $(wc -l < "$LOCATION_SEARCH_CACHE") hasil"
+        [ "$DEBUG_MODE" = "1" ] && log "Contoh hasil: $(head -n 1 "$LOCATION_SEARCH_CACHE")"
+        return 0
+    else
+        log "Tidak ditemukan hasil untuk: $norm_query"
+        log "Daftar kota tersedia:"
+        jq -r 'to_entries[] | .key + ": " + (.value[] | .label)' "$CITIES_FILE" | head -n 10 >> "$LOG_FILE"
+        return 1
+    fi
+}
+
+# Fungsi untuk menampilkan hasil pencarian lokasi
+show_location_results() {
+    local chat_id="$1"
+    local message_id="$2"
+    local query="$3"
+    
+    log "Memproses hasil pencarian untuk chat $chat_id, query: '$query'"
+    
+    # Force reset cache file
+    > "$LOCATION_SEARCH_CACHE"
+
+    if ! search_location "$query"; then
+        log "Pencarian gagal untuk: $query"
+        local example_cities=$(jq -r '.DKI_Jakarta[0,1,2] | .label' "$CITIES_FILE" | tr '\n' ', ')
+        local error_msg="❌ Tidak ditemukan lokasi dengan kata kunci '$query'"
+        error_msg+="\n\nContoh pencarian yang valid: ${example_cities%,}"
+        
+        if [ -z "$message_id" ]; then
+            send_message "$chat_id" "$error_msg"
+        else
+            remove_keyboard "$chat_id" "$message_id" "$error_msg"
+        fi
+        return 1
+    fi
+
+    # Baca hasil pencarian
+    local results=$(cat "$LOCATION_SEARCH_CACHE")
+    if [ -z "$results" ]; then
+        log "ERROR: Hasil pencarian kosong"
+        send_message "$chat_id" "❌ Data lokasi tidak valid"
+        return 1
+    fi
+
+    # Bangun keyboard inline
+    local keyboard_rows=""
+    local first_row=true
+
+    while IFS= read -r result; do
+        [ -z "$result" ] && continue
+
+        # Ekstrak data dari JSON
+        local province=$(echo "$result" | jq -r '.province')
+        local label=$(echo "$result" | jq -r '.label')
+        local value=$(echo "$result" | jq -r '.value')
+        local timezone=$(echo "$result" | jq -r '.timezone')
+
+        # Bangun teks tombol dan callback data
+        local button_text="${label}, ${province} (${timezone})"
+        local callback_data="set_location_${value}_${timezone}"
+
+        # Tambahkan ke keyboard
+        if [ "$first_row" = false ]; then
+            keyboard_rows="${keyboard_rows},"
+        else
+            first_row=false
+        fi
+
+        keyboard_rows="${keyboard_rows}[{\"text\":\"${button_text}\",\"callback_data\":\"${callback_data}\"}]"
+    done < "$LOCATION_SEARCH_CACHE"
+
+    # Tambahan tombol Batal
+    if [ -n "$keyboard_rows" ]; then
+        keyboard_rows="${keyboard_rows},"
+    fi
+    keyboard_rows="${keyboard_rows}[{\"text\":\"❌ Batal\",\"callback_data\":\"cancel_update\"}]"
+
+    local keyboard="[${keyboard_rows}]"
+    [ "$DEBUG_MODE" = "1" ] && log "Keyboard yang dibentuk: $keyboard"
+
+    # Validasi keyboard
+    if ! echo "$keyboard" | jq empty 2>/dev/null; then
+        log "ERROR: Struktur keyboard tidak valid"
+        send_message "$chat_id" "❌ Terjadi kesalahan saat memproses lokasi"
+        return 1
+    fi
+
+    # Kirim hasil
+    local result_text="🔍 Hasil pencarian untuk: *${query}*
+Ditemukan $(wc -l < "$LOCATION_SEARCH_CACHE") hasil"
+    if [ -z "$message_id" ]; then
+        send_inline_keyboard "$chat_id" "$result_text" "$keyboard"
+    else
+        edit_inline_keyboard "$chat_id" "$message_id" "$result_text" "$keyboard"
+    fi
+}
+
+# Fungsi untuk menyimpan lokasi yang dipilih
+set_location() {
+    local chat_id="$1"
+    local message_id="$2"
+    local city_value="$3"
+    local timezone="$4"
+    
+    log "Menyimpan lokasi: $city_value, $timezone untuk chat $chat_id"
+
+    # Cari detail lokasi dari cache
+    local location_info=$(jq -r --arg val "$city_value" '
+        select(.value == $val)' "$LOCATION_SEARCH_CACHE")
+
+    if [ -z "$location_info" ]; then
+        log "ERROR: Data lokasi tidak ditemukan di cache"
+        remove_keyboard "$chat_id" "$message_id" "❌ Gagal menyimpan lokasi. Silakan coba lagi."
+        return 1
+    fi
+
+    local province=$(echo "$location_info" | jq -r '.province')
+    local city_label=$(echo "$location_info" | jq -r '.label')
+
+    # Simpan ke config
+    uci set jsholat.setting.city_label="$city_label"
+    uci set jsholat.setting.province="$province"
+    uci set jsholat.setting.city_value="$city_value"
+    uci set jsholat.setting.timezone_value="$timezone"
+    uci commit jsholat
+
+    log "Lokasi disimpan: $city_label, $province ($timezone)"
+
+    # Kirim konfirmasi
+    remove_keyboard "$chat_id" "$message_id" "✅ Lokasi berhasil diubah ke: *${city_label}, ${province} (${timezone})*"
+
+    # Update jadwal
+    local progress_msg=$(send_message "$chat_id" "🔄 Memperbarui jadwal sholat untuk lokasi baru...")
+    local progress_msg_id=$(echo "$progress_msg" | jq -r '.result.message_id')
+
+    # Proses update dengan logging
+    local tmp_file=$(mktemp)
+    log "Memulai update jadwal, output disimpan di: $tmp_file"
+    /usr/bin/jadwal-update.sh 2>&1 | tee "$tmp_file"
+
+    # Proses output untuk ditampilkan
+    while IFS= read -r line; do
+        # Bersihkan line dari karakter khusus
+        clean_line=$(echo "$line" | sed -E 's/^\[[0-9-]+ [0-9:]+\] //')
+        
+        curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+        -d chat_id="${chat_id}" \
+        -d message_id="${progress_msg_id}" \
+        -d text="$(printf '🔄 Memperbarui jadwal...\n\n%s' "$clean_line")" \
+        -d parse_mode="Markdown" \
+        > /dev/null 2>&1
+    sleep 0.3
+    done < "$tmp_file"
+
+
+    # Cek hasil update
+    if grep -qi "error" "$tmp_file"; then
+        local last_error=$(grep -i "error" "$tmp_file" | tail -1 | sed -E 's/^\[[0-9-]+ [0-9:]+\] //')
+        send_message "$chat_id" "$(printf '❌ Gagal memperbarui jadwal\n\nPesan error: %s\n\nSilakan coba /update manual.' "$last_error")"
+    else
+        send_message "$chat_id" "✅ Jadwal sholat berhasil diperbarui untuk *${city_label}, ${province}*"
+    fi
+
+    rm -f "$tmp_file"
+}
+
+# Fungsi untuk mengirim pesan
+send_message() {
+    local chat_id="$1"
+    local text="$2"
+    local parse_mode="${3:-Markdown}"
+    
+    log "Mengirim pesan ke chat_id=$chat_id dengan isi: $text"
+    
+    local response=$(curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+        -d chat_id="${chat_id}" \
+        -d text="${text}" \
+        -d parse_mode="${parse_mode}")
+    
+    [ "$DEBUG_MODE" = "1" ] && log "Response sendMessage: $response"
+    echo "$response"
+}
+
+# Fungsi untuk mengirim jadwal bulanan dengan cache fallback dan pengecekan konfigurasi
+send_monthly_schedule() {
+    local chat_id="$1"
+    local cache_dir="/tmp/jsholat_cache"
+    local current_month=$(date +%Y%m)
+    local cache_file="$cache_dir/jadwal_bulanan_${current_month}.png"
+    local temp_file="/tmp/jadwal_bulanan.png"
+    local current_date=$(date +%s)
+    local cache_expired=0
+    local use_cache=0
+    local config_changed=0
+
+    log "Mengirim jadwal bulanan ke chat_id=$chat_id"
+
+    # Buat direktori cache jika belum ada
+    mkdir -p "$cache_dir"
+
+    # File untuk menyimpan hash konfigurasi terakhir
+    local config_hash_file="$cache_dir/last_config.hash"
+
+    # Ambil hash konfigurasi saat ini
+    local current_config_hash=$(uci export jsholat | md5sum | cut -d' ' -f1)
+
+    # Cek apakah file cache ada dan valid
+    if [ -f "$cache_file" ]; then
+        local file_date=$(stat -c %Y "$cache_file")
+        local file_age=$(( (current_date - file_date) / 86400 ))  # umur dalam hari
+        
+        # Cek apakah konfigurasi berubah
+        if [ -f "$config_hash_file" ]; then
+            local last_config_hash=$(cat "$config_hash_file")
+            if [ "$current_config_hash" != "$last_config_hash" ]; then
+                config_changed=1
+                log "Konfigurasi UCI berubah, perlu generate ulang"
+            fi
+        fi
+
+        if [ "$file_age" -lt 1 ] && [ "$config_changed" -eq 0 ]; then
+            log "Menggunakan gambar dari cache (umur: $file_age hari)"
+            use_cache=1
+        else
+            cache_expired=1
+            log "Cache expired atau konfigurasi berubah, akan generate baru"
+        fi
+    else
+        log "Cache tidak ditemukan, akan generate baru"
+    fi
+
+    # Jika tidak menggunakan cache, generate gambar baru
+    if [ "$use_cache" -eq 0 ]; then
+        log "Menjalankan generator jadwal bulanan"
+        if ! python3 /usr/bin/jadwal-monthly; then
+            log "Gagal generate jadwal bulanan"
+            
+            # Jika gagal generate, coba gunakan cache yang ada jika tersedia
+            if [ -f "$cache_file" ]; then
+                log "Fallback ke cache yang tersedia"
+                curl -s -X POST \
+                    "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendPhoto" \
+                    -F chat_id="${chat_id}" \
+                    -F photo="@$cache_file" \
+                    -F caption="📅 Jadwal Sholat Bulan $(date +"%B %Y") (from cache)"
+                return $?
+            else
+                send_message "$chat_id" "❌ Gagal membuat jadwal bulanan dan tidak ada cache tersedia"
+                return 1
+            fi
+        fi
+
+        # Verifikasi file output
+        if [ ! -f "$temp_file" ]; then
+            log "File output tidak ditemukan: $temp_file"
+            
+            # Coba lagi dengan cache jika ada
+            if [ -f "$cache_file" ]; then
+                log "Fallback ke cache yang tersedia"
+                curl -s -X POST \
+                    "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendPhoto" \
+                    -F chat_id="${chat_id}" \
+                    -F photo="@$cache_file" \
+                    -F caption="📅 Jadwal Sholat Bulan $(date +"%B %Y") (from cache)"
+                return $?
+            else
+                send_message "$chat_id" "❌ Gagal membuat jadwal bulanan"
+                return 1
+            fi
+        fi
+
+        # Update cache dengan file baru
+        mv "$temp_file" "$cache_file"
+        
+        # Simpan hash konfigurasi terbaru
+        echo "$current_config_hash" > "$config_hash_file"
+        log "Cache dan konfigurasi diperbarui untuk bulan $current_month"
+    fi
+
+    # Kirim gambar (baik dari cache atau baru)
+    local caption="📅 Jadwal Sholat Bulan $(date +"%B %Y")"
+    [ "$use_cache" -eq 1 ] && caption="$caption (from cache)"
+    [ "$cache_expired" -eq 1 ] && caption="$caption (updated)"
+    [ "$config_changed" -eq 1 ] && caption="$caption (config updated)"
+
+    curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendPhoto" \
+        -F chat_id="${chat_id}" \
+        -F photo="@$cache_file" \
+        -F caption="$caption"
+
+    return $?
+}
+
+# Fungsi untuk mengirim inline keyboard
+send_inline_keyboard() {
+    local chat_id="$1"
+    local text="$2"
+    local keyboard="$3"
+    
+    log "Mengirim inline keyboard ke $chat_id"
+    log "Teks: $text"
+    [ "$DEBUG_MODE" = "1" ] && log "Keyboard: $keyboard"
+
+    # Bangun payload JSON yang benar
+    local payload=$(printf '{
+        "chat_id": "%s",
+        "text": "%s",
+        "parse_mode": "Markdown",
+        "reply_markup": {"inline_keyboard": %s}
+    }' "$chat_id" "$(echo "$text" | sed 's/"/\\"/g')" "$keyboard")
+
+    [ "$DEBUG_MODE" = "1" ] && log "Payload yang dikirim: $payload"
+
+    local response=$(curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+        -H "Content-Type: application/json" \
+        -d "$payload")
+
+    [ "$DEBUG_MODE" = "1" ] && log "Response dari Telegram API: $response"
+
+    if ! echo "$response" | jq -e '.ok' >/dev/null; then
+        local error_msg=$(echo "$response" | jq -r '.description' 2>/dev/null || echo "Unknown error")
+        log "ERROR: Gagal mengirim keyboard - $error_msg"
+        return 1
+    fi
+
+    return 0
+}
+
+# Fungsi untuk mengedit pesan dengan inline keyboard
+edit_inline_keyboard() {
+    local chat_id="$1"
+    local message_id="$2"
+    local text="$3"
+    local keyboard="$4"
+    
+    [ "$DEBUG_MODE" = "1" ] && log "Mengedit pesan dengan inline keyboard (message_id=$message_id)"
+    
+    local response=$(curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+        -d chat_id="${chat_id}" \
+        -d message_id="${message_id}" \
+        -d text="${text}" \
+        -d parse_mode="Markdown" \
+        -d reply_markup="{\"inline_keyboard\":${keyboard}}")
+    
+    [ "$DEBUG_MODE" = "1" ] && log "Response editInlineKeyboard: $response"
+    
+    if ! echo "$response" | jq -e '.ok' >/dev/null; then
+        log "ERROR: Gagal mengedit keyboard - $(echo "$response" | jq -r '.description')"
+        send_message "$chat_id" "❌ Terjadi kesalahan saat memperbarui pesan"
+    fi
+}
+
+# Fungsi untuk mengedit pesan (tanpa keyboard)
+remove_keyboard() {
+    local chat_id="$1"
+    local message_id="$2"
+    local text="$3"
+
+    [ "$DEBUG_MODE" = "1" ] && log "Menghapus keyboard untuk message_id=$message_id"
+    
+    curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+        -d chat_id="${chat_id}" \
+        -d message_id="${message_id}" \
+        -d text="${text}" \
+        -d parse_mode="Markdown" \
+        > /dev/null 2>&1
+}
+
+# Fungsi untuk update status service
+update_service_status() {
+    local chat_id="$1"
+    local message_id="$2"
+    local status="$3"
+    
+    uci set jsholat.setting.service="$status"
+    uci commit jsholat
+    /etc/init.d/jsholat restart
+    
+    local status_text=$([ "$status" = "1" ] && echo "diaktifkan" || echo "dinonaktifkan")
+    remove_keyboard "$chat_id" "$message_id" "✅ Service jsholat telah $status_text"
+}
+
+# Fungsi untuk toggle pengaturan suara
+toggle_sound_setting() {
+    local chat_id="$1"
+    local message_id="$2"
+    
+    local current_status=$(uci -q get jsholat.setting.sound_enabled || echo "1")
+    local new_status=$([ "$current_status" = "1" ] && echo "0" || echo "1")
+    
+    uci set jsholat.setting.sound_enabled="$new_status"
+    uci commit jsholat
+    
+    local status_text=$([ "$new_status" = "1" ] && echo "diaktifkan" || echo "dinonaktifkan")
+    remove_keyboard "$chat_id" "$message_id" "🔊 Suara adzan telah $status_text"
+}
+
+# Fungsi untuk toggle notifikasi Telegram
+toggle_telegram_setting() {
+    local chat_id="$1"
+    local message_id="$2"
+    
+    local current_status=$(uci -q get jsholat.setting.telegram_enabled || echo "1")
+    local new_status=$([ "$current_status" = "1" ] && echo "0" || echo "1")
+    
+    uci set jsholat.setting.telegram_enabled="$new_status"
+    uci commit jsholat
+    
+    local status_text=$([ "$new_status" = "1" ] && echo "diaktifkan" || echo "dinonaktifkan")
+    remove_keyboard "$chat_id" "$message_id" "📱 Notifikasi Telegram telah $status_text"
+}
+
+# Fungsi untuk menampilkan menu pengaturan
+show_settings_menu() {
+    local chat_id="$1"
+    local message_id="$2"
+    
+    local sound_status=$(uci -q get jsholat.setting.sound_enabled || echo "1")
+    local telegram_status=$(uci -q get jsholat.setting.telegram_enabled || echo "1")
+    
+    local sound_text=$([ "$sound_status" = "1" ] && echo "🔊 ON" || echo "🔇 OFF")
+    local telegram_text=$([ "$telegram_status" = "1" ] && echo "📱 ON" || echo "📵 OFF")
+    
+    local keyboard='[[
+        {"text": "Suara Adzan: '"$sound_text"'", "callback_data": "toggle_sound"}
+    ],[
+        {"text": "Notifikasi Telegram: '"$telegram_text"'", "callback_data": "toggle_telegram"}
+    ],[
+        {"text": "⬅️ Kembali", "callback_data": "back_to_control"}
+    ]]'
+    
+    if [ -z "$message_id" ]; then
+        send_inline_keyboard "$chat_id" "⚙️ *Pengaturan Jsholat*" "$keyboard"
+    else
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+            -d chat_id="${chat_id}" \
+            -d message_id="${message_id}" \
+            -d text="⚙️ *Pengaturan Jsholat*" \
+            -d parse_mode="Markdown" \
+            -d reply_markup="{\"inline_keyboard\":${keyboard}}" \
+            > /dev/null 2>&1
+    fi
+}
+
+# Fungsi untuk menampilkan menu kontrol
+show_control_menu() {
+    local chat_id="$1"
+    local message_id="$2"
+    
+    local current_status=$(uci -q get jsholat.setting.service || echo "1")
+    local status_text=$([ "$current_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
+    
+    local keyboard='[[
+        {"text": "🔘 Status: '"$status_text"'", "callback_data": "status"},
+        {"text": "✅ Aktifkan", "callback_data": "on"}
+    ],[
+        {"text": "❌ Nonaktifkan", "callback_data": "off"},
+        {"text": "⚙️ Pengaturan", "callback_data": "settings"}
+    ],[
+        {"text": "🔊 Volume", "callback_data": "volume_menu"},
+        {"text": "✔️ Selesai", "callback_data": "done"}
+    ]]'
+    
+    if [ -z "$message_id" ]; then
+        send_inline_keyboard "$chat_id" "🛠 *Kontrol Service Jsholat*" "$keyboard"
+    else
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+            -d chat_id="${chat_id}" \
+            -d message_id="${message_id}" \
+            -d text="🛠 *Kontrol Service Jsholat*" \
+            -d parse_mode="Markdown" \
+            -d reply_markup="{\"inline_keyboard\":${keyboard}}" \
+            > /dev/null 2>&1
+    fi
+}
+
+# Fungsi untuk menampilkan menu pilihan sumber jadwal
+show_source_menu() {
+    local chat_id="$1"
+    local message_id="$2"
+    
+    local current_source=$(uci -q get jsholat.setting.source || echo "jadwalsholat")
+    
+    local keyboard='[[
+        {"text": "JadwalSholat.org '$( [ "$current_source" = "jadwalsholat" ] && echo "✅" )'", "callback_data": "set_source_jadwalsholat"}
+    ],[
+        {"text": "AlAdhan API '$( [ "$current_source" = "aladhan" ] && echo "✅" )'", "callback_data": "set_source_aladhan"}
+    ],[
+        {"text": "MyQuran API '$( [ "$current_source" = "myquran" ] && echo "✅" )'", "callback_data": "set_source_myquran"}
+    ],[
+        {"text": "AjiMedia API '$( [ "$current_source" = "apiajimedia" ] && echo "✅" )'", "callback_data": "set_source_apiajimedia"}
+    ],[
+        {"text": "❌ Batal", "callback_data": "cancel_update"}
+    ]]'
+    
+    if [ -z "$message_id" ]; then
+        send_inline_keyboard "$chat_id" "🌐 *Pilih Sumber Jadwal Sholat*" "$keyboard"
+    else
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+            -d chat_id="${chat_id}" \
+            -d message_id="${message_id}" \
+            -d text="🌐 *Pilih Sumber Jadwal Sholat*" \
+            -d parse_mode="Markdown" \
+            -d reply_markup="{\"inline_keyboard\":${keyboard}}" \
+            > /dev/null 2>&1
+    fi
+}
+
+# Fungsi untuk mengubah sumber jadwal
+set_jadwal_source() {
+    local chat_id="$1"
+    local message_id="$2"
+    local source="$3"
+    
+    uci set jsholat.setting.source="$source"
+    # Jika sumber adalah aladhan, set method ke 20 (default untuk Indonesia)
+    if [ "$source" = "aladhan" ]; then
+        uci set jsholat.setting.method="20"
+        log "Mengatur method ke 20 untuk AlAdhan API"
+    fi
+    
+    uci commit jsholat
+    
+    local source_name=""
+    case "$source" in
+        "jadwalsholat") source_name="JadwalSholat.org" ;;
+        "aladhan") source_name="AlAdhan API" ;;
+        "myquran") source_name="MyQuran API" ;;
+        "apiajimedia") source_name="AjiMedia API" ;;
+    esac
+    
+    remove_keyboard "$chat_id" "$message_id" "✅ Sumber jadwal sholat diubah ke *$source_name*"
+    log " ✅ Sumber jadwal sholat diubah ke $source_name"
+}
+
+# Fungsi untuk menampilkan menu volume
+show_volume_menu() {
+    local chat_id="$1"
+    local current_volume=$(uci -q get jsholat.setting.volume_level || echo "60")
+    
+    local keyboard='[[
+        {"text": "🔇 0%", "callback_data": "set_volume_0"},
+        {"text": "🔈 25%", "callback_data": "set_volume_25"},
+        {"text": "🔉 50%", "callback_data": "set_volume_50"}
+    ],[
+        {"text": "🔊 75%", "callback_data": "set_volume_75"},
+        {"text": "📢 100%", "callback_data": "set_volume_100"},
+        {"text": "🎧 Tes Suara", "callback_data": "test_volume"}
+    ],[
+        {"text": "⬅️ Kembali", "callback_data": "back_to_control"}
+    ]]'
+    
+    send_inline_keyboard "$chat_id" "🔊 *Pengaturan Volume*\nVolume saat ini: *${current_volume}%*" "$keyboard"
+}
+
+# Fungsi untuk menyimpan volume
+set_volume() {
+    local chat_id="$1"
+    local message_id="$2"
+    local volume_level="$3"
+    
+    # Simpan ke config
+    uci set jsholat.setting.volume_level="$volume_level"
+    uci commit jsholat
+    
+    # Terapkan volume (contoh menggunakan alsa)
+    amixer -q set Master "${volume_level}%" >/dev/null 2>&1 || true
+    
+    # Bangun keyboard dengan tombol tes suara
+    local keyboard='[[
+        {"text": "🎧 Tes Suara", "callback_data": "test_volume"},
+        {"text": "⬅️ Kembali", "callback_data": "back_to_control"}
+    ]]'
+    
+    # Edit pesan untuk menampilkan konfirmasi
+    curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+        -d chat_id="${chat_id}" \
+        -d message_id="${message_id}" \
+        -d text="✅ Volume berhasil diatur ke *${volume_level}%*" \
+        -d parse_mode="Markdown" \
+        -d reply_markup="{\"inline_keyboard\":${keyboard}}" \
+        > /dev/null 2>&1
+    
+    log "Volume diatur ke ${volume_level}%"
+}
+
+# Fungsi untuk menguji suara
+test_volume() {
+    local chat_id="$1"
+    local message_id="$2"
+    local volume_level=$(uci -q get jsholat.setting.volume_level || echo "60")
+    
+    # Edit pesan untuk menunjukkan sedang memainkan suara
+    curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+        -d chat_id="${chat_id}" \
+        -d message_id="${message_id}" \
+        -d text="🔊 Memainkan suara uji pada volume *${volume_level}%*..." \
+        -d parse_mode="Markdown" \
+        > /dev/null 2>&1
+    
+    # Mainkan suara uji (contoh menggunakan beep atau file audio)
+    # Anda bisa mengganti ini dengan perintah play audio yang sesuai
+    speaker-test -D default -t sine -f 1000 -l 1 >/dev/null 2>&1
+    
+    # Edit pesan lagi setelah selesai
+    curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+        -d chat_id="${chat_id}" \
+        -d message_id="${message_id}" \
+        -d text="✅ Tes suara selesai pada volume *${volume_level}%*" \
+        -d parse_mode="Markdown" \
+        -d reply_markup="{\"inline_keyboard\":[[{\"text\":\"⬅️ Kembali\",\"callback_data\":\"back_to_control\"}]]}" \
+        > /dev/null 2>&1
+}
+
+# Fungsi untuk menampilkan pesan bantuan
+send_help_message() {
+    local chat_id="$1"
+    send_message "$chat_id" "📚 *Daftar Perintah*:
+/jadwal - Lihat jadwal sholat hari ini
+/jdwlbulan - Lihat jadwal sholat bulan ini
+/setjadwal - Ubah sumber jadwal sholat
+/lokasi - Lihat wilayah jadwal saat ini
+/setlokasi - Ubah lokasi untuk jadwal sholat
+/setvolume - Atur volume suara adzan (0-100)
+/control - Kontrol service jsholat
+/status - Lihat status pengaturan
+/update - Update jadwal sholat terbaru
+/help - Tampilkan bantuan ini"
+}
+
+# Fungsi proses pesan
+process_message() {
+    local chat_id="$1"
+    local text="$2"
+    
+    # Cek authorization
+    if ! check_authorization "$chat_id"; then
+        send_message "$chat_id" "This is a private bot. If you want to implement one for you, check this out https://www.ajisetiawan.my.id/projects/jsholat"
+        log "Percobaan akses dari chat ID tidak terdaftar: $chat_id"
+        return
+    fi
+
+    log "Menerima pesan dari chat_id=$chat_id: dengan isi $text"
+
+    case "$text" in
+        "/start")
+            send_message "$chat_id" "Assalamu'alaikum! 
+
+🤖 Saya bot jadwal sholat. Gunakan perintah:
+
+/jadwal - Lihat jadwal sholat hari ini
+/jdwlbulan - Lihat jadwal sholat bulan ini
+/setjadwal - Ubah sumber jadwal sholat
+/lokasi - Lihat wilayah jadwal saat ini
+/setlokasi - Ubah lokasi untuk jadwal sholat
+/setvolume - Atur volume suara adzan (0-100)
+/control - Kontrol service jsholat
+/status - Lihat status pengaturan
+/update - Update jadwal sholat terbaru
+/help - Bantuan"
+            ;;
+        "/jadwal")
+            local day_name=$(date +"%A")
+            local day_num=$(date +"%d")
+            local month_num=$(date +"%m")
+            local month_name=$(date +"%B")
+            local year=$(date +"%Y")
+            local today=$(date +"%d-%m-%Y")  
+            local timezone=$(uci -q get jsholat.setting.timezone_value || echo "")  
+            local jadwal_file=$(uci get jsholat.setting.file_jadwal 2>/dev/null)
+            
+            # Dapatkan tanggal Hijriyah dengan error handling
+            local hijri_date hijri_status
+            hijri_date=$(get_hijri_date)
+            hijri_status=$?
+            
+            local hijri_display=""
+            if [ -n "$hijri_date" ]; then
+                hijri_display="📅 *Hijriyah*: $hijri_date"
+                if [ $hijri_status -ne 0 ]; then
+                    hijri_display+="_(informasi tanggal mungkin tidak terupdate)_"
+                fi
+            else
+                hijri_display="📅 *Hijriyah*: (tidak tersedia)"
+            fi
+            
+            # Dapatkan info pembaruan
+            local last_updated="Tidak diketahui"
+            local data_source="Jadwalsholat.org" # Default value
+            local last_updated_file="/usr/share/jsholat/last_updated.txt"
+            
+            if [ -f "$last_updated_file" ]; then
+                # Parse dengan jq (prioritas utama)
+                if command -v jq >/dev/null 2>&1; then
+                    last_updated=$(jq -r '.last_updated // ""' "$last_updated_file" 2>/dev/null)
+                    data_source=$(jq -r '.data_source // "Jadwalsholat.org"' "$last_updated_file" 2>/dev/null)
+                else
+                    # Fallback ke grep jika jq tidak ada
+                    last_updated=$(grep -oP '"last_updated"\s*:\s*"([^"]+)"' "$last_updated_file" | cut -d'"' -f4)
+                    data_source=$(grep -oP '"data_source"\s*:\s*"([^"]+)"' "$last_updated_file" | cut -d'"' -f4)
+                fi
+            fi
+
+            # Bangun string info pembaruan
+            local update_info=""
+            update_info="🔄 Terakhir diperbarui: $last_updated"$'\n'
+            source_info="🌐 Sumber: $data_source"
+
+            if [ -z "$jadwal_file" ] || [ ! -f "$jadwal_file" ]; then
+                send_message "$chat_id" "❌ File jadwal tidak ditemukan"
+                return
+            fi
+            
+            local jadwal=$(grep "^$today" "$jadwal_file" 2>/dev/null)
+            if [ -n "$jadwal" ]; then
+                local imsyak=$(echo "$jadwal" | awk '{print $2}')
+                local subuh=$(echo "$jadwal" | awk '{print $3}')
+                local dzuhur=$(echo "$jadwal" | awk '{print $4}')
+                local ashar=$(echo "$jadwal" | awk '{print $5}')
+                local magrib=$(echo "$jadwal" | awk '{print $6}')
+                local isya=$(echo "$jadwal" | awk '{print $7}')
+                local lokasi=$(uci get jsholat.setting.city_label 2>/dev/null || echo "Tidak diketahui")
+                local provinsi=$(uci get jsholat.setting.province 2>/dev/null || echo "Tidak diketahui")
+                
+                # Translate day and month to Indonesian if needed
+                case "$day_name" in
+                    "Monday") day_name="Senin" ;;
+                    "Tuesday") day_name="Selasa" ;;
+                    "Wednesday") day_name="Rabu" ;;
+                    "Thursday") day_name="Kamis" ;;
+                    "Friday") day_name="Jumat" ;;
+                    "Saturday") day_name="Sabtu" ;;
+                    "Sunday") day_name="Ahad" ;;
+                esac
+                
+                case "$month_name" in
+                    "January") month_name="Januari" ;;
+                    "February") month_name="Februari" ;;
+                    "March") month_name="Maret" ;;
+                    "April") month_name="April" ;;
+                    "May") month_name="Mei" ;;
+                    "June") month_name="Juni" ;;
+                    "July") month_name="Juli" ;;
+                    "August") month_name="Agustus" ;;
+                    "September") month_name="September" ;;
+                    "October") month_name="Oktober" ;;
+                    "November") month_name="November" ;;
+                    "December") month_name="Desember" ;;
+                esac
+                
+                # Format tanggal yang benar: "Rabu, 09 April 2025"
+                local formatted_date="$day_name, $day_num $month_name $year"
+                local timezone_display=""
+                [ -n "$timezone" ] && timezone_display="($timezone)"
+
+                send_message "$chat_id" "🕌 *Jadwal Sholat Hari Ini*
+
+📆 *Hari/Tanggal*: $formatted_date
+${hijri_display}
+📍 *Wilayah*: $lokasi, $provinsi
+🕒 *Zona Waktu*: $timezone
+
+🌄 Imsyak: $imsyak $timezone_display
+🌅 Subuh: $subuh $timezone_display
+☀️ Dzuhur: $dzuhur $timezone_display
+🌇 Ashar: $ashar $timezone_display
+🌆 Maghrib: $magrib $timezone_display
+🌃 Isya: $isya $timezone_display
+
+
+$update_info$source_info"
+            else
+                send_message "$chat_id" "❌ Jadwal sholat hari ini tidak ditemukan"
+            fi
+            ;;
+       "/jdwlbulan")
+            send_monthly_schedule "$chat_id"
+            ;;
+        "/lokasi")
+            local lokasi=$(uci get jsholat.setting.city_label 2>/dev/null || echo "Tidak diketahui")
+            local provinsi=$(uci get jsholat.setting.province 2>/dev/null || echo "Tidak diketahui")
+            send_message "$chat_id" "📍 Lokasi jadwal saat ini: *$lokasi, $provinsi*"
+            ;;
+        "/control")
+            show_control_menu "$chat_id"
+            ;;
+        "/setvolume")
+            show_volume_menu "$chat_id"
+            ;;    
+        "/status")
+            local city_label=$(uci get jsholat.setting.city_label 2>/dev/null || echo "Tidak diketahui")
+            local provinsi=$(uci get jsholat.setting.province 2>/dev/null || echo "Tidak diketahui")
+            local service_status=$(uci get jsholat.setting.service 2>/dev/null || echo "1")
+            local sound_status=$(uci get jsholat.setting.sound_enabled 2>/dev/null || echo "1")
+            local telegram_status=$(uci get jsholat.setting.telegram_enabled 2>/dev/null || echo "1")
+            local timezone=$(uci -q get jsholat.setting.timezone_value || echo "Tidak diatur")
+            local source=$(uci -q get jsholat.setting.source || echo "jadwalsholat")
+            local interval=$(uci -q get jsholat.setting.interval || echo "3600")
+
+            # Convert status to human-readable format
+            service_status=$([ "$service_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
+            sound_status=$([ "$sound_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
+            telegram_status=$([ "$telegram_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
+            
+            # Convert source to readable name
+            case "$source" in
+                "jadwalsholat") source="JadwalSholat.org" ;;
+                "aladhan") source="AlAdhan API" ;;
+                "myquran") source="MyQuran API" ;;
+                "apiajimedia") source="AjiMedia API" ;;
+            esac
+            
+            # Convert interval to readable name
+            case "$interval" in
+                "0") interval="Tidak Otomatis" ;;
+                "3600") interval="Setiap Jam" ;;
+                "86400") interval="Setiap Hari" ;;
+                "604800") interval="Setiap Minggu" ;;
+                "monthly_special") interval="Setiap Bulan" ;;
+                *) interval="Tidak diketahui" ;;
+            esac
+            
+            send_message "$chat_id" "📊 *Status Pengaturan Jsholat*
+
+📍 *Wilayah*: $city_label, $provinsi
+🕒 *Zona Waktu*: $timezone
+🔄 *Pembaruan Jadwal*: $interval
+🌐 *Sumber Jadwal*: $source
+🛠 *Status Service*: $service_status
+🔊 *Suara Adzan*: $sound_status
+📱 *Notifikasi Telegram*: $telegram_status"
+            ;;
+        "/update")
+            # Create confirmation keyboard
+            local keyboard='[[
+                {"text": "✅ Ya, Update Jadwal", "callback_data": "confirm_update"},
+                {"text": "❌ Batal", "callback_data": "cancel_update"}
+            ]]'
+            
+            send_inline_keyboard "$chat_id" "⚠️ *Update Jadwal Sholat*
+            Anda yakin ingin mengupdate jadwal sholat? 
+            Proses ini akan menjalankan update dan mungkin memakan waktu beberapa detik." "$keyboard"
+            ;;
+        "/setjadwal")
+            show_source_menu "$chat_id"
+            ;;
+        "/setlokasi")
+            mkdir -p "$LOCATION_SEARCH_FLAG_DIR"
+            touch "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag"
+            send_message "$chat_id" "$(printf '🔍 Masukkan nama kota/kabupaten yang ingin dicari:\nContoh: *%s* atau *%s*' "Bandung" "Aceh Barat")"
+            ;;
+        "/help")
+            send_help_message "$chat_id"
+            ;;
+        *)
+            if [ -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag" ]; then
+                rm -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag"
+                show_location_results "$chat_id" "" "$text"
+            else
+                send_message "$chat_id" "Perintah tidak dikenali. Gunakan /start untuk melihat menu"
+                send_help_message "$chat_id"
+            fi
+            ;;
+    esac
+}
+
+# Fungsi proses callback query (tanpa logging response)
+process_callback() {
+    local callback_id="$1"
+    local chat_id="$2"
+    local message_id="$3"
+    local data="$4"
+    
+    # Cek authorization
+    if ! check_authorization "$chat_id"; then
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/answerCallbackQuery" \
+            -d callback_query_id="${callback_id}" \
+            -d text="⛔ This is a private bot" \
+            -d show_alert="true" \
+            > /dev/null 2>&1
+        log "Percobaan akses callback dari chat ID tidak terdaftar: $chat_id"    
+        return
+    fi
+
+    [ "$DEBUG_MODE" = "1" ] && log "Memproses callback: $data dari chat_id=$chat_id"
+
+    # Jawab callback query
+    curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/answerCallbackQuery" \
+        -d callback_query_id="${callback_id}" \
+        > /dev/null 2>&1
+
+    case "$data" in
+        "on")
+            update_service_status "$chat_id" "$message_id" "1"
+            ;;
+        "off")
+            update_service_status "$chat_id" "$message_id" "0"
+            ;;
+        "done")
+            remove_keyboard "$chat_id" "$message_id" "🛠 Kontrol service selesai"
+            ;;
+        "status")
+            local current_status=$(uci -q get jsholat.setting.service || echo "1")
+            local status_text=$([ "$current_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
+            
+            curl -s -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_TOKEN}/answerCallbackQuery" \
+                -d callback_query_id="${callback_id}" \
+                -d text="Status saat ini: $status_text" \
+                -d show_alert="false" \
+                > /dev/null 2>&1
+            ;;
+        "settings")
+            show_settings_menu "$chat_id" "$message_id"
+            ;;
+        set_volume_*)
+            local volume_level=$(echo "$data" | cut -d'_' -f3)
+            set_volume "$chat_id" "$message_id" "$volume_level"
+            ;;
+        "test_volume")
+            test_volume "$chat_id" "$message_id"
+            ;;
+        "volume_menu")
+            show_volume_menu "$chat_id" "$message_id"
+            ;;    
+        "toggle_sound")
+            toggle_sound_setting "$chat_id" "$message_id"
+            ;;
+        "toggle_telegram")
+            toggle_telegram_setting "$chat_id" "$message_id"
+            ;;
+        "back_to_control")
+            show_control_menu "$chat_id" "$message_id"
+            ;;
+        "set_source_jadwalsholat")
+            set_jadwal_source "$chat_id" "$message_id" "jadwalsholat"
+            ;;
+        "set_source_aladhan")
+            set_jadwal_source "$chat_id" "$message_id" "aladhan"
+            ;;
+        "set_source_myquran")
+            set_jadwal_source "$chat_id" "$message_id" "myquran"
+            ;;
+        "set_source_apiajimedia")
+            set_jadwal_source "$chat_id" "$message_id" "apiajimedia"
+            ;;
+        "confirm_update")
+            # Hapus pesan konfirmasi
+            curl -s -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_TOKEN}/deleteMessage" \
+                -d chat_id="${chat_id}" \
+                -d message_id="${message_id}" \
+                > /dev/null 2>&1
+
+            # Pesan progress awal
+            local progress_msg=$(curl -s -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+                -d chat_id="${chat_id}" \
+                -d text="🔄 Memulai update jadwal sholat..." \
+                -d parse_mode="Markdown")
+            
+            local progress_msg_id=$(echo "$progress_msg" | jq -r '.result.message_id')
+            
+            # Function untuk update progress
+            update_progress() {
+                local text="$1"
+                curl -s -X POST \
+                    "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+                    -d chat_id="${chat_id}" \
+                    -d message_id="${progress_msg_id}" \
+                    -d text="$text" \
+                    -d parse_mode="Markdown" \
+                    > /dev/null 2>&1
+                sleep 0.3
+            }
+            
+            # Simpan output ke temporary file
+            local tmp_file=$(mktemp)
+            /usr/bin/jadwal-update.sh 2>&1 | tee "$tmp_file"
+            
+            # Proses output untuk ditampilkan (dengan pembersihan timestamp yang lebih baik)
+            while IFS= read -r line; do
+                # Pembersihan timestamp yang lebih kuat
+                clean_line=$(echo "$line" | sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} //')
+                # 2. Untuk format lain jika ada
+                clean_line=$(echo "$clean_line" | sed -E 's/^\[[0-9-]+ [0-9:]+\] //')
+                update_progress "$clean_line"
+            done < "$tmp_file"
+            
+            # Cek error dan format pesan dengan benar
+            local update_failed=0
+            local output_chat=""
+            
+            if grep -qi "error" "$tmp_file"; then
+                update_failed=1
+                # Ambil error terakhir dan bersihkan timestamp dengan lebih teliti
+                local last_error=$(grep -i "error" "$tmp_file" | tail -1)
+                # Dua versi pembersihan timestamp:
+                # 1. Untuk format default: "2025-04-18 06:34:41 Error..."
+                last_error=$(echo "$last_error" | sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} //')
+                # 2. Untuk format lain jika ada
+                last_error=$(echo "$last_error" | sed -E 's/^\[[0-9-]+ [0-9:]+\] //')
+                
+                output_chat=$(printf "❌ Gagal memperbarui jadwal\n\nPesan error: %s\n\nSilakan coba lagi atau periksa log sistem." "$last_error")
+            else
+                output_chat="✅ Jadwal sholat berhasil diperbarui"
+            fi
+            
+            # Tampilkan hasil akhir
+            update_progress "$formatted_error"
+            
+            # Bersihkan
+            rm -f "$tmp_file"
+            remove_keyboard "$chat_id" "$message_id" " "
+            ;;
+        "cancel_update")
+            remove_keyboard "$chat_id" "$message_id" "❌ Update jadwal dibatalkan"
+            log "❌  Update dibatalkan.."
+            ;;
+        set_location_*)
+            # Handle location selection
+            local city_value=$(echo "$data" | cut -d'_' -f3)
+            local timezone=$(echo "$data" | cut -d'_' -f4)
+            set_location "$chat_id" "$message_id" "$city_value" "$timezone"
+            ;;    
+    esac
+}
+
+# Main loop dengan error handling
+while true; do
+    # Ambil updates dari Telegram API
+    response=$(curl -s -w "\n%{http_code}" "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getUpdates?offset=$((LAST_UPDATE_ID + 1))&timeout=10" 2>&1)
+    
+    if [ $? -ne 0 ]; then
+        log "Error saat menghubungi Telegram API: $response"
+        sleep 5
+        continue
+    fi
+    
+    http_code=$(echo "$response" | tail -n1)
+    updates=$(echo "$response" | sed '$d')
+    
+    if [ "$http_code" -ne 200 ]; then
+        log "Error HTTP dari Telegram API. Code: $http_code"
+        [ "$DEBUG_MODE" = "1" ] && log "Response: $updates"
+        sleep 5
+        continue
+    fi
+
+    # Parse update IDs
+    update_ids=$(echo "$updates" | jq -r '.result[].update_id' 2>/dev/null)
+    
+    if [ -z "$update_ids" ]; then
+        sleep 1
+        continue
+    fi
+
+    # Proses setiap update
+    for update_id in $update_ids; do
+        if [ "$update_id" -gt "$LAST_UPDATE_ID" ]; then
+            # Ekstrak data update
+            update=$(echo "$updates" | jq -r --argjson id "$update_id" '.result[] | select(.update_id == $id)')
+            
+            # Cek apakah ini message
+            message=$(echo "$update" | jq -r '.message // empty')
+            if [ -n "$message" ]; then
+                chat_id=$(echo "$message" | jq -r '.chat.id')
+                text=$(echo "$message" | jq -r '.text // empty')
+                
+                if [ -n "$chat_id" ] && [ -n "$text" ]; then
+                    process_message "$chat_id" "$text"
+                fi
+            fi
+            
+            # Cek apakah ini callback query
+            callback_query=$(echo "$update" | jq -r '.callback_query // empty')
+            if [ -n "$callback_query" ]; then
+                callback_id=$(echo "$callback_query" | jq -r '.id // empty')
+                callback_chat_id=$(echo "$callback_query" | jq -r '.message.chat.id // empty')
+                callback_message_id=$(echo "$callback_query" | jq -r '.message.message_id // empty')
+                callback_data=$(echo "$callback_query" | jq -r '.data // empty')
+                
+                if [ -n "$callback_id" ] && [ -n "$callback_data" ] && [ -n "$callback_chat_id" ] && [ -n "$callback_message_id" ]; then
+                    process_callback "$callback_id" "$callback_chat_id" "$callback_message_id" "$callback_data"
+                fi
+            fi
+            
+            LAST_UPDATE_ID=$update_id
+        fi
+    done
+
+    sleep 0.5
+done

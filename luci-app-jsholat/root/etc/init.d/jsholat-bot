@@ -1,0 +1,73 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+START=99
+STOP=01
+DEPENDS="network"
+
+# Konfigurasi
+PID_FILE="/var/run/jsholat-bot.pid"
+BOT_CHECKER_SCRIPT="/usr/share/jsholat/bot-checker.sh"
+BOT_CHECKER_INTERVAL="*/2 * * * *"
+
+setup_bot_checker_cron() {
+    if ! crontab -l | grep -q "$BOT_CHECKER_SCRIPT"; then
+        (crontab -l 2>/dev/null; echo "$BOT_CHECKER_INTERVAL $BOT_CHECKER_SCRIPT") | crontab -
+        echo "✅ Cron bot checker ditambahkan"
+    fi
+}
+
+remove_bot_checker_cron() {
+    crontab -l | grep -v "$BOT_CHECKER_SCRIPT" | crontab -
+    echo "✂️ Cron bot checker dihapus"
+}
+
+boot() {
+    start_service
+}
+
+start_service() {
+    echo "⚙️ Memulai jsholat-bot..."
+    
+    mkdir -p /etc/jsholat
+    chmod 755 /etc/jsholat
+    
+    setup_bot_checker_cron
+
+    procd_open_instance
+    procd_set_param command /usr/bin/jsholat-bot /etc/jsholat/last_update_id
+    procd_set_param respawn 300 5 10
+    procd_set_param env HOME=/tmp
+    procd_set_param limits nofile="unlimited"
+    procd_set_param pidfile "$PID_FILE"  # Otomatis buat PID file
+    procd_close_instance
+}
+
+stop_service() {
+    if [ -f "$PID_FILE" ]; then
+        pid=$(cat "$PID_FILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "🔌 Menghentikan jsholat-bot dengan PID $pid..."
+            kill "$pid"
+            sleep 1
+        else
+            echo "⚠️ Proses dengan PID $pid tidak aktif"
+        fi
+        rm -f "$PID_FILE"
+    else
+        echo "ℹ️ Tidak ada file PID ditemukan"
+    fi
+    
+    remove_bot_checker_cron
+}
+
+restart() {
+    echo "♻️ Restarting jsholat-bot..."
+    stop_service
+    sleep 1
+    start_service
+}
+
+service_triggers() {
+    procd_add_reload_trigger "jsholat"
+}

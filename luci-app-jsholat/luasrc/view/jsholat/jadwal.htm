@@ -1,0 +1,592 @@
+<%+header%>
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+<style>
+/* ===== VARIABEL & RESET ===== */
+:root {
+  /* Default Light Mode */
+  --border-color: #ddd;
+  --th-bg-color: #f2f2f2;
+  --th-text-color: #000;
+  --tr-even-bg-color: #f9f9f9;
+  --tr-odd-bg-color: #fff;
+  --tr-hover-bg-color: #f1f1f1;
+  --today-bg-color: #d4edda;
+  --text-color: #333;
+  --bg-color: #fff;
+  --countdown-color: #155724;
+  --countdown-bg-color: #d4edda;
+  --message-bg-color: #d4edda;
+  --message-color: #333;
+  --update-bg-color: #f8f9fa;
+  --update-text-color: #2c3e50;
+  --error-color: #e74c3c;
+  --icon-color: #3498db;
+}
+
+/* ===== DARK MODE OVERRIDES ===== */
+@media (prefers-color-scheme: dark),
+       body.dark {
+  :root {
+    --border-color: #444;
+    --th-bg-color: #333;
+    --th-text-color: #fff;
+    --tr-even-bg-color: #222;
+    --tr-odd-bg-color: #121212;
+    --tr-hover-bg-color: #2a2a2a;
+    --today-bg-color: #1e3a1e;
+    --text-color: #e0e0e0;
+    --bg-color: #121212;
+    --countdown-color: #d4edda;
+    --countdown-bg-color: #1e3a1e;
+    --message-bg-color: #1e3a1e;
+    --message-color: #fff;
+    --update-bg-color: #222;
+    --update-text-color: #ddd;
+    --error-color: #ff6b6b;
+    --icon-color: #4dabf7;
+  }
+}
+
+/* ===== BASE STYLES (FORCE CONTRAST) ===== */
+body .jadwal-container {
+  background-color: var(--bg-color, #fff) !important;
+  color: var(--text-color, #333) !important;
+}
+
+/* ===== TABLE STYLES ===== */
+body .jadwal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: Arial, sans-serif;
+  background-color: var(--bg-color, #fff) !important;
+}
+
+body .jadwal-table th,
+body .jadwal-table td {
+  border: 1px solid var(--border-color, #ddd) !important;
+  padding: 10px;
+  text-align: center;
+}
+
+body .jadwal-table th {
+  background-color: var(--th-bg-color, #f2f2f2) !important;
+  color: var(--th-text-color, #000) !important;
+  font-weight: bold;
+}
+
+body .jadwal-table tr {
+  background-color: var(--tr-odd-bg-color, #fff) !important;
+}
+
+body .jadwal-table tr:nth-child(even) {
+  background-color: var(--tr-even-bg-color, #f9f9f9) !important;
+}
+
+body .jadwal-table tr:hover {
+  background-color: var(--tr-hover-bg-color, #f1f1f1) !important;
+}
+
+body .jadwal-table tr.today {
+  background-color: var(--today-bg-color, #d4edda) !important;
+  font-weight: bold;
+}
+
+/* ===== CELL TEXT (IMPORTANT FIX) ===== */
+body .jadwal-table td {
+  color: var(--text-color, #333) !important;
+  background-color: inherit !important;
+}
+
+/* ===== COUNTDOWN STYLES ===== */
+body .countdown-container {
+  text-align: center;
+  margin: 20px 0;
+}
+
+body #countdown {
+  font-size: 2.5em;
+  font-weight: bold;
+  color: var(--countdown-color, #155724) !important;
+  background-color: var(--countdown-bg-color, #d4edda) !important;
+  padding: 10px 20px;
+  border-radius: 10px;
+  display: inline-block;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+body #prayerMessage {
+  font-size: 1.2em;
+  background-color: var(--message-bg-color, #d4edda) !important;
+  color: var(--message-color, #333) !important;
+  padding: 10px 20px;
+  margin-top: 10px;
+  display: block;
+  border-radius: 5px;
+}
+
+/* ===== UTILITY STYLES ===== */
+body .last-updated-container {
+  margin: 15px 0;
+  padding: 10px;
+  background: var(--update-bg-color, #f8f9fa) !important;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+body .last-updated-time {
+  color: var(--update-text-color, #2c3e50) !important;
+  font-weight: bold;
+}
+
+body .icon-clock {
+  margin-right: 5px;
+  color: var(--icon-color, #3498db) !important;
+}
+
+body .error-message {
+  color: var(--error-color, #e74c3c) !important;
+  margin-bottom: 20px;
+}
+
+/* ===== PRINT STYLES ===== */
+@media print {
+    body {
+        visibility: visible !important;
+        background: white !important;
+    }
+    
+    /* Sembunyikan elemen yang tidak perlu dicetak */
+    .action-buttons, .countdown-container {
+        display: none !important;
+    }
+    
+    /* Tampilkan elemen yang perlu dicetak */
+    h2, .jadwal-table, .last-updated-container {
+        visibility: visible !important;
+        display: block !important;
+        position: static !important;
+        width: 100% !important;
+    }
+    
+    /* Styling khusus untuk cetakan */
+    h2 {
+        text-align: center;
+        margin-bottom: 15px;
+        font-size: 18pt !important;
+        color: black !important;
+    }
+    
+    .jadwal-table {
+        border-collapse: collapse;
+        width: 100% !important;
+        font-size: 12pt !important;
+        margin-bottom: 15px;
+    }
+    
+    .jadwal-table th, 
+    .jadwal-table td {
+        border: 1px solid #ddd !important;
+        padding: 8px !important;
+        text-align: center;
+        color: black !important;
+        background-color: white !important;
+    }
+    
+    .jadwal-table th {
+        background-color: #f2f2f2 !important;
+    }
+    
+    .last-updated-container {
+        text-align: center;
+        font-size: 10pt !important;
+        color: black !important;
+        background-color: white !important;
+        margin-top: 20px;
+    }
+}
+
+/* ===== RESPONSIVE FALLBACK ===== */
+@media (max-width: 768px) {
+  body .jadwal-table {
+    font-size: 0.9em;
+  }
+  
+  body #countdown {
+    font-size: 1.8em;
+  }
+}
+</style>
+
+<h2>Jadwal Sholat <%= cityName %> : <%= monthName %> <%= year %></h2>
+
+<div class="action-buttons" style="margin-bottom: 20px; text-align: center;">
+    <button id="printBtn" style="padding: 8px 15px; margin: 0 5px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+        <i class="icon icon-print"></i> Cetak PDF
+    </button>
+    <button id="downloadBtn" style="padding: 8px 15px; margin: 0 5px; background-color: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">
+        <i class="icon icon-download"></i> Download Gambar
+    </button>
+</div>
+
+<div class="countdown-container">
+    <div id="countdown">00:00:00</div>
+    <span id="prayerMessage">Menuju Waktu</span>
+</div>
+
+<!-- Elemen untuk menampilkan pesan waktu sholat -->
+<!-- <div id="prayerAlert" class="prayer-alert">
+    Saatnya waktu sholat <%= nextPrayerName %>
+</div> -->
+
+<!-- Tampilkan pesan error jika ada -->
+<% if error_message then %>
+    <div style="color: var(--error-color, red); margin-bottom: 20px;">
+        <strong>Error:</strong> <%= error_message %>
+    </div>
+<% elseif #jadwal == 0 then %>
+    <div style="color: var(--error-color, red); margin-bottom: 20px;">
+        <strong>Error:</strong> Tidak ada data jadwal sholat yang tersedia.
+    </div>
+<% else %>
+    <table class="jadwal-table">
+        <tr>
+            <th style="width: 15%;">Hari</th>
+            <th style="width: 15%;">Tanggal</th>
+            <th style="width: 12%;">Imsyak</th>
+            <th style="width: 12%;">Subuh</th>
+            <th style="width: 12%;">Dzuhur</th>
+            <th style="width: 12%;">Ashar</th>
+            <th style="width: 12%;">Maghrib</th>
+            <th style="width: 12%;">Isya</th>
+        </tr>
+        <% for _, line in ipairs(jadwal) do %>
+            <% local date, imsyak, subuh, dzuhur, ashar, maghrib, isya = line:match("(.+)%s+(.+)%s+(.+)%s+(.+)%s+(.+)%s+(.+)%s+(.+)") %>
+            <% 
+                local function getDayName(dateStr)
+                    local days = {"Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"}
+                    local day, month, year = dateStr:match("(%d+)-(%d+)-(%d+)")
+                    local dateTable = os.date("*t", os.time({year=year, month=month, day=day}))
+                    
+                    -- Geser indeks hari agar Senin menjadi hari pertama
+                    local wday = dateTable.wday - 0
+                    if wday == 0 then
+                        wday = 7
+                    end
+                    return days[wday]
+                end
+                local dayName = getDayName(date)
+            %>
+            <tr class="<%= date == today and 'today' or '' %>">
+                <td><%= dayName %></td>
+                <td><%= date %></td>
+                <td><%= imsyak %></td>
+                <td><%= subuh %></td>
+                <td><%= dzuhur %></td>
+                <td><%= ashar %></td>
+                <td><%= maghrib %></td>
+                <td><%= isya %></td>
+            </tr>
+        <% end %>
+    </table>
+<% end %>
+
+<!-- Tampilkan informasi terakhir diperbarui -->
+<div class="last-updated-container">
+    <% if lastUpdated then %>
+        <div class="last-updated-info">
+            <i class="icon icon-clock"></i>
+            <%= lastUpdated %>
+        </div>
+    <% else %>
+        <div class="last-updated-error">
+            <%:Informasi pembaruan tidak tersedia%>
+        </div>
+    <% end %>
+</div>
+
+<script>
+    // Data dari controller
+    const jadwal = <%= luci.http.write_json(jadwal) %>; // Seluruh jadwal sholat
+    const nextPrayerTime = <%= nextPrayerTime or "null" %>; // Timestamp waktu sholat berikutnya
+    const nextPrayerName = "<%= nextPrayerName or "" %>"; // Nama waktu sholat berikutnya
+    const today = "<%= today %>"; // Tanggal hari ini dalam format DD-MM-YYYY
+
+    // Fungsi untuk mengonversi waktu "HH:MM" ke timestamp
+    function getPrayerTimestamp(timeString, isTomorrow = false) {
+        const now = new Date();
+        const [hours, minutes] = timeString.split(":");
+        const prayerTime = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate() + (isTomorrow ? 1 : 0), // Tambah 1 hari jika besok
+            parseInt(hours),
+            parseInt(minutes),
+            0
+        );
+        return Math.floor(prayerTime.getTime() / 1000); // Konversi ke timestamp (detik)
+    }
+
+    // Fungsi untuk mendapatkan waktu sholat berikutnya
+    function getNextPrayerTime() {
+        const now = Math.floor(Date.now() / 1000); // Waktu saat ini dalam detik
+        let nextPrayerTime = null;
+        let nextPrayerName = null;
+
+        // Cari waktu sholat berikutnya di hari ini
+        jadwal.forEach(line => {
+            const [date, imsyak, subuh, dzuhur, ashar, maghrib, isya] = line.split(" ");
+            if (date === today) {
+                const prayerTimes = [
+                    { name: "Imsyak", time: imsyak },
+                    { name: "Subuh", time: subuh },
+                    { name: "Dzuhur", time: dzuhur },
+                    { name: "Ashar", time: ashar },
+                    { name: "Maghrib", time: maghrib },
+                    { name: "Isya", time: isya }
+                ];
+
+                prayerTimes.forEach(prayer => {
+                    const prayerTime = getPrayerTimestamp(prayer.time);
+                    if (prayerTime > now && (!nextPrayerTime || prayerTime < nextPrayerTime)) {
+                        nextPrayerTime = prayerTime;
+                        nextPrayerName = prayer.name;
+                    }
+                });
+            }
+        });
+
+        // Jika tidak ada waktu sholat yang tersisa di hari ini, cari di hari besok
+        if (!nextPrayerTime) {
+            const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString("en-GB").replace(/\//g, "-"); // Besok
+            jadwal.forEach(line => {
+                const [date, imsyak, subuh, dzuhur, ashar, maghrib, isya] = line.split(" ");
+                if (date === tomorrow) {
+                    const prayerTimes = [
+                        { name: "Imsyak", time: imsyak },
+                        { name: "Subuh", time: subuh },
+                        { name: "Dzuhur", time: dzuhur },
+                        { name: "Ashar", time: ashar },
+                        { name: "Maghrib", time: maghrib },
+                        { name: "Isya", time: isya }
+                    ];
+
+                    prayerTimes.forEach(prayer => {
+                        const prayerTime = getPrayerTimestamp(prayer.time, true);
+                        if (!nextPrayerTime || prayerTime < nextPrayerTime) {
+                            nextPrayerTime = prayerTime;
+                            nextPrayerName = prayer.name;
+                        }
+                    });
+                }
+            });
+        }
+
+        return { time: nextPrayerTime, name: nextPrayerName };
+    }
+
+    // Fungsi untuk menghitung mundur
+    function startCountdown(targetTime, prayerName) {
+        const countdownElement = document.getElementById("countdown");
+        const prayerMessageElement = document.getElementById("prayerMessage");
+        const prayerAlertElement = document.getElementById("prayerAlert");
+
+        let intervalId;
+
+        function updateCountdown() {
+            const now = Math.floor(Date.now() / 1000); // Waktu lokal pengguna dalam detik
+            const diff = targetTime - now;
+
+            if (diff <= 0) {
+                // Jika hitung mundur selesai, tampilkan pesan selama 3 menit
+                countdownElement.textContent = "00:00:00";
+                prayerMessageElement.textContent = "Saatnya waktu " + prayerName;
+                prayerAlertElement.style.display = "block";
+               prayerAlertElement.textContent = "Saatnya waktu " + prayerName;
+
+                // Setelah 3 menit, hitung ulang waktu sholat berikutnya
+                setTimeout(() => {
+                    const nextPrayerData = getNextPrayerTime();
+                    if (nextPrayerData) {
+                        startCountdown(nextPrayerData.time, nextPrayerData.name); // Mulai hitung mundur berikutnya
+                    }
+                    prayerAlertElement.style.display = "none"; // Sembunyikan pesan adzan
+                }, 180000); // 3 menit = 180.000 milidetik
+
+                // Hentikan interval
+                clearInterval(intervalId);
+            } else {
+                // Tampilkan hitung mundur
+                const hours = Math.floor(diff / 3600);
+                const minutes = Math.floor((diff % 3600) / 60);
+                const seconds = diff % 60;
+                countdownElement.textContent = 
+                    String(hours).padStart(2, "0") + ":" +
+                    String(minutes).padStart(2, "0") + ":" +
+                    String(seconds).padStart(2, "0");
+                prayerMessageElement.textContent = "Menuju waktu " + prayerName;
+            }
+        }
+
+        // Mulai hitung mundur
+        intervalId = setInterval(updateCountdown, 1000);
+        updateCountdown(); // Jalankan sekali untuk inisialisasi
+
+        // Hentikan interval saat halaman tidak aktif
+        window.onblur = () => clearInterval(intervalId);
+        window.onfocus = () => {
+            intervalId = setInterval(updateCountdown, 1000);
+            updateCountdown();
+        };
+    }
+
+    // Mulai hitung mundur jika waktu sholat berikutnya tersedia
+    if (nextPrayerTime) {
+        startCountdown(nextPrayerTime, nextPrayerName);
+    }
+
+    // Fungsi untuk mencetak sebagai PDF (Versi Diperbaiki)
+    document.getElementById('printBtn').addEventListener('click', function() {
+        // Buat iframe untuk mencetak
+        const printFrame = document.createElement('iframe');
+        printFrame.style.position = 'absolute';
+        printFrame.style.width = '0px';
+        printFrame.style.height = '0px';
+        printFrame.style.left = '-600px';
+        printFrame.style.top = '-600px';
+        printFrame.style.border = 'none';
+        
+        document.body.appendChild(printFrame);
+        
+        // Ambil konten yang ingin dicetak
+        const content = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Jadwal Sholat <%= cityName %></title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        margin: 20px;
+                        color: black;
+                    }
+                    h2 {
+                        text-align: center;
+                        margin-bottom: 15px;
+                        font-size: 18pt;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 15px;
+                        font-size: 12pt;
+                    }
+                    th, td {
+                        border: 1px solid #ddd;
+                        padding: 8px;
+                        text-align: center;
+                    }
+                    th {
+                        background-color: #f2f2f2;
+                    }
+                    .last-updated {
+                        text-align: center;
+                        font-size: 10pt;
+                        margin-top: 20px;
+                    }
+                </style>
+            </head>
+            <body>
+                <h2>${document.querySelector('h2').textContent}</h2>
+                ${document.querySelector('.jadwal-table').outerHTML}
+                <div class="last-updated">
+                    ${document.querySelector('.last-updated-container').innerHTML}
+                </div>
+            </body>
+            </html>
+        `;
+        
+        // Set konten ke iframe
+        printFrame.contentDocument.open();
+        printFrame.contentDocument.write(content);
+        printFrame.contentDocument.close();
+        
+        // Tunggu iframe selesai memuat
+        printFrame.onload = function() {
+            setTimeout(function() {
+                printFrame.contentWindow.focus();
+                printFrame.contentWindow.print();
+                
+                // Hapus iframe setelah selesai
+                setTimeout(function() {
+                    document.body.removeChild(printFrame);
+                }, 1000);
+            }, 500);
+        };
+    });
+
+    // Fungsi untuk download sebagai gambar menggunakan html2canvas
+    document.getElementById('downloadBtn').addEventListener('click', function() {
+        // Pastikan library html2canvas tersedia
+        if (typeof html2canvas !== 'undefined') {
+            // Buat container khusus untuk capture (judul + tabel + info update)
+            const container = document.createElement('div');
+            container.style.padding = '20px';
+            container.style.backgroundColor = 'white';
+            
+            // Clone elemen yang ingin di-capture
+            const titleClone = document.querySelector('h2').cloneNode(true);
+            const tableClone = document.querySelector('.jadwal-table').cloneNode(true);
+            const updateClone = document.querySelector('.last-updated-container').cloneNode(true);
+            
+            // Tambahkan ke container
+            container.appendChild(titleClone);
+            container.appendChild(tableClone);
+            container.appendChild(updateClone);
+            
+            // Sembunyikan sementara dari view
+            container.style.position = 'fixed';
+            container.style.left = '-9999px';
+            document.body.appendChild(container);
+            
+            // Buat opsi untuk html2canvas
+            const options = {
+                scale: 2, // Kualitas lebih tinggi
+                backgroundColor: '#ffffff',
+                logging: false,
+                useCORS: true
+            };
+            
+            // Capture elemen
+            html2canvas(container, options).then(canvas => {
+                // Buat link download
+                const link = document.createElement('a');
+                link.download = 'jadwal-sholat-' + today + '.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                
+                // Hapus container setelah selesai
+                document.body.removeChild(container);
+            });
+        } else {
+            // Jika html2canvas belum dimuat, muat dulu
+            const script = document.createElement('script');
+            script.src = 'https://html2canvas.hertzen.com/dist/html2canvas.min.js';
+            script.onload = function() {
+                document.getElementById('downloadBtn').click();
+            };
+            document.head.appendChild(script);
+            
+            alert('Sedang mempersiapkan fitur download... Silakan klik tombol lagi.');
+        }
+    });
+</script>
+
+<%+footer%>

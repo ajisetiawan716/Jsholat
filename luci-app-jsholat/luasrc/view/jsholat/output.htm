@@ -1,0 +1,108 @@
+<div id="output" style="margin-top: 10px; padding: 10px; border: 1px">
+    <% 
+	local json
+	do
+		local ok, mod = pcall(require, "luci.jsonc")
+		if ok then
+			json = mod
+			-- Gunakan parse jika decode tidak tersedia
+			json.decode = json.decode or json.parse
+		else
+			json = require("luci.json")  -- fallback lama
+		end
+	end
+
+    local last_updated_file = io.open("/usr/share/jsholat/last_updated.txt", "r")
+    
+    if last_updated_file then
+        local content = last_updated_file:read("*a")
+        last_updated_file:close()
+        
+        local last_updated = "Waktu tidak diketahui"
+        local data_source = "Sumber tidak tersedia"
+        
+        -- Cek apakah file berformat JSON
+        if content:sub(1,1) == "{" then
+            local success, data = pcall(json.decode, content)
+            if success and type(data) == "table" then
+                last_updated = data.last_updated or last_updated
+                data_source = data.data_source or data_source
+            end
+        else
+            -- Fallback untuk format teks lama
+            last_updated = content:match("Terakhir diperbarui: ([^\n]+)") or 
+                         content:gsub("Terakhir diperbarui:", ""):gsub("^%s*(.-)%s*$", "%1")
+            data_source = "Aladhan.com"
+        end
+    %>
+        <strong>Terakhir diperbarui:</strong> <%= last_updated %> | <strong>Sumber:</strong> <%= data_source %>
+    <% else %>
+        <strong>Terakhir diperbarui:</strong> <%:Informasi  tidak tersedia%>
+    <% end %>
+</div>
+<script type="text/javascript">
+    // Fungsi untuk mengirim permintaan AJAX dan menangkap output secara real-time
+    function updateJadwal() {
+        console.log("Fungsi updateJadwal dipanggil!"); // Debugging
+
+        var outputDiv = document.getElementById("output");
+        outputDiv.innerHTML = "Memulai pembaruan jadwal...";  // Tampilkan pesan awal
+
+        var url = "<%=luci.dispatcher.build_url('admin/services/jsholat/update')%>";
+        console.log("Mengirim permintaan ke:", url); // Debugging
+
+        // Kirim permintaan AJAX
+        fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                return response.text();  // Ambil output sebagai teks
+            } else {
+                throw new Error("Terjadi kesalahan: " + response.status);
+            }
+        })
+        .then(data => {
+            console.log("Output dari server:\n" + data); // <- Tambahan Debug
+            // Pisahkan output berdasarkan baris baru
+            var lines = data.split("\n");
+            outputDiv.innerHTML = "";  // Kosongkan output sebelum menampilkan hasil baru
+
+            // Tampilkan setiap baris output satu per satu
+            lines.forEach((line, index) => {
+                setTimeout(() => {
+                    // Jika ini adalah baris terakhir, pertahankan di layar
+                    if (index === lines.length - 1) {
+                        outputDiv.innerHTML = line;  // Tampilkan baris terakhir
+                    } else {
+                        outputDiv.innerHTML = line;  // Tampilkan baris saat ini
+                    }
+                }, index * 2000);  // Jeda 2 detik antara setiap baris
+            });
+        })
+        .catch(error => {
+            console.error("Error:", error);
+            outputDiv.innerHTML = error.message;  // Tampilkan pesan error
+        });
+    }
+
+    // Mencegah perilaku default tombol
+    document.addEventListener("DOMContentLoaded", function() {
+        console.log("DOM telah dimuat!"); // Debugging
+
+        var button = document.querySelector(".cbi-button-apply");
+        if (button) {
+            console.log("Tombol ditemukan!"); // Debugging
+            button.onclick = function(event) {
+                console.log("Tombol ditekan!"); // Debugging
+                event.preventDefault();  // Mencegah pengiriman form
+                updateJadwal();  // Jalankan fungsi updateJadwal
+            };
+        } else {
+            console.error("Tombol tidak ditemukan!"); // Debugging
+        }
+    });
+</script>

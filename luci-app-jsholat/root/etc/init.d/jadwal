@@ -1,0 +1,112 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+START=99
+STOP=10
+DEPENDS="cron"
+
+LOG_TAG="jadwal"
+LOG_FILE="/var/log/jsholat/jadwal.log"
+MAX_LOG_SIZE=1048576  # 1MB
+JADWAL_FILE=$(uci get jsholat.setting.file_jadwal 2>/dev/null)
+LAST_UPDATED_FILE="/usr/share/jsholat/last_updated.txt"
+
+# Fungsi rotasi log
+rotate_log() {
+    [ -f "$LOG_FILE" ] && [ $(stat -c%s "$LOG_FILE") -gt $MAX_LOG_SIZE ] && {
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $LOG_TAG: Rotating log file" >> "$LOG_FILE"
+        mv "$LOG_FILE" "${LOG_FILE}.old"
+        touch "$LOG_FILE"
+    }
+}
+
+# Fungsi logging dengan format khusus
+log() {
+    rotate_log
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] $LOG_TAG: $1" >> "$LOG_FILE"
+    logger -t "$LOG_TAG" "$1"
+}
+
+# Fungsi cek status service
+service_running() {
+    crontab -l | grep -q "/usr/bin/jadwal-update.sh" && {
+        if pgrep -f "/etc/init.d/jadwal" >/dev/null; then
+            return 0
+        fi
+    }
+    return 1
+}
+
+# Fungsi setup cron job dengan logging spesifik
+setup_cron_job() {
+    local interval=$1
+    local interval_desc=""
+    local cleaned_cron=$(crontab -l 2>/dev/null | grep -v "/usr/bin/jadwal-update.sh")
+    
+    case "$interval" in
+        "3600") 
+            interval_desc="setiap jam"
+            cleaned_cron=$(echo "$cleaned_cron"; echo "0 * * * * /usr/bin/jadwal-update.sh")
+            ;;
+        "86400")
+            interval_desc="setiap hari"
+            cleaned_cron=$(echo "$cleaned_cron"; echo "0 0 * * * /usr/bin/jadwal-update.sh")
+            ;;
+        "604800")
+            interval_desc="setiap minggu"
+            cleaned_cron=$(echo "$cleaned_cron"; echo "0 0 * * 0 /usr/bin/jadwal-update.sh")
+            ;;
+        "monthly_special")
+            interval_desc="setiap awal bulan (00:00 WIB)"
+            cleaned_cron=$(echo "$cleaned_cron"
+                echo "0 0 1 5,7,10,12 * /usr/bin/jadwal-update.sh"
+                echo "0 0 1 2,4,6,8,9,11,1 * /usr/bin/jadwal-update.sh"
+                echo "0 0 1 3 * /usr/bin/jadwal-update.sh")
+            ;;
+        "0")
+            interval_desc="nonaktif"
+            ;;
+        *)
+            interval_desc="tidak valid"
+            ;;
+    esac
+
+    echo "$cleaned_cron" | crontab -
+    log "Setup cron job dengan interval $interval"
+    
+    if [ "$interval" != "0" ]; then
+        log "Cron job aktif: $interval_desc"
+        /etc/init.d/cron restart
+    else
+        log "Cron job dinonaktifkan"
+    fi
+}
+
+start_service() {
+    log "Memulai service"
+    [ -f "$JADWAL_FILE" ] && cp "$JADWAL_FILE" "${JADWAL_FILE}.bak"
+    
+    setup_cron_job "$(uci -q get jsholat.setting.interval || echo "86400")"
+
+    procd_open_instance
+    procd_set_param command /sbin/sleep infinity
+    procd_set_param respawn
+    procd_close_instance
+}
+
+stop_service() {
+    log "Menghentikan service"
+    crontab -l | grep -v "/usr/bin/jadwal-update.sh" | crontab -
+    /etc/init.d/cron restart
+}
+
+reload_service() {
+    local new_interval=$(uci -q get jsholat.setting.interval || echo "86400")
+    log "Reload service dengan interval baru: $new_interval"
+    setup_cron_job "$new_interval"
+}
+
+service_triggers() {
+    procd_add_reload_trigger "jsholat"
+}
