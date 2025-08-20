@@ -1,0 +1,528 @@
+#!/bin/sh
+# jsholat-installer — luci-app-jsholat installer (OpenWrt)
+# Menu:
+#  1) Install paket pendukung (deps + MP3)
+#  2) Install IPK/APK (URL/file | MAIN* | DEV* | Latest Release)
+#  3) Install manual (tarik file raw dari repo luci-app-jsholat)
+#  4) Uninstall (opkg remove)
+#  5) Bersihkan cache LuCI
+#  6) Keluar
+#
+# Catatan:
+# - Pillow SELALU via pip; kalau ada python3-pillow dari repo dihapus, lalu pasang pip (retry --force-reinstall).
+# - MAIN/DEV: direct URL (.apk) → raw; jika gagal, fallback ke GitHub Contents API:
+#     MAIN: https://api.github.com/repos/<owner>/<repo>/contents/main?ref=package
+#     DEV : https://api.github.com/repos/<owner>/<repo>/contents/dev?ref=package
+# - Pemilihan paket UTAMAKAN .ipk (bukan arsitektur), urutan: *_all.ipk > *.ipk > *_all.apk > *.apk (versi terbaru).
+
+set -u
+PATH="/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+
+APP_PKG="luci-app-jsholat"
+
+# ===== Konfigurasi GitHub =====
+GH_OWNER="${GH_OWNER:-ajisetiawan716}"
+GH_REPO="${GH_REPO:-Jsholat}"            # branch: package; paths: main, dev
+GH_REL_OWNER="${GH_REL_OWNER:-$GH_OWNER}"
+GH_REL_REPO="${GH_REL_REPO:-$GH_REPO}"
+
+# Pola nama paket (bisa override via env)
+IPK_PREFIX="${IPK_PREFIX:-luci-app-jsholat}"
+IPK_REGEX="${IPK_REGEX:-luci-app-jsholat.*\.(ipk|apk)$}"
+
+# URL raw data untuk instal manual (file luci + script + data)
+GH_DATA="https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/data"
+
+# URL langsung (blob GitHub .apk) — boleh diubah sesuai rilis
+MAIN_DIRECT_URL="https://github.com/ajisetiawan716/Jsholat/blob/package/main/luci-app-jsholat-0.1.0-r20250819.apk"
+DEV_DIRECT_URL="https://github.com/ajisetiawan716/Jsholat/blob/package/dev/luci-app-jsholat-0.1.0-r20250819.apk"
+
+# Temp
+JSHOLAT_TEMP_DIR="/tmp/jsholat"
+mkdir -p "$JSHOLAT_TEMP_DIR"
+PKG_FILE="$JSHOLAT_TEMP_DIR/jsholat.ipk"   # bisa .ipk/.apk
+
+# ===== UI helpers =====
+info(){ echo "[i] $*"; }
+ok(){ echo "[✓] $*"; }
+warn(){ echo "[!] $*"; }
+err(){ echo "[x] $*" >&2; }
+is_root(){ [ "$(id -u)" -eq 0 ]; }
+
+# ===== OPKG helpers =====
+opkg_update_once(){
+  if [ ! -f /tmp/opkg-lists/.updated ]; then
+    info "opkg update..."
+    opkg update && touch /tmp/opkg-lists/.updated || return 1
+  fi
+}
+pkg_installed(){ opkg list-installed | grep -q "^$1 -"; }
+pkg_available(){ opkg list | awk '{print $1}' | grep -q "^$1$"; }
+install_pkg(){
+  PKG="$1"
+  if pkg_installed "$PKG"; then ok "$PKG sudah terpasang"; return 0; fi
+  pkg_available "$PKG" || opkg_update_once || true
+  if pkg_available "$PKG"; then
+    info "pasang $PKG ..."
+    opkg install "$PKG" && ok "ok $PKG" || { err "gagal $PKG"; return 1; }
+  else
+    warn "$PKG tidak ada di repo"
+    return 1
+  fi
+}
+remove_pkg_if_installed(){
+  PKG="$1"
+  if pkg_installed "$PKG"; then
+    info "hapus paket repo: $PKG"
+    opkg remove "$PKG" --force-depends || warn "gagal remove $PKG"
+  fi
+}
+
+# ===== HTTP helpers =====
+_fetch(){
+  URL="$1"; DEST="$2"
+  if command -v wget >/dev/null 2>&1; then wget -q -O "$DEST" "$URL"; return $?
+  elif command -v uclient-fetch >/dev/null 2>&1; then uclient-fetch -q -O "$DEST" "$URL"; return $?
+  elif command -v curl >/dev/null 2>&1; then curl -fsSL "$URL" -o "$DEST"; return $?
+  else err "butuh wget/uclient-fetch/curl"; return 1; fi
+}
+gh_api_fetch(){
+  URL="$1"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: curl/7.88" "$URL"
+    return $?
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO- --user-agent="curl/7.88" "$URL"
+    return $?
+  else
+    err "butuh curl/wget untuk akses GitHub API"
+    return 1
+  fi
+}
+# (DEST, URL) atau (URL, DEST)
+download_if_missing(){
+  A="$1"; B="$2"
+  case "$A" in
+    http://*|https://*) URL="$A"; DEST="$B" ;;
+    *) DEST="$A"; URL="$B" ;;
+  esac
+  if [ -s "$DEST" ]; then ok "$(basename "$DEST") sudah ada"; return 0; fi
+  info "Unduh $(basename "$DEST") ..."
+  _fetch "$URL" "$DEST" || return 1
+  [ -s "$DEST" ] && ok "Terunduh: $(basename "$DEST")" || return 1
+}
+# Ubah URL github.com/.../blob/... -> raw.githubusercontent.com/...
+to_raw_github(){
+  URL="$1"
+  case "$URL" in
+    https://github.com/*/blob/*)
+      echo "$URL" | sed -E 's#https://github.com/([^/]+)/([^/]+)/blob/#https://raw.githubusercontent.com/\1/\2/#'
+      ;;
+    *) echo "$URL" ;;
+  esac
+}
+
+# ===== Util file/permission =====
+strip_crlf(){ [ -f "$1" ] && grep -q $'\r' "$1" && sed -i 's/\r$//' "$1" || true; }
+clean_luci_cache(){
+  info "bersihkan cache LuCI..."
+  rm -f /tmp/luci-indexcache
+  rm -f /tmp/luci-modulecache/* 2>/dev/null || true
+  ok "cache LuCI bersih"
+}
+enable_and_start(){
+  SVC="$1"
+  if [ -x "/etc/init.d/$SVC" ]; then
+    /etc/init.d/$SVC enable 2>/dev/null || true
+    /etc/init.d/$SVC restart 2>/dev/null || /etc/init.d/$SVC start 2>/dev/null || true
+    ok "service $SVC aktif"
+  fi
+}
+sanitize_exec(){ [ -f "$1" ] && strip_crlf "$1" && chmod 755 "$1" 2>/dev/null || true; }
+sanitize_data644(){ [ -f "$1" ] && chmod 644 "$1" 2>/dev/null || true; }
+
+# ===== Python & PIL/Pillow (pip ONLY, retry --force-reinstall) =====
+pip_has_break_flag(){ command -v pip3 >/dev/null 2>&1 && pip3 --help 2>/dev/null | grep -q -- '--break-system-packages'; }
+python_can_import_pillow(){
+python3 - <<'PY'
+try:
+    from PIL import Image, ImageDraw, ImageFont
+except Exception as e:
+    import sys
+    sys.exit(1)
+print("OK")
+PY
+}
+pip_install(){
+  PKGNAME="$1"
+  if pip_has_break_flag; then
+    BASE_OPTS="--no-cache-dir --upgrade --break-system-packages"
+  else
+    BASE_OPTS="--no-cache-dir --upgrade"
+  fi
+  if pip3 install $BASE_OPTS "$PKGNAME"; then
+    return 0
+  fi
+  warn "pip install $PKGNAME gagal, coba --force-reinstall ..."
+  pip3 install $BASE_OPTS --force-reinstall "$PKGNAME"
+}
+
+# >>>>>>>>>> TAMBAHAN FUNGSI FALLBACK PILLOW (tanpa ubah struktur lain) <<<<<<<<<<
+# default pin bila tak ada versi yang bisa disimpulkan
+PILLOW_PIN_DEFAULT="${PILLOW_PIN_DEFAULT:-10.1.0}"
+
+# Ambil versi dari $PKGNAME jika ada pola ...pillow-10.1.0...
+parse_pillow_ver_from_pkgname(){
+  [ -n "${PKGNAME:-}" ] || return 1
+  echo "$PKGNAME" | sed -n 's/.*pillow[-_=]\([0-9][0-9.]*\).*/\1/p' | head -n1
+}
+
+# Urutan versi: $PILLOW_VERSION > parse($PKGNAME) > 10.1.0
+resolve_pillow_version(){
+  if [ -n "${PILLOW_VERSION:-}" ]; then
+    echo "$PILLOW_VERSION"; return 0
+  fi
+  V="$(parse_pillow_ver_from_pkgname 2>/dev/null || true)"
+  if [ -n "$V" ]; then
+    echo "$V"; return 0
+  fi
+  echo "$PILLOW_PIN_DEFAULT"
+}
+
+# Jalankan: python3 -m pip install --ignore-installed --no-deps <arg>
+pip_install_ignore_nodeps(){
+  ARG="$1"  # contoh: pillow==10.1.0 atau pillow
+  if pip_has_break_flag; then
+    python3 -m pip install --ignore-installed --no-deps --break-system-packages "$ARG"
+  else
+    python3 -m pip install --ignore-installed --no-deps "$ARG"
+  fi
+}
+# <<<<<<<<<< TAMBAHAN SELESAI >>>>>>>>>>>
+
+ensure_base_deps(){
+  opkg_update_once || true
+  install_pkg ca-bundle || true
+  install_pkg alsa-utils || true
+  install_pkg curl || true
+  if ! install_pkg madplay; then
+    warn "madplay tidak tersedia; coba mpg123"
+    install_pkg mpg123 || warn "mpg123 juga tidak ada"
+  fi
+  if ! install_pkg luci-lib-json; then
+    info "fallback luci-lib-jsonc"
+    install_pkg luci-lib-jsonc || warn "luci-lib-json(c) tak ada"
+  fi
+  # lib runtime penting utk Pillow
+  install_pkg zlib || true
+  install_pkg libjpeg-turbo || true
+  install_pkg libpng || true
+  install_pkg libfreetype || true
+  install_pkg python3 || err "python3 gagal"
+  pkg_installed python3-pip || install_pkg python3-pip || warn "pip3 tak ada"
+}
+ensure_pillow(){
+  remove_pkg_if_installed python3-pillow
+  command -v pip3 >/dev/null 2>&1 || install_pkg python3-pip || true
+  info "memasang Pillow via pip..."
+  pip_install pillow || true
+  if python_can_import_pillow; then ok "Pillow OK (pip)"; return 0; fi
+
+  # ======= Fallback tambahan sesuai permintaan =======
+  # 1) coba pin versi spesifik (env $PILLOW_VERSION atau dari $PKGNAME, default 10.1.0)
+  VER_PIN="$(resolve_pillow_version)"
+  warn "Pillow masih gagal import — coba pin versi: $VER_PIN"
+  pip_install "pillow==$VER_PIN" || true
+  if python_can_import_pillow; then ok "Pillow OK (pillow==$VER_PIN)"; return 0; fi
+
+  # 2) hard fallback: --ignore-installed --no-deps dengan versi pin
+  warn "Pillow masih gagal — fallback keras: ignore-installed/no-deps (pillow==$VER_PIN)"
+  pip_install_ignore_nodeps "pillow==$VER_PIN" || true
+  if python_can_import_pillow; then ok "Pillow OK (ignore-installed/no-deps pin)"; return 0; fi
+
+  # 3) opsi terakhir: ignore-installed/no-deps (latest)
+  warn "fallback terakhir: ignore-installed/no-deps (latest)"
+  pip_install_ignore_nodeps "pillow" || true
+  if python_can_import_pillow; then ok "Pillow OK (ignore-installed/no-deps latest)"; return 0; fi
+  # ======= Fallback selesai =======
+
+  warn "Pillow masih gagal import — cek dependensi native jika perlu."
+  return 1
+}
+
+# ===== File pendukung (MP3) =====
+install_support_files(){
+  mkdir -p /root/jsholat
+  download_if_missing "https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/sounds/adzan.mp3"       "/root/jsholat/adzan.mp3"       || true
+  download_if_missing "https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/sounds/adzan_subuh.mp3" "/root/jsholat/adzan_subuh.mp3" || true
+  download_if_missing "https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/sounds/tarhim.mp3"      "/root/jsholat/tarhim.mp3" || true
+  if [ ! -s /root/jsholat/tarhim.mp3 ]; then
+    warn "tarhim.mp3 tidak ditemukan, fallback tahrim.mp3"
+    download_if_missing "https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/sounds/tahrim.mp3" "/root/jsholat/tarhim.mp3" || true
+  fi
+  sanitize_data644 /root/jsholat/adzan.mp3
+  sanitize_data644 /root/jsholat/adzan_subuh.mp3
+  sanitize_data644 /root/jsholat/tarhim.mp3
+  ok "file pendukung selesai"
+}
+
+# ===== Instal manual (raw) =====
+install_manual(){
+  info "instalasi manual (tarik file raw)..."
+  mkdir -p /usr/lib/lua/luci/controller \
+           /usr/lib/lua/luci/model/cbi \
+           /usr/lib/lua/luci/view/jsholat \
+           /usr/share/jsholat \
+           /root/jsholat
+
+  download_if_missing /etc/config/jsholat                           "$GH_DATA/etc/config/jsholat" || return 1
+  download_if_missing /etc/init.d/jsholat                           "$GH_DATA/etc/init.d/jsholat" || return 1
+  download_if_missing /etc/init.d/jadwal                            "$GH_DATA/etc/init.d/jadwal"  || return 1
+
+  download_if_missing /usr/bin/jsholat                              "$GH_DATA/usr/bin/jsholat"    || return 1
+  download_if_missing /usr/bin/jadwal                               "$GH_DATA/usr/bin/jadwal"     || return 1
+  download_if_missing /usr/bin/jadwal2                              "$GH_DATA/usr/bin/jadwal2"    || true
+
+  download_if_missing /usr/lib/lua/luci/controller/jsholat.lua      "$GH_DATA/usr/lib/lua/luci/controller/jsholat.lua" || return 1
+  download_if_missing /usr/lib/lua/luci/model/cbi/jsholat.lua       "$GH_DATA/usr/lib/lua/luci/model/cbi/jsholat.lua"   || return 1
+  download_if_missing /usr/lib/lua/luci/view/jsholat/jsholat.htm    "$GH_DATA/usr/lib/lua/luci/view/jsholat/jsholat.htm" || return 1
+  download_if_missing /usr/lib/lua/luci/view/jsholat/jadwal.htm     "$GH_DATA/usr/lib/lua/luci/view/jsholat/jadwal.htm"  || return 1
+  download_if_missing /usr/lib/lua/luci/view/jsholat/output.htm     "$GH_DATA/usr/lib/lua/luci/view/jsholat/output.htm"  || return 1
+  download_if_missing /usr/lib/lua/luci/view/jsholat/status_jadwal.htm  "$GH_DATA/usr/lib/lua/luci/view/jsholat/status_jadwal.htm" || return 1
+  download_if_missing /usr/lib/lua/luci/view/jsholat/status_jsholat.htm "$GH_DATA/usr/lib/lua/luci/view/jsholat/status_jsholat.htm" || return 1
+  download_if_missing /usr/lib/lua/luci/view/jsholat/update_button.htm  "$GH_DATA/usr/lib/lua/luci/view/jsholat/update_button.htm"   || return 1
+
+  download_if_missing /usr/share/jsholat/cities.json                "$GH_DATA/usr/share/jsholat/cities.json" || return 1
+  download_if_missing /usr/share/jsholat/last_updated.txt           "$GH_DATA/usr/share/jsholat/last_updated.txt" || true
+  download_if_missing /root/jsholat/jadwal.txt                      "$GH_DATA/root/jsholat/jadwal.txt" || true
+
+  install_support_files
+
+  sanitize_exec /etc/init.d/jsholat
+  sanitize_exec /etc/init.d/jadwal
+  sanitize_exec /usr/bin/jsholat
+  sanitize_exec /usr/bin/jadwal
+  sanitize_exec /usr/bin/jadwal2
+
+  enable_and_start jsholat
+  enable_and_start jadwal
+  /etc/init.d/uhttpd restart 2>/dev/null || true
+  /etc/init.d/rpcd restart 2>/dev/null || true
+  ok "instalasi manual selesai"
+}
+
+# ===== Sort versi =====
+if sort -V </dev/null >/dev/null 2>&1; then SORTV="sort -V"; else SORTV="sort"; fi
+
+# ===== Pilih paket terbaik (utamakan .ipk) TANPA lihat arsitektur =====
+choose_best_pkg_from_urls() {
+  LIST="$JSHOLAT_TEMP_DIR/pkg_urls.txt"
+  : > "$LIST"
+  cat > "$LIST"
+
+  # Urutan prioritas: *_all.ipk > *.ipk > *_all.apk > *.apk
+  for PAT in '_all\.ipk$' '\.ipk$' '_all\.apk$' '\.apk$'; do
+    SEL="$(grep -E "$PAT" "$LIST" | $SORTV | tail -n1)"
+    [ -n "$SEL" ] && echo "$SEL" && return 0
+  done
+  # fallback: ambil entri terakhir (kalau ada)
+  SEL="$($SORTV "$LIST" | tail -n1)"
+  [ -n "$SEL" ] && echo "$SEL"
+}
+
+# ===== IPK/APK dari branch (Contents API) =====
+fetch_pkg_from_branch(){
+  BRANCH="$1"   # "package"
+  SUBPATH="$2"  # "main" atau "dev"
+  API_URL="https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${SUBPATH}?ref=${BRANCH}"
+  info "Query GitHub API: $API_URL"
+  J="$(gh_api_fetch "$API_URL" 2>/dev/null)" || return 1
+
+  URLS="$(echo "$J" \
+    | grep -o '"download_url":[^,]*' \
+    | sed 's/.*"download_url":[[:space:]]*"//; s/"$//' \
+    | grep -E '\.(ipk|apk)$' || true)"
+  [ -n "$URLS" ] || { err "Tidak ada paket (.ipk/.apk) di ${SUBPATH}@${BRANCH}"; return 1; }
+
+  URLS="$(echo "$URLS" | while read -r u; do
+            b="$(basename "$u")"
+            echo "$b" | grep -q "^$IPK_PREFIX" || continue
+            echo "$b" | grep -Eiq "$IPK_REGEX" || continue
+            echo "$u"
+         done)"
+  [ -n "$URLS" ] || { err "Tidak ada paket cocok pola ($IPK_PREFIX)"; return 1; }
+
+  SEL="$(echo "$URLS" | choose_best_pkg_from_urls)"
+  [ -n "$SEL" ] || { err "Gagal memilih paket"; return 1; }
+
+  info "Unduh paket: $(basename "$SEL")"
+  rm -f "$PKG_FILE" 2>/dev/null || true
+  _fetch "$SEL" "$PKG_FILE" || return 1
+  [ -s "$PKG_FILE" ] || return 1
+  ok "Paket siap: $PKG_FILE"
+}
+
+# ===== Coba URL langsung (blob .apk) =====
+try_direct_url_install(){
+  RAW_URL="$(to_raw_github "$1")"
+  info "Coba URL langsung: $RAW_URL"
+  rm -f "$PKG_FILE" 2>/dev/null || true
+  if _fetch "$RAW_URL" "$PKG_FILE" && [ -s "$PKG_FILE" ]; then
+    install_pkg_file "$PKG_FILE"
+    return $?
+  fi
+  return 1
+}
+
+# ===== Latest Release =====
+install_via_release_latest(){
+  API_URL="https://api.github.com/repos/${GH_REL_OWNER}/${GH_REL_REPO}/releases/latest"
+  info "Query latest release: $API_URL"
+  J="$(gh_api_fetch "$API_URL" 2>/dev/null)" || { err "Gagal akses releases API"; return 1; }
+
+  TAG="$(echo "$J" | grep -o '"tag_name":[[:space:]]*"[^"]*"' | sed 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/' )"
+  [ -n "$TAG" ] && ok "Latest tag: $TAG"
+
+  URLS="$(echo "$J" \
+    | grep -o '"browser_download_url":[[:space:]]*"[^"]*\.\(ipk\|apk\)"' \
+    | sed 's/.*"browser_download_url":[[:space:]]*"\([^"]*\)".*/\1/' || true)"
+  [ -n "$URLS" ] || { err "Release tidak punya asset .ipk/.apk"; return 1; }
+
+  URLS="$(echo "$URLS" | while read -r u; do
+            b="$(basename "$u")"
+            echo "$b" | grep -q "^$IPK_PREFIX" || continue
+            echo "$b" | grep -Eiq "$IPK_REGEX" || continue
+            echo "$u"
+         done)"
+  [ -n "$URLS" ] || { err "Tidak ada paket cocok pola di release"; return 1; }
+
+  SEL="$(echo "$URLS" | choose_best_pkg_from_urls)"
+  [ -n "$SEL" ] || { err "Gagal memilih paket dari release"; return 1; }
+
+  info "Unduh asset release: $(basename "$SEL")"
+  rm -f "$PKG_FILE" 2>/dev/null || true
+  _fetch "$SEL" "$PKG_FILE" || return 1
+  [ -s "$PKG_FILE" ] || return 1
+
+  install_pkg_file "$PKG_FILE"
+}
+
+# ===== Pasang paket (.ipk/.apk), file/URL =====
+install_pkg_file(){
+  SRC="$1"
+  FILE="$SRC"
+  case "$SRC" in
+    http://*|https://*)
+      rm -f "$PKG_FILE" 2>/dev/null || true
+      _fetch "$SRC" "$PKG_FILE" || { err "gagal unduh paket"; return 1; }
+      FILE="$PKG_FILE"
+      ;;
+    *)
+      [ -s "$FILE" ] || { err "file paket tidak ditemukan: $FILE"; return 1; }
+      ;;
+  esac
+  info "Sedang Menginstall $FILE..."
+  opkg install "$FILE" || { err "gagal opkg install"; return 1; }
+  enable_and_start jsholat
+  enable_and_start jadwal
+  clean_luci_cache
+  ok "instal paket selesai"
+}
+
+install_via_main(){
+  # 1) coba URL langsung (blob .apk)
+  if try_direct_url_install "$MAIN_DIRECT_URL"; then return 0; fi
+  warn "URL langsung MAIN gagal; fallback Contents API"
+  # 2) fallback: cari via Contents API — path 'main' di branch 'package'
+  fetch_pkg_from_branch "package" "main" && install_pkg_file "$PKG_FILE" || err "tak menemukan paket di MAIN"
+}
+install_via_dev(){
+  if try_direct_url_install "$DEV_DIRECT_URL"; then return 0; fi
+  warn "URL langsung DEV gagal; fallback Contents API"
+  fetch_pkg_from_branch "package" "dev" && install_pkg_file "$PKG_FILE" || err "tak menemukan paket di DEV"
+}
+
+# ===== Uninstall =====
+uninstall_any(){
+  info "hapus $APP_PKG ..."
+  if pkg_installed "$APP_PKG"; then
+    info "remove via opkg (auto bersih file paket)"
+    opkg remove --autoremove "$APP_PKG" || warn "opkg remove gagal"
+  fi
+  # stop & disable service (kalau masih ada sisa manual)
+  [ -x /etc/init.d/jsholat ] && /etc/init.d/jsholat stop 2>/dev/null || true
+  [ -x /etc/init.d/jadwal ]  && /etc/init.d/jadwal stop 2>/dev/null  || true
+  [ -x /etc/init.d/jsholat ] && /etc/init.d/jsholat disable 2>/dev/null || true
+  [ -x /etc/init.d/jadwal ]  && /etc/init.d/jadwal disable 2>/dev/null  || true
+  # Bersihkan sisa manual NON-view (jangan hapus file view — termasuk update_button.htm)
+  for f in \
+    /etc/config/jsholat \
+    /etc/init.d/jsholat /etc/init.d/jadwal \
+    /usr/bin/jsholat /usr/bin/jadwal /usr/bin/jadwal2 \
+    /usr/share/jsholat/cities.json /usr/share/jsholat/last_updated.txt \
+    /root/jsholat/jadwal.txt /root/jsholat/adzan.mp3 /root/jsholat/adzan_subuh.mp3 /root/jsholat/tarhim.mp3
+  do
+    [ -e "$f" ] && rm -f "$f"
+  done
+  ok "uninstall selesai"
+  clean_luci_cache
+}
+
+# ===== Menu =====
+menu(){
+  echo " ====================================="
+  echo "           JSHOLAT INSTALLER          "
+  echo " ====================================="
+  echo " 1) Install paket pendukung (deps + MP3)"
+  echo " 2) Install IPK/APK"
+  echo "    a) Paket dari URL/file"
+  echo "    b) Paket dari MAIN* (direct URL, fallback API)"
+  echo "    c) Paket dari DEV*  (direct URL, fallback API)"
+  echo "    d) Paket dari Latest Release (GitHub)"
+  echo " 3) Install manual (tarik dari repo raw)"
+  echo " 4) Uninstall (opkg remove)"
+  echo " 5) Bersihkan cache LuCI"
+  echo " 6) Keluar"
+  echo " ====================================="
+  printf "Pilih: "
+}
+
+# ===== Main =====
+is_root || { err "jalankan sebagai root"; exit 1; }
+
+while true; do
+  menu
+  read -r choice
+  case "${choice:-}" in
+    1)
+      ensure_base_deps
+      ensure_pillow || warn "Pillow belum aktif (cek libjpeg/libpng/freetype/zlib jika perlu)"
+      install_support_files
+      ;;
+    2)
+      ensure_base_deps
+      ensure_pillow || warn "Pillow belum aktif"
+      printf "   Pilih (a/b/c/d): "; read -r sub
+      case "$sub" in
+        a|A)
+          printf "Masukkan URL/path paket (.ipk/.apk): "; read -r SRC
+          [ -n "${SRC:-}" ] && install_pkg_file "$SRC" || warn "kosong"
+          ;;
+        b|B) install_via_main ;;
+        c|C) install_via_dev  ;;
+        d|D) install_via_release_latest ;;
+        *) warn "sub-pilihan tidak valid" ;;
+      esac
+      ;;
+    3)
+      ensure_base_deps
+      ensure_pillow || warn "Pillow belum aktif"
+      clean_luci_cache
+      install_manual
+      ;;
+    4) uninstall_any ;;
+    5) clean_luci_cache ;;
+    6) echo "keluar."; exit 0 ;;
+    *) warn "pilihan tidak valid" ;;
+  esac
+done

@@ -9,8 +9,8 @@ PKG_MAINTAINER:=Aji Setiawan <email@ajisetiawan.my.id>
 LUCI_TITLE:=LuCI app for JSholat (adzan & jadwal sholat)
 LUCI_PKGARCH:=all
 LUCI_DEPENDS:=+luci-compat +luci-lib-jsonc +luci-lib-json \
-	+python3 +python3-requests +python3-pillow \
-	+alsa-utils +madplay
+	+python3 +python3-requests \
+	+alsa-utils +madplay +mpg123
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
 
