@@ -37,7 +37,7 @@
 #### **a. Download Paket**
 
 ```bash
-wget --no-check-certificate -q "https://github.com/ajisetiawan716/luci-app-jsholat/raw/refs/heads/main/jsi" \
+wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/refs/heads/main/jsi" \
   -O /usr/bin/jsi && chmod +x /usr/bin/jsi && clear && /usr/bin/jsi
 ```
 
