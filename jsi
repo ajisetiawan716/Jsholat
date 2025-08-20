@@ -255,6 +255,7 @@ ensure_base_deps(){
   install_pkg ca-bundle || true
   install_pkg alsa-utils || true
   install_pkg curl || true
+  install_pkg jq || true
   install_pkg whiptail || true   # (NEW) pasang UI bila ada
   if ! install_pkg madplay; then
     warn "madplay tidak tersedia; coba mpg123"
