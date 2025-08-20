@@ -10,6 +10,10 @@
 #
 # Catatan:
 # - Pillow SELALU via pip; kalau ada python3-pillow dari repo dihapus, lalu pasang pip (retry --force-reinstall).
+# - Jika import Pillow masih gagal, fallback ke:
+#     python3 -m pip install --ignore-installed --no-deps pillow==<versi>
+#   Versi diambil dari $PILLOW_VERSION > versi yang terdeteksi dari $PKGNAME > $PILLOW_PIN_DEFAULT (10.1.0).
+# - Untuk pakai Pillow terbaru saja, set PILLOW_ALLOW_LATEST=1 (default 1). Jika 0, langsung pin.
 # - MAIN/DEV: direct URL (.apk) → raw; jika gagal, fallback ke GitHub Contents API:
 #     MAIN: https://api.github.com/repos/<owner>/<repo>/contents/main?ref=package
 #     DEV : https://api.github.com/repos/<owner>/<repo>/contents/dev?ref=package
@@ -33,14 +37,25 @@ IPK_REGEX="${IPK_REGEX:-luci-app-jsholat.*\.(ipk|apk)$}"
 # URL raw data untuk instal manual (file luci + script + data)
 GH_DATA="https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/data"
 
-# URL langsung (blob GitHub .apk) — boleh diubah sesuai rilis
-MAIN_DIRECT_URL="https://github.com/ajisetiawan716/Jsholat/blob/package/main/luci-app-jsholat-0.1.0-r20250819.apk"
-DEV_DIRECT_URL="https://github.com/ajisetiawan716/Jsholat/blob/package/dev/luci-app-jsholat-0.1.0-r20250819.apk"
+# URL langsung (blob GitHub .ipk) — boleh diubah sesuai rilis
+MAIN_DIRECT_URL="https://github.com/ajisetiawan716/Jsholat/blob/package/main/luci-app-jsholat-0.1.0-r20250819_all.ipk"
+DEV_DIRECT_URL="https://github.com/ajisetiawan716/Jsholat/blob/package/dev/luci-app-jsholat-0.1.0-r20250819_all.ipk"
 
 # Temp
 JSHOLAT_TEMP_DIR="/tmp/jsholat"
 mkdir -p "$JSHOLAT_TEMP_DIR"
 PKG_FILE="$JSHOLAT_TEMP_DIR/jsholat.ipk"   # bisa .ipk/.apk
+
+# (NEW) File bantu untuk opkg update di belakang layar
+OPKG_LOG="$JSHOLAT_TEMP_DIR/opkg-update.log"
+OPKG_PID_FILE="$JSHOLAT_TEMP_DIR/opkg-update.pid"
+OPKG_RC_FILE="$JSHOLAT_TEMP_DIR/opkg-update.rc"
+
+# ===== Pillow strategy (override via env) =====
+# Urutan prioritas versi: $PILLOW_VERSION > parse($PKGNAME) > $PILLOW_PIN_DEFAULT
+PILLOW_PIN_DEFAULT="${PILLOW_PIN_DEFAULT:-10.1.0}"
+PILLOW_VERSION="${PILLOW_VERSION:-}"         # contoh: 10.1.0
+PILLOW_ALLOW_LATEST="${PILLOW_ALLOW_LATEST:-1}"  # 1 = coba latest dulu; 0 = langsung pin
 
 # ===== UI helpers =====
 info(){ echo "[i] $*"; }
@@ -48,12 +63,55 @@ ok(){ echo "[✓] $*"; }
 warn(){ echo "[!] $*"; }
 err(){ echo "[x] $*" >&2; }
 is_root(){ [ "$(id -u)" -eq 0 ]; }
+has_whiptail(){ command -v whiptail >/dev/null 2>&1; }  # (NEW)
 
 # ===== OPKG helpers =====
+# (NEW) Jalankan opkg update di background dan tampilkan progress (gauge/spinner)
+start_opkg_update_bg(){
+  rm -f "$OPKG_LOG" "$OPKG_RC_FILE" "$OPKG_PID_FILE" 2>/dev/null || true
+  ( opkg update >"$OPKG_LOG" 2>&1; RC=$?; [ $RC -eq 0 ] && touch /tmp/opkg-lists/.updated; echo "$RC" >"$OPKG_RC_FILE" ) &
+  echo $! >"$OPKG_PID_FILE"
+}
+show_opkg_progress(){
+  [ -f "$OPKG_PID_FILE" ] || return 0
+  PID="$(cat "$OPKG_PID_FILE" 2>/dev/null || true)"
+  [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null || return 0
+
+  if has_whiptail; then
+    (
+      P=0
+      while kill -0 "$PID" 2>/dev/null; do
+        P=$(( (P + 5) % 100 ))
+        echo $P
+        sleep 0.2
+      done
+      echo 100
+    ) | whiptail --gauge "Menjalankan 'opkg update' di belakang layar...
+Log: $OPKG_LOG" 8 60 0
+  else
+    sp='|/-\' ; i=0
+    printf "[i] opkg update berjalan "
+    while kill -0 "$PID" 2>/dev/null; do
+      i=$(( (i+1) % 4 ))
+      printf "\r[i] opkg update berjalan %s" "${sp:$i:1}"
+      sleep 0.2
+    done
+    printf "\r"
+  fi
+
+  RC="$(cat "$OPKG_RC_FILE" 2>/dev/null || echo 1)"
+  if [ "$RC" = "0" ]; then
+    ok "opkg update selesai"
+  else
+    err "opkg update gagal (rc=$RC) — lihat log: $OPKG_LOG"
+    [ -f "$OPKG_LOG" ] && tail -n 20 "$OPKG_LOG" >&2 || true
+  fi
+}
 opkg_update_once(){
   if [ ! -f /tmp/opkg-lists/.updated ]; then
-    info "opkg update..."
-    opkg update && touch /tmp/opkg-lists/.updated || return 1
+    info "opkg update (background)..."
+    start_opkg_update_bg
+    show_opkg_progress
   fi
 }
 pkg_installed(){ opkg list-installed | grep -q "^$1 -"; }
@@ -141,18 +199,19 @@ enable_and_start(){
 sanitize_exec(){ [ -f "$1" ] && strip_crlf "$1" && chmod 755 "$1" 2>/dev/null || true; }
 sanitize_data644(){ [ -f "$1" ] && chmod 644 "$1" 2>/dev/null || true; }
 
-# ===== Python & PIL/Pillow (pip ONLY, retry --force-reinstall) =====
+# ===== Python & PIL/Pillow (pip ONLY, with robust fallbacks) =====
 pip_has_break_flag(){ command -v pip3 >/dev/null 2>&1 && pip3 --help 2>/dev/null | grep -q -- '--break-system-packages'; }
 python_can_import_pillow(){
 python3 - <<'PY'
 try:
-    from PIL import Image, ImageDraw, ImageFont
-except Exception as e:
+    from PIL import Image, ImageDraw, ImageFont  # noqa: F401
+except Exception:
     import sys
     sys.exit(1)
 print("OK")
 PY
 }
+# standard pip install/upgrade
 pip_install(){
   PKGNAME="$1"
   if pip_has_break_flag; then
@@ -166,45 +225,37 @@ pip_install(){
   warn "pip install $PKGNAME gagal, coba --force-reinstall ..."
   pip3 install $BASE_OPTS --force-reinstall "$PKGNAME"
 }
-
-# >>>>>>>>>> TAMBAHAN FUNGSI FALLBACK PILLOW (tanpa ubah struktur lain) <<<<<<<<<<
-# default pin bila tak ada versi yang bisa disimpulkan
-PILLOW_PIN_DEFAULT="${PILLOW_PIN_DEFAULT:-10.1.0}"
-
-# Ambil versi dari $PKGNAME jika ada pola ...pillow-10.1.0...
+# ignore-installed + no-deps (raw module invocation)
+pip_install_ignore_nodeps(){
+  PKGNAME="$1" # contoh: pillow==10.1.0 atau pillow
+  if pip_has_break_flag; then
+    python3 -m pip install --ignore-installed --no-deps --break-system-packages "$PKGNAME"
+  else
+    python3 -m pip install --ignore-installed --no-deps "$PKGNAME"
+  fi
+}
+# parse versi Pillow dari $PKGNAME jika ada (contoh: "luci-app-jsholat-pillow-10.1.0" → 10.1.0)
 parse_pillow_ver_from_pkgname(){
   [ -n "${PKGNAME:-}" ] || return 1
-  echo "$PKGNAME" | sed -n 's/.*pillow[-_=]\([0-9][0-9.]*\).*/\1/p' | head -n1
+  VER=$(echo "$PKGNAME" | sed -n 's/.*pillow[-_=]\([0-9][0-9.]*\).*/\1/p' | head -n1)
+  [ -n "$VER" ] || return 1
+  echo "$VER"
 }
-
-# Urutan versi: $PILLOW_VERSION > parse($PKGNAME) > 10.1.0
+# tentukan versi pin yang akan dipakai
 resolve_pillow_version(){
-  if [ -n "${PILLOW_VERSION:-}" ]; then
+  if [ -n "$PILLOW_VERSION" ]; then
     echo "$PILLOW_VERSION"; return 0
   fi
-  V="$(parse_pillow_ver_from_pkgname 2>/dev/null || true)"
-  if [ -n "$V" ]; then
-    echo "$V"; return 0
-  fi
+  V=$(parse_pillow_ver_from_pkgname 2>/dev/null || true)
+  if [ -n "$V" ]; then echo "$V"; return 0; fi
   echo "$PILLOW_PIN_DEFAULT"
 }
-
-# Jalankan: python3 -m pip install --ignore-installed --no-deps <arg>
-pip_install_ignore_nodeps(){
-  ARG="$1"  # contoh: pillow==10.1.0 atau pillow
-  if pip_has_break_flag; then
-    python3 -m pip install --ignore-installed --no-deps --break-system-packages "$ARG"
-  else
-    python3 -m pip install --ignore-installed --no-deps "$ARG"
-  fi
-}
-# <<<<<<<<<< TAMBAHAN SELESAI >>>>>>>>>>>
-
 ensure_base_deps(){
   opkg_update_once || true
   install_pkg ca-bundle || true
   install_pkg alsa-utils || true
   install_pkg curl || true
+  install_pkg whiptail || true   # (NEW) pasang UI bila ada
   if ! install_pkg madplay; then
     warn "madplay tidak tersedia; coba mpg123"
     install_pkg mpg123 || warn "mpg123 juga tidak ada"
@@ -224,29 +275,35 @@ ensure_base_deps(){
 ensure_pillow(){
   remove_pkg_if_installed python3-pillow
   command -v pip3 >/dev/null 2>&1 || install_pkg python3-pip || true
-  info "memasang Pillow via pip..."
-  pip_install pillow || true
-  if python_can_import_pillow; then ok "Pillow OK (pip)"; return 0; fi
 
-  # ======= Fallback tambahan sesuai permintaan =======
-  # 1) coba pin versi spesifik (env $PILLOW_VERSION atau dari $PKGNAME, default 10.1.0)
   VER_PIN="$(resolve_pillow_version)"
-  warn "Pillow masih gagal import — coba pin versi: $VER_PIN"
+  info "Strategi Pillow: PILLOW_ALLOW_LATEST=$PILLOW_ALLOW_LATEST, pin=$VER_PIN"
+
+  # 1) jika diizinkan, coba latest dulu (upgrade)
+  if [ "${PILLOW_ALLOW_LATEST:-1}" = "1" ]; then
+    info "memasang Pillow (latest) via pip ..."
+    pip_install pillow || true
+    if python_can_import_pillow; then ok "Pillow OK (pip latest)"; return 0; fi
+    warn "Import Pillow (latest) masih gagal, lanjut ke pin=$VER_PIN"
+  fi
+
+  # 2) coba pin via pip normal
+  info "memasang Pillow==$VER_PIN via pip ..."
   pip_install "pillow==$VER_PIN" || true
   if python_can_import_pillow; then ok "Pillow OK (pillow==$VER_PIN)"; return 0; fi
+  warn "Import Pillow pin masih gagal, pakai --ignore-installed --no-deps"
 
-  # 2) hard fallback: --ignore-installed --no-deps dengan versi pin
-  warn "Pillow masih gagal — fallback keras: ignore-installed/no-deps (pillow==$VER_PIN)"
+  # 3) hard fallback: ignore-installed + no-deps (sesuai permintaan)
+  info "fallback keras: python3 -m pip install --ignore-installed --no-deps pillow==$VER_PIN"
   pip_install_ignore_nodeps "pillow==$VER_PIN" || true
   if python_can_import_pillow; then ok "Pillow OK (ignore-installed/no-deps pin)"; return 0; fi
 
-  # 3) opsi terakhir: ignore-installed/no-deps (latest)
+  # 4) opsi terakhir: ignore-installed + no-deps latest (kadang membantu environment aneh)
   warn "fallback terakhir: ignore-installed/no-deps (latest)"
   pip_install_ignore_nodeps "pillow" || true
   if python_can_import_pillow; then ok "Pillow OK (ignore-installed/no-deps latest)"; return 0; fi
-  # ======= Fallback selesai =======
 
-  warn "Pillow masih gagal import — cek dependensi native jika perlu."
+  err "Pillow masih gagal import — cek libjpeg/libpng/freetype/zlib dan wheel kompatibel musl."
   return 1
 }
 
@@ -491,8 +548,22 @@ menu(){
 is_root || { err "jalankan sebagai root"; exit 1; }
 
 while true; do
-  menu
-  read -r choice
+  # (NEW) Menu interaktif bila whiptail tersedia; kalau tidak, fallback ke menu teks asli
+  if has_whiptail; then
+    choice=$(whiptail --title "JSHOLAT INSTALLER" --menu "Pilih aksi:" 20 74 10 \
+      "1" "Install paket pendukung (deps + MP3)" \
+      "2" "Install IPK/APK" \
+      "3" "Install manual (tarik dari repo raw)" \
+      "4" "Uninstall (opkg remove)" \
+      "5" "Bersihkan cache LuCI" \
+      "6" "Keluar" \
+      3>&1 1>&2 2>&3)
+    [ $? -ne 0 ] && choice=6
+  else
+    menu
+    read -r choice
+  fi
+
   case "${choice:-}" in
     1)
       ensure_base_deps
@@ -502,16 +573,30 @@ while true; do
     2)
       ensure_base_deps
       ensure_pillow || warn "Pillow belum aktif"
-      printf "   Pilih (a/b/c/d): "; read -r sub
+      if has_whiptail; then
+        sub=$(whiptail --title "Install IPK/APK" --menu "Sumber paket:" 16 72 8 \
+          "a" "Paket dari URL/file" \
+          "b" "Paket dari MAIN* (direct URL, fallback API)" \
+          "c" "Paket dari DEV*  (direct URL, fallback API)" \
+          "d" "Paket dari Latest Release (GitHub)" \
+          3>&1 1>&2 2>&3)
+      else
+        printf "   Pilih (a/b/c/d): "; read -r sub
+      fi
       case "$sub" in
         a|A)
-          printf "Masukkan URL/path paket (.ipk/.apk): "; read -r SRC
+          if has_whiptail; then
+            SRC=$(whiptail --inputbox "Masukkan URL/path paket (.ipk/.apk):" 10 78 "" 3>&1 1>&2 2>&3)
+            [ $? -ne 0 ] && SRC=""
+          else
+            printf "Masukkan URL/path paket (.ipk/.apk): "; read -r SRC
+          fi
           [ -n "${SRC:-}" ] && install_pkg_file "$SRC" || warn "kosong"
           ;;
         b|B) install_via_main ;;
         c|C) install_via_dev  ;;
         d|D) install_via_release_latest ;;
-        *) warn "sub-pilihan tidak valid" ;;
+        *) [ -n "${sub:-}" ] || true ;; # cancel => no-op
       esac
       ;;
     3)
