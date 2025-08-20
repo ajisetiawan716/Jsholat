@@ -21,7 +21,7 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      - name: New Version
+      - name: Read PKG_VERSION from Makefile
         id: version
         shell: bash
         run: |
@@ -34,7 +34,7 @@ jobs:
         with:
           ref: package
 
-      - name: Current Version
+      - name: Read current version from package/<branch>/version
         id: current_version
         shell: bash
         run: |
@@ -46,17 +46,16 @@ jobs:
           echo "version=$CV" >> "$GITHUB_OUTPUT"
           echo "Current Version: $CV"
 
-  Compile:
+  compile:
     runs-on: ubuntu-latest
     needs: get_version
     if: ${{ needs.get_version.outputs.version != needs.get_version.outputs.current_version }}
     env:
       PKG_NAME: luci-app-jsholat
-      # ====== SESUAIKAN TARGET SDK-MU ======
-      # Stable (IPK)
+      # Stable (IPK) – verified path
       SDK_IPK_URL: https://downloads.openwrt.org/releases/24.10.2/targets/x86/64/openwrt-sdk-24.10.2-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-      # Snapshot (APK)
-      SDK_APK_URL: https://downloads.openwrt.org/snapshots/targets/x86/64/openwrt-sdk-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+      # Snapshot (APK) – AUTO (resolve from index)
+      SDK_APK_URL: AUTO
     steps:
       - name: Checkout dev (source)
         uses: actions/checkout@v4
@@ -68,8 +67,47 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
-          sudo apt-get -y install git curl wget xz-utils zstd tar build-essential \
+          sudo apt-get -y install git curl wget ca-certificates xz-utils zstd tar build-essential \
                                   python3 rsync file
+
+      - name: Normalize PKG_RELEASE (must be numeric for APK)
+        shell: bash
+        run: |
+          set -e
+          REL=$(grep 'PKG_RELEASE:=' luci-app-jsholat/Makefile | awk -F '=' '{gsub(/[ \t]/,"",$2); print $2}')
+          if ! [[ "$REL" =~ ^[0-9]+$ ]]; then
+            echo "PKG_RELEASE non-numeric ($REL) -> set to 1"
+            sed -E -i 's/^(PKG_RELEASE:=).*/\1 1/' luci-app-jsholat/Makefile
+          fi
+
+      - name: Resolve SDK URLs (stable & snapshot)
+        id: urls
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Stable
+          IPK_URL="${SDK_IPK_URL}"
+          echo "Checking stable SDK: $IPK_URL"
+          curl -fsSLI "$IPK_URL" >/dev/null
+          echo "ipk_url=$IPK_URL" >> "$GITHUB_OUTPUT"
+
+          # Snapshot (auto)
+          if [ "${SDK_APK_URL}" = "AUTO" ]; then
+            SNAPSHOT_DIR="https://downloads.openwrt.org/snapshots/targets/x86/64/"
+            echo "Resolving snapshot SDK from $SNAPSHOT_DIR ..."
+            APK_FILE=$(curl -fsSL "$SNAPSHOT_DIR" | grep -oE 'openwrt-sdk-x86-64_[^"]+\.tar\.zst' | head -n1)
+            if [ -z "$APK_FILE" ]; then
+              echo "Failed to resolve snapshot SDK filename" >&2
+              exit 1
+            fi
+            APK_URL="$SNAPSHOT_DIR$APK_FILE"
+          else
+            APK_URL="${SDK_APK_URL}"
+          fi
+          echo "Checking snapshot SDK: $APK_URL"
+          curl -fsSLI "$APK_URL" >/dev/null
+          echo "apk_url=$APK_URL" >> "$GITHUB_OUTPUT"
 
       - name: Prep dirs
         run: |
@@ -81,7 +119,7 @@ jobs:
         run: |
           set -eux
           cd "$TMPDIR"
-          wget -q "$SDK_IPK_URL" -O SDK_IPK.tar.zst
+          wget -q "${{ steps.urls.outputs.ipk_url }}" -O SDK_IPK.tar.zst
           tar --zstd -xf SDK_IPK.tar.zst
           mv openwrt-sdk-* SDK_IPK
 
@@ -89,68 +127,78 @@ jobs:
         run: |
           set -eux
           cd "$TMPDIR"
-          wget -q "$SDK_APK_URL" -O SDK_APK.tar.zst
+          wget -q "${{ steps.urls.outputs.apk_url }}" -O SDK_APK.tar.zst
           tar --zstd -xf SDK_APK.tar.zst
           mv openwrt-sdk-* SDK_APK
 
-      - name: Prepare feeds & link package (IPK)
+      # === kunci: minimal feeds (update luci saja), TANPA feeds install -a ===
+      - name: Prepare minimal feeds & link package (IPK)
         run: |
           set -eux
           cd "$TMPDIR/SDK_IPK"
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          ./scripts/feeds update luci
           rm -rf package/$PKG_NAME
           ln -s "$GITHUB_WORKSPACE/$PKG_NAME" "package/$PKG_NAME"
           make defconfig
 
-      - name: Build (IPK / stable)
+      - name: Build (IPK / stable) - only this package
         run: |
           set -eux
           cd "$TMPDIR/SDK_IPK"
-          make package/$PKG_NAME/compile -j$(nproc) V=sc
+          make package/$PKG_NAME/compile LUCI_LANGUAGES="en id" -j$(nproc) V=sc
 
-      - name: Prepare feeds & link package (APK)
+      - name: Prepare minimal feeds & link package (APK)
         run: |
           set -eux
           cd "$TMPDIR/SDK_APK"
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          ./scripts/feeds update luci
           rm -rf package/$PKG_NAME
           ln -s "$GITHUB_WORKSPACE/$PKG_NAME" "package/$PKG_NAME"
           make defconfig
 
-      - name: Build (APK / snapshot)
+      - name: Build (APK / snapshot) - only this package
         run: |
           set -eux
           cd "$TMPDIR/SDK_APK"
-          make package/$PKG_NAME/compile -j$(nproc) V=sc
+          make package/$PKG_NAME/compile LUCI_LANGUAGES="en id" -j$(nproc) V=sc
 
-      - name: Collect artifacts (.ipk & .apk)
+      - name: Collect artifacts (.ipk & .apk) - only luci-app-jsholat
         id: collect
         run: |
           set -eux
-          find "$TMPDIR/SDK_IPK/bin" -type f -name "*.ipk" -exec cp -v {} "$OUTDIR"/ \; || true
-          find "$TMPDIR/SDK_APK/bin" -type f -name "*.apk" -exec cp -v {} "$OUTDIR"/ \; || true
+          # Hanya paketmu
+          find "$TMPDIR/SDK_IPK/bin" -type f -name "luci-app-jsholat_*.ipk" -exec cp -v {} "$OUTDIR"/ \; || true
+          find "$TMPDIR/SDK_APK/bin" -type f -name "luci-app-jsholat-*.apk" -exec cp -v {} "$OUTDIR"/ \; || true
           ls -lh "$OUTDIR" || true
-          echo "count=$(ls -1 "$OUTDIR"/*.{ipk,apk} 2>/dev/null | wc -l || true)" >> "$GITHUB_OUTPUT"
+          echo "count=$(ls -1 "$OUTDIR"/* 2>/dev/null | wc -l || true)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload build artifacts
-        if: steps.collect.outputs.count != '0'
-        uses: actions/upload-artifact@v4
+      - name: Assert artifacts exist
+        run: |
+          test -d "_out" || { echo "No _out dir"; exit 1; }
+          ls _out/luci-app-jsholat_*.ipk _out/luci-app-jsholat-*.apk 2>/dev/null || { echo "No luci-app-jsholat ipk/apk found"; exit 1; }
+
+      # Release sebelum checkout package agar _out pasti masih ada
+      - name: Create GitHub Release (upload .ipk & .apk)
+        uses: softprops/action-gh-release@v2
         with:
-          name: jsholat-${{ needs.get_version.outputs.version }}
-          path: |
-            _out/*.ipk
-            _out/*.apk
-          if-no-files-found: warn
-          retention-days: 7
+          tag_name: v${{ needs.get_version.outputs.version }}
+          name: v${{ needs.get_version.outputs.version }}
+          files: |
+            _out/luci-app-jsholat_*.ipk
+            _out/luci-app-jsholat-*.apk
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Switch to package branch
         uses: actions/checkout@v4
         with:
           ref: package
+          clean: false   # JANGAN bersihkan workspace; jaga _out/ tetap ada
 
-      - name: Publish to package branch
+      - name: Publish to package branch folder
         run: |
           set -eux
           BR="${{ github.ref_name }}"
@@ -158,23 +206,10 @@ jobs:
           rm -f "./$BR/${{ env.PKG_NAME }}*.ipk" "./$BR/${{ env.PKG_NAME }}*.apk" || true
           echo "v${{ needs.get_version.outputs.version }}" > "./$BR/version"
           echo "https://img.shields.io/badge/New Release-v${{ needs.get_version.outputs.version }}-orange.svg" >> "./$BR/version"
-          cp -v "$OUTDIR"/*.{ipk,apk} "./$BR/" 2>/dev/null || true
+          cp -v "$GITHUB_WORKSPACE/_out"/luci-app-jsholat_*.ipk "./$BR/" 2>/dev/null || true
+          cp -v "$GITHUB_WORKSPACE/_out"/luci-app-jsholat-*.apk "./$BR/" 2>/dev/null || true
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add .
           git commit -m "Auto Package Update: v${{ needs.get_version.outputs.version }}" || echo "No changes"
           git push
-
-      - name: Create GitHub Release (upload .ipk & .apk)
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ needs.get_version.outputs.version }}
-          name: v${{ needs.get_version.outputs.version }}
-          files: |
-            _out/*.ipk
-            _out/*.apk
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
