@@ -8,7 +8,6 @@ PKG_MAINTAINER:=Aji Setiawan <email@ajisetiawan.my.id>
 # LuCI metadata
 LUCI_TITLE:=LuCI app for JSholat (adzan & jadwal sholat)
 LUCI_PKGARCH:=all
-# Tambah/kurangi sesuai kebutuhan paketmu
 LUCI_DEPENDS:=+luci-compat +luci-lib-jsonc +luci-lib-json \
 	+python3 +python3-requests +python3-pillow \
 	+alsa-utils +madplay
@@ -17,28 +16,14 @@ PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
 
 include $(INCLUDE_DIR)/package.mk
 
-# (Opsional) deskripsi paket "gaya OpenWrt classic"
 define Package/$(PKG_NAME)/description
  LuCI app untuk JSholat, termasuk pemutaran adzan dan pengelolaan jadwal sholat.
 endef
 
-# Siapkan konten builddir dari tree sumber (root/ dan luasrc/)
+# Siapkan sumber ke builddir (struktur: $(PKG_BUILD_DIR)/root dan $(PKG_BUILD_DIR)/luasrc)
 define Build/Prepare
 	$(CP) $(CURDIR)/root $(PKG_BUILD_DIR)/
 	$(CP) $(CURDIR)/luasrc $(PKG_BUILD_DIR)/
-
-	# Pastikan permission skrip & init benar sebelum diinstall
-	[ -d "$(PKG_BUILD_DIR)/root/usr/bin" ] && chmod 0755 \
-		$(PKG_BUILD_DIR)/root/usr/bin/jsholat \
-		$(PKG_BUILD_DIR)/root/usr/bin/jadwal \
-		$(PKG_BUILD_DIR)/root/usr/bin/jadwal-update.sh \
-		$(PKG_BUILD_DIR)/root/usr/bin/jsholat-bot \
-		$(PKG_BUILD_DIR)/root/usr/bin/jadwal-monthly || true
-
-	[ -d "$(PKG_BUILD_DIR)/root/etc/init.d" ] && chmod 0755 \
-		$(PKG_BUILD_DIR)/root/etc/init.d/jsholat \
-		$(PKG_BUILD_DIR)/root/etc/init.d/jadwal \
-		$(PKG_BUILD_DIR)/root/etc/init.d/jsholat-bot || true
 endef
 
 define Build/Configure
@@ -47,43 +32,50 @@ endef
 define Build/Compile
 endef
 
-# File konfigurasi yang dipertahankan saat upgrade/remove
+# Simpan file config saat upgrade/remove
 define Package/$(PKG_NAME)/conffiles
 /etc/config/jsholat
 endef
 
-# Backup config sebelum install (opsional, kalau kamu butuh)
+# Backup config sebelum install (opsional)
 define Package/$(PKG_NAME)/preinst
 #!/bin/sh
 [ -f /etc/config/jsholat ] && cp -f /etc/config/jsholat /tmp/jsholat.config.bak || true
 exit 0
 endef
 
-# Post-install: pakai skripmu (diringkas & dirapikan sedikit)
+# Post-install: bereskan permission, unduh assets (non-fatal), enable service, refresh LuCI
 define Package/$(PKG_NAME)/postinst
 #!/bin/sh
 set -e
 
-# ==== Helper: unduh hanya jika belum ada ====
 download_if_missing() {
-	URL="$1"; DEST="$2"
-	DIR="\$$(dirname "\$$DEST")"
-	[ -d "\$$DIR" ] || mkdir -p "\$$DIR"
-	if [ -s "\$$DEST" ]; then
-		echo "Lewati: \$$(basename "\$$DEST") sudah ada."; return 0
-	fi
-	echo "Mengunduh \$$(basename "\$$DEST") ..."
-	if wget -q -O "\$$DEST" "\$$URL"; then
-		[ -s "\$$DEST" ] || { echo "Gagal: file kosong."; rm -f "\$$DEST"; exit 1; }
-	else
-		echo "Gagal mengunduh: \$$URL"; rm -f "\$$DEST"; exit 1
-	fi
+  URL="$$1"; DEST="$$2"
+  DIR="$$(dirname "$$DEST")"
+  [ -d "$$DIR" ] || mkdir -p "$$DIR"
+
+  if [ -s "$$DEST" ]; then
+    echo "Lewati: $$(basename "$$DEST") sudah ada."
+    return 0
+  fi
+
+  echo "Mengunduh $$(basename "$$DEST") ..."
+  if command -v uclient-fetch >/dev/null 2>&1; then
+    uclient-fetch -q -O "$$DEST" "$$URL" || true
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$$DEST" "$$URL" || true
+  fi
+
+  if [ ! -s "$$DEST" ]; then
+    echo "Peringatan: gagal mengunduh $$URL (lanjut tanpa file ini)"
+    rm -f "$$DEST"
+  fi
 }
 
 # Bersihkan cache LuCI
 rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true
 
-# Permission untuk direktori LuCI
+# Set permission direktori LuCI (aman meski tidak ada)
 chmod -R 755 /usr/lib/lua/luci/controller 2>/dev/null || true
 chmod -R 755 /usr/lib/lua/luci/model/cbi 2>/dev/null || true
 chmod -R 755 /usr/lib/lua/luci/view 2>/dev/null || true
@@ -91,23 +83,23 @@ chmod -R 755 /usr/lib/lua/luci/view 2>/dev/null || true
 # Siapkan folder data
 mkdir -p /root/jsholat
 
-# Unduh audio pendukung (skip kalau sudah ada)
+# Unduh audio pendukung (non-fatal)
 echo "Sedang mengunduh file pendukung..."
 download_if_missing "https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/sounds/adzan.mp3"       "/root/jsholat/adzan.mp3"
 download_if_missing "https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/sounds/adzan_subuh.mp3" "/root/jsholat/adzan_subuh.mp3"
 download_if_missing "https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/sounds/tarhim.mp3"      "/root/jsholat/tarhim.mp3"
-
 chmod 0644 /root/jsholat/*.mp3 2>/dev/null || true
 
-# Pastikan skrip bisa dieksekusi
+# Pastikan skrip & init bisa dieksekusi (jaga-jaga)
 chmod 0755 /usr/bin/jsholat /usr/bin/jadwal /usr/bin/jadwal-update.sh /usr/bin/jsholat-bot /usr/bin/jadwal-monthly 2>/dev/null || true
+chmod 0755 /etc/init.d/jsholat /etc/init.d/jadwal /etc/init.d/jsholat-bot 2>/dev/null || true
 
 # Enable & start services bila tersedia
 for SVC in jsholat jadwal jsholat-bot; do
-	if [ -f "/etc/init.d/\$${SVC}" ]; then
-		/etc/init.d/\$${SVC} enable
-		/etc/init.d/\$${SVC} start || true
-	fi
+  if [ -x "/etc/init.d/$${SVC}" ]; then
+    /etc/init.d/$${SVC} enable
+    /etc/init.d/$${SVC} start || true
+  fi
 done
 
 # Restart web & rpcd
@@ -120,42 +112,51 @@ rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true
 exit 0
 endef
 
-# Pre-remove: stop services
+# Stop services saat remove
 define Package/$(PKG_NAME)/prerm
 #!/bin/sh
 for SVC in jsholat jadwal jsholat-bot; do
-	[ -x "/etc/init.d/\$${SVC}" ] && /etc/init.d/\$${SVC} stop || true
+	[ -x "/etc/init.d/$${SVC}" ] && /etc/init.d/$${SVC} stop || true
 done
 # Restore backup config jika ada (opsional)
 [ -f /tmp/jsholat.config.bak ] && mv -f /tmp/jsholat.config.bak /etc/config/jsholat || true
 exit 0
 endef
 
-# Post-remove: optional cleanup ringan
+# Post-remove: tidak hapus data user
 define Package/$(PKG_NAME)/postrm
 #!/bin/sh
-# Jangan hapus /root/jsholat biar file audio user tetap ada
 exit 0
 endef
 
-# Instalasi ke image root
+# Instalasi ke image root (pakai INSTALL_* agar permission terjamin)
 define Package/$(PKG_NAME)/install
-	# Buat direktori target utama
+	# Direktori dasar
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_DIR) $(1)/etc/config
-	$(INSTALL_DIR) $(1)/usr/share
-	$(INSTALL_DIR) $(1)/www
 
-	# Copy seluruh tree root/* sesuai struktur source
-	$(CP) $(PKG_BUILD_DIR)/root/* $(1)/
-
-	# Pastikan file LuCI berpindah ke path yang benar
+	# LuCI sources (controller/, model/, view/, dll)
 	$(CP) $(PKG_BUILD_DIR)/luasrc/* $(1)/usr/lib/lua/luci/
+
+	# Binaries / scripts
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/jsholat $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/jadwal $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/jadwal-update.sh $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/jsholat-bot $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/jadwal-monthly $(1)/usr/bin/
+
+	# init scripts
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/jsholat $(1)/etc/init.d/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/jadwal $(1)/etc/init.d/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/jsholat-bot $(1)/etc/init.d/
+
+	# config
+	$(INSTALL_CONF) $(PKG_BUILD_DIR)/root/etc/config/jsholat $(1)/etc/config/
 endef
 
-# Gunakan luci.mk agar metadata LuCI (menu, index, dsb) diproses otomatis
+# Gunakan luci.mk agar metadata LuCI diproses otomatis
 include $(TOPDIR)/feeds/luci/luci.mk
 
 # Build paket
