@@ -170,7 +170,7 @@ wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/re
 
 ## **Lisensi**
 
-Aplikasi ini dilisensikan di bawah [Lisensi MIT](LICENSE).
+Aplikasi ini dilisensikan di bawah [Lisensi APACHE](LICENSE).
 
 ---
 
