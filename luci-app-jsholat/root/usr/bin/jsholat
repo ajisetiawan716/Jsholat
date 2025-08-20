@@ -256,7 +256,7 @@ play_audio_ayat() {
     fi
 }
 
-# Fungsi Pemutar Adzan
+# Fungsi Pemutar Adzan dengan Fallback
 play_adzan() {
     local sound_enabled=$(uci -q get jsholat.setting.sound_enabled || echo "1")
     if [ "$sound_enabled" = "0" ]; then
@@ -311,6 +311,29 @@ Selamat menunaikan sholat *$salat_name*."
     if [ "$sound_enabled" = "1" ]; then
         log "INFO" "⏰ WAKTU SHOLAT: Memutar suara untuk $salat_name"
         
+        # Fungsi internal untuk mencoba memutar audio dengan berbagai metode
+        try_play_audio() {
+            local audio_file="$1"
+            
+            # Coba madplay pertama
+            if command -v madplay >/dev/null 2>&1; then
+                log "DEBUG" "Mencoba memutar dengan madplay..."
+                if madplay "$audio_file" >/dev/null 2>&1; then
+                    return 0
+                fi
+            fi            
+            
+            # Fallback 1: mpg123 (jika tersedia)
+            if command -v mpg123 >/dev/null 2>&1; then
+                log "DEBUG" "Fallback ke mpg123..."
+                if mpg123 -q "$audio_file" >/dev/null 2>&1; then
+                    return 0
+                fi
+            fi          
+            
+            return 1
+        }
+        
         if echo "$file_path" | grep -q "http"; then
             local temp_dir="/tmp/adzan_$(date +%s)"
             mkdir -p "$temp_dir"
@@ -319,8 +342,8 @@ Selamat menunaikan sholat *$salat_name*."
                 local downloaded_file=$(ls "$temp_dir" | head -n1)
                 if [ -n "$downloaded_file" ]; then
                     log "INFO" "🔊 Memainkan adzan dari URL: $file_path"
-                    if ! madplay "$temp_dir/$downloaded_file" >/dev/null 2>&1; then
-                        log "ERROR" "❌ Gagal memainkan file adzan"
+                    if ! try_play_audio "$temp_dir/$downloaded_file"; then
+                        log "ERROR" "❌ Semua metode pemutaran audio gagal"
                     fi
                     rm -rf "$temp_dir"
                 else
@@ -332,8 +355,8 @@ Selamat menunaikan sholat *$salat_name*."
         else
             if [ -f "$file_path" ]; then
                 log "INFO" "🔊 Memainkan adzan dari file lokal: $file_path"
-                if ! madplay "$file_path" >/dev/null 2>&1; then
-                    log "ERROR" "❌ Gagal memainkan file adzan"
+                if ! try_play_audio "$file_path"; then
+                    log "ERROR" "❌ Semua metode pemutaran audio gagal"
                 fi
             else
                 log "ERROR" "❌ File adzan tidak ditemukan: $file_path"
@@ -360,7 +383,7 @@ reminder_before_prayer() {
     case "$salat_name" in
         "Imsyak") [ "$REMINDER_IMSYAK" -eq 1 ] && return 1 ;;
         "Subuh") [ "$REMINDER_SUBUH" -eq 1 ] && return 1 ;;
-        "Dzuhur") [ "$REMINDER_DZUHUR" -eq 1 ] && return 1 ;;
+        "Dzuhur"|"Jumat") [ "$REMINDER_DZUHUR" -eq 1 ] && return 1 ;;  # ✅ Solusi inti
         "Ashar") [ "$REMINDER_ASHAR" -eq 1 ] && return 1 ;;
         "Maghrib") [ "$REMINDER_MAGHRIB" -eq 1 ] && return 1 ;;
         "Isya") [ "$REMINDER_ISYA" -eq 1 ] && return 1 ;;
@@ -401,14 +424,15 @@ Waktu *$salat_name* akan tiba dalam *$reminder_mins menit*!
         fi
         
         # Tandai reminder sudah dikirim
-        case "$salat_name" in
-            "Imsyak") REMINDER_IMSYAK=1 ;;
-            "Subuh") REMINDER_SUBUH=1 ;;
-            "Dzuhur") REMINDER_DZUHUR=1 ;;
-            "Ashar") REMINDER_ASHAR=1 ;;
-            "Maghrib") REMINDER_MAGHRIB=1 ;;
-            "Isya") REMINDER_ISYA=1 ;;
-        esac
+		case "$salat_name" in
+			"Imsyak") REMINDER_IMSYAK=1 ;;
+			"Subuh") REMINDER_SUBUH=1 ;;
+			"Jumat") REMINDER_DZUHUR=1 ;;  # ✅ Update REMINDER_DZUHUR meski nama "Jumat"
+			"Dzuhur") REMINDER_DZUHUR=1 ;;
+			"Ashar") REMINDER_ASHAR=1 ;;
+			"Maghrib") REMINDER_MAGHRIB=1 ;;
+			"Isya") REMINDER_ISYA=1 ;;
+		esac
         return 0
     fi
     
