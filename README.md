@@ -8,7 +8,9 @@
 
 - Menampilkan jadwal sholat di antarmuka **LuCI**.
 - Memainkan suara adzan saat waktu sholat tiba.
-- Memperbarui jadwal sholat secara manual menggunakan perintah `jadwal-update.sh`.
+- Memperbarui jadwal sholat secara manual dan otomatis.
+- Mendukung bot telegram untuk kontrol pengaturan.
+- Pengingat sebelum masuk waktu sholat tiba.
 - Service otomatis untuk menjalankan aplikasi saat boot.
 
 ---
@@ -53,7 +55,7 @@ wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/re
 3. (Alternatif manual) pastikan semua dependensi terinstal:
    ```bash
    opkg update
-   opkg install madplay mpg123 alsa-utils luci-lib-jsonc python3 python3-pip
+   opkg install madplay mpg123 alsa-utils luci-lib-jsonc luci-lib-jsonc python3 python3-pip jq
    pip3 install pillow
    ```
 
