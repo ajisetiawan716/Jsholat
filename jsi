@@ -208,7 +208,7 @@ try:
 except Exception:
     import sys
     sys.exit(1)
-print("OK")
+print("[✓] Test pillow berhasil")
 PY
 }
 # standard pip install/upgrade
@@ -250,6 +250,49 @@ resolve_pillow_version(){
   if [ -n "$V" ]; then echo "$V"; return 0; fi
   echo "$PILLOW_PIN_DEFAULT"
 }
+
+# ===== NEW: Fungsi cleanup Pillow =====
+cleanup_pillow(){
+  info "Bersihkan semua instalasi Pillow..."
+  
+  # Uninstall via pip
+  python3 -m pip uninstall -y pillow || true
+  
+  # Hapus file sisa PIL/Pillow
+  rm -rf /usr/lib/python3.*/site-packages/PIL \
+         /usr/lib/python3.*/site-packages/Pillow-*.dist-info \
+         /usr/lib/python3.*/site-packages/__pycache__/PIL* \
+         2>/dev/null || true
+  
+  ok "Cleanup Pillow selesai"
+}
+
+# ===== NEW: Cek apakah Pillow sudah berfungsi =====
+pillow_already_works(){
+  if python_can_import_pillow; then
+    info "Pillow sudah berfungsi dengan baik"
+    return 0
+  fi
+  return 1
+}
+
+# ===== NEW: Fallback ke Pillow versi opkg =====
+install_pillow_opkg(){
+  info "Fallback: Coba install Pillow via opkg..."
+  if install_pkg python3-pillow; then
+    if python_can_import_pillow; then
+      ok "Pillow berhasil diinstall via opkg"
+      return 0
+    else
+      warn "Pillow terinstall via opkg tapi masih gagal import"
+      return 1
+    fi
+  else
+    warn "Tidak bisa install Pillow via opkg"
+    return 1
+  fi
+}
+
 ensure_base_deps(){
   opkg_update_once || true
   install_pkg ca-bundle || true
@@ -273,10 +316,16 @@ ensure_base_deps(){
   install_pkg python3 || err "python3 gagal"
   pkg_installed python3-pip || install_pkg python3-pip || warn "pip3 tak ada"
 }
-ensure_pillow(){
-  remove_pkg_if_installed python3-pillow
-  command -v pip3 >/dev/null 2>&1 || install_pkg python3-pip || true
 
+ensure_pillow(){
+  # Cek dulu apakah Pillow sudah berfungsi
+  if pillow_already_works; then
+    return 0
+  fi
+  
+  # Bersihkan instalasi Pillow sebelumnya
+  cleanup_pillow
+  
   VER_PIN="$(resolve_pillow_version)"
   info "Strategi Pillow: PILLOW_ALLOW_LATEST=$PILLOW_ALLOW_LATEST, pin=$VER_PIN"
 
@@ -304,6 +353,11 @@ ensure_pillow(){
   pip_install_ignore_nodeps "pillow" || true
   if python_can_import_pillow; then ok "Pillow OK (ignore-installed/no-deps latest)"; return 0; fi
 
+  # 5) Final fallback: coba install via opkg
+  if install_pillow_opkg; then
+    return 0
+  fi
+
   err "Pillow masih gagal import — cek libjpeg/libpng/freetype/zlib dan wheel kompatibel musl."
   return 1
 }
@@ -321,7 +375,7 @@ install_support_files(){
   sanitize_data644 /root/jsholat/adzan.mp3
   sanitize_data644 /root/jsholat/adzan_subuh.mp3
   sanitize_data644 /root/jsholat/tarhim.mp3
-  ok "file pendukung selesai"
+  ok "file pendukung lengkap"
 }
 
 # ===== Instal manual (raw) =====
@@ -534,13 +588,12 @@ menu(){
   echo " 1) Install paket pendukung (deps + MP3)"
   echo " 2) Install IPK/APK"
   echo "    a) Paket dari URL/file"
-  echo "    b) Paket dari MAIN* (direct URL, fallback API)"
-  echo "    c) Paket dari DEV*  (direct URL, fallback API)"
-  echo "    d) Paket dari Latest Release (GitHub)"
-  echo " 3) Install manual (tarik dari repo raw)"
-  echo " 4) Uninstall (opkg remove)"
-  echo " 5) Bersihkan cache LuCI"
-  echo " 6) Keluar"
+  echo "    b) Paket dari MAIN*"
+  echo "    c) Paket dari DEV*"
+  echo "    d) Paket dari Latest Release (GitHub) - Recommended"
+  echo " 3) Uninstall (opkg remove)"
+  echo " 4) Bersihkan cache LuCI"
+  echo " 5) Keluar"
   echo " ====================================="
   printf "Pilih: "
 }
@@ -554,10 +607,9 @@ while true; do
     choice=$(whiptail --title "JSHOLAT INSTALLER" --menu "Pilih aksi:" 20 74 10 \
       "1" "Install paket pendukung (deps + MP3)" \
       "2" "Install IPK/APK" \
-      "3" "Install manual (tarik dari repo raw)" \
-      "4" "Uninstall (opkg remove)" \
-      "5" "Bersihkan cache LuCI" \
-      "6" "Keluar" \
+      "3" "Uninstall (opkg remove)" \
+      "4" "Bersihkan cache LuCI" \
+      "5" "Keluar" \
       3>&1 1>&2 2>&3)
     [ $? -ne 0 ] && choice=6
   else
@@ -577,9 +629,9 @@ while true; do
       if has_whiptail; then
         sub=$(whiptail --title "Install IPK/APK" --menu "Sumber paket:" 16 72 8 \
           "a" "Paket dari URL/file" \
-          "b" "Paket dari MAIN* (direct URL, fallback API)" \
-          "c" "Paket dari DEV*  (direct URL, fallback API)" \
-          "d" "Paket dari Latest Release (GitHub)" \
+          "b" "Paket dari MAIN*" \
+          "c" "Paket dari DEV*" \
+          "d" "Paket dari Latest Release (GitHub) - Recommended" \
           3>&1 1>&2 2>&3)
       else
         printf "   Pilih (a/b/c/d): "; read -r sub
@@ -600,15 +652,15 @@ while true; do
         *) [ -n "${sub:-}" ] || true ;; # cancel => no-op
       esac
       ;;
-    3)
+    7)
       ensure_base_deps
       ensure_pillow || warn "Pillow belum aktif"
       clean_luci_cache
       install_manual
       ;;
-    4) uninstall_any ;;
-    5) clean_luci_cache ;;
-    6) echo "keluar."; exit 0 ;;
+    3) uninstall_any ;;
+    4) clean_luci_cache ;;
+    5) echo "keluar."; exit 0 ;;
     *) warn "pilihan tidak valid" ;;
   esac
 done
