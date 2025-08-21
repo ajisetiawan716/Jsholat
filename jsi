@@ -3,10 +3,9 @@
 # Menu:
 #  1) Install paket pendukung (deps + MP3)
 #  2) Install IPK/APK (URL/file | MAIN* | DEV* | Latest Release)
-#  3) Install manual (tarik file raw dari repo luci-app-jsholat)
-#  4) Uninstall (opkg remove)
-#  5) Bersihkan cache LuCI
-#  6) Keluar
+#  3) Uninstall (opkg remove)
+#  4) Bersihkan cache LuCI
+#  5) Keluar
 #
 # Catatan:
 # - Pillow SELALU via pip; kalau ada python3-pillow dari repo dihapus, lalu pasang pip (retry --force-reinstall).
@@ -365,12 +364,12 @@ ensure_pillow(){
 # ===== File pendukung (MP3) =====
 install_support_files(){
   mkdir -p /root/jsholat
-  download_if_missing "https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/sounds/adzan.mp3"       "/root/jsholat/adzan.mp3"       || true
-  download_if_missing "https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/sounds/adzan_subuh.mp3" "/root/jsholat/adzan_subuh.mp3" || true
-  download_if_missing "https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/sounds/tarhim.mp3"      "/root/jsholat/tarhim.mp3" || true
+  download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/adzan.mp3"       "/root/jsholat/adzan.mp3"       || true
+  download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/adzan_subuh.mp3" "/root/jsholat/adzan_subuh.mp3" || true
+  download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/tarhim.mp3"      "/root/jsholat/tarhim.mp3" || true
   if [ ! -s /root/jsholat/tarhim.mp3 ]; then
     warn "tarhim.mp3 tidak ditemukan, fallback tahrim.mp3"
-    download_if_missing "https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/sounds/tahrim.mp3" "/root/jsholat/tarhim.mp3" || true
+    download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/tahrim.mp3" "/root/jsholat/tarhim.mp3" || true
   fi
   sanitize_data644 /root/jsholat/adzan.mp3
   sanitize_data644 /root/jsholat/adzan_subuh.mp3
@@ -652,12 +651,12 @@ while true; do
         *) [ -n "${sub:-}" ] || true ;; # cancel => no-op
       esac
       ;;
-    7)
-      ensure_base_deps
-      ensure_pillow || warn "Pillow belum aktif"
-      clean_luci_cache
-      install_manual
-      ;;
+#    7)
+#      ensure_base_deps
+#      ensure_pillow || warn "Pillow belum aktif"
+#      clean_luci_cache
+#      install_manual
+#      ;;
     3) uninstall_any ;;
     4) clean_luci_cache ;;
     5) echo "keluar."; exit 0 ;;

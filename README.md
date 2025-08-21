@@ -1,6 +1,6 @@
 # **Jsholat / luci-app-jsholat**
 
-`Jsholat` atau `luci-app-jsholat` adalah aplikasi **OpenWrt** yang menyediakan fitur jadwal sholat dengan notifikasi suara adzan. Aplikasi ini dapat menggunakan `madplay` atau `mpg123` untuk memainkan file MP3 adzan dan memiliki skrip untuk memperbarui jadwal sholat secara manual: `jadwal`, `jadwal-monthly`, dan `jadwal-update.sh`.
+`Jsholat` atau `luci-app-jsholat` adalah aplikasi **OpenWrt** yang menyediakan fitur jadwal sholat dengan notifikasi suara adzan. Aplikasi ini dapat menggunakan `madplay` atau `mpg123` untuk memainkan file MP3 adzan dan mempunyai fitur untuk memperbarui jadwal sholat.
 
 ---
 
