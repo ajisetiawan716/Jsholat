@@ -103,13 +103,30 @@ jobs:
           echo "OUTDIR=$GITHUB_WORKSPACE/../_out" >> "$GITHUB_ENV"
           mkdir -p "$GITHUB_WORKSPACE/../tmp" "$GITHUB_WORKSPACE/../_out"
 
-      - name: Download & extract SDK (IPK / stable)
-        run: |
-          set -eux
-          cd "$TMPDIR"
-          wget -q "${{ steps.urls.outputs.ipk_url }}" -O SDK_IPK.tar.zst
-          tar --zstd -xf SDK_IPK.tar.zst
-          mv openwrt-sdk-* SDK_IPK
+        - name: Download & extract SDK (IPK / stable)
+          shell: bash
+          run: |
+            set -euo pipefail
+            cd "$TMPDIR"
+
+            URL="${{ steps.urls.outputs.ipk_url }}"
+            FN="$(basename "$URL")"
+            echo "Downloading (IPK): $URL"
+            wget -q -O "$FN" "$URL"
+
+            case "$FN" in
+              *.tar.zst|*.zst)    tar --zstd -xf "$FN" ;;
+              *.tar.xz|*.xz)      tar -xJf "$FN" ;;
+              *.tar.gz|*.tgz)     tar -xzf "$FN" ;;
+              *.tar.bz2|*.tbz2)   tar -xjf "$FN" ;;
+              *.tar)              tar -xf  "$FN" ;;
+              *) echo "Unknown archive format: $FN" >&2; exit 2 ;;
+            esac
+
+            SDKDIR="$(find . -maxdepth 1 -type d -name 'openwrt-sdk-*' | head -n1)"
+            [ -n "$SDKDIR" ] || { echo "SDK dir not found after extract"; ls -la; exit 3; }
+            mv "$SDKDIR" SDK_IPK
+
 
       - name: Download & extract SDK (APK / snapshot)
         run: |
