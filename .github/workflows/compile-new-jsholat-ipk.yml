@@ -65,7 +65,7 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
-          sudo apt-get -y install git curl wget ca-certificates xz-utils zstd tar build-essential \
+          sudo apt-get -y install git curl wget ca-certificates xz-utils zstd bzip2 tar build-essential \
                                   python3 rsync file
 
       - name: Normalize PKG_RELEASE (must be numeric for APK)
@@ -88,7 +88,7 @@ jobs:
           echo "ipk_url=$IPK_URL" >> "$GITHUB_OUTPUT"
           if [ "${SDK_APK_URL}" = "AUTO" ]; then
             SNAPSHOT_DIR="https://downloads.openwrt.org/snapshots/targets/x86/64/"
-            APK_FILE=$(curl -fsSL "$SNAPSHOT_DIR" | grep -oE 'openwrt-sdk-x86-64_[^"]+\.tar\.zst' | head -n1)
+            APK_FILE=$(curl -fsSL "$SNAPSHOT_DIR" | grep -oE 'openwrt-sdk-x86-64_[^"]+\.tar\.(zst|xz|gz|bz2)' | head -n1)
             [ -n "$APK_FILE" ] || { echo "Cannot resolve snapshot SDK"; exit 1; }
             APK_URL="$SNAPSHOT_DIR$APK_FILE"
           else
@@ -103,38 +103,53 @@ jobs:
           echo "OUTDIR=$GITHUB_WORKSPACE/../_out" >> "$GITHUB_ENV"
           mkdir -p "$GITHUB_WORKSPACE/../tmp" "$GITHUB_WORKSPACE/../_out"
 
-        - name: Download & extract SDK (IPK / stable)
-          shell: bash
-          run: |
-            set -euo pipefail
-            cd "$TMPDIR"
+      - name: Download & extract SDK (IPK / stable)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$TMPDIR"
 
-            URL="${{ steps.urls.outputs.ipk_url }}"
-            FN="$(basename "$URL")"
-            echo "Downloading (IPK): $URL"
-            wget -q -O "$FN" "$URL"
+          URL="${{ steps.urls.outputs.ipk_url }}"
+          FN="$(basename "$URL")"
+          echo "Downloading (IPK): $URL"
+          wget -q -O "$FN" "$URL"
 
-            case "$FN" in
-              *.tar.zst|*.zst)    tar --zstd -xf "$FN" ;;
-              *.tar.xz|*.xz)      tar -xJf "$FN" ;;
-              *.tar.gz|*.tgz)     tar -xzf "$FN" ;;
-              *.tar.bz2|*.tbz2)   tar -xjf "$FN" ;;
-              *.tar)              tar -xf  "$FN" ;;
-              *) echo "Unknown archive format: $FN" >&2; exit 2 ;;
-            esac
+          case "$FN" in
+            *.tar.zst|*.zst)    tar --zstd -xf "$FN" ;;
+            *.tar.xz|*.xz)      tar -xJf "$FN" ;;
+            *.tar.gz|*.tgz)     tar -xzf "$FN" ;;
+            *.tar.bz2|*.tbz2)   tar -xjf "$FN" ;;
+            *.tar)              tar -xf  "$FN" ;;
+            *) echo "Unknown archive format: $FN" >&2; exit 2 ;;
+          esac
 
-            SDKDIR="$(find . -maxdepth 1 -type d -name 'openwrt-sdk-*' | head -n1)"
-            [ -n "$SDKDIR" ] || { echo "SDK dir not found after extract"; ls -la; exit 3; }
-            mv "$SDKDIR" SDK_IPK
-
+          SDKDIR="$(find . -maxdepth 1 -type d -name 'openwrt-sdk-*' | head -n1)"
+          [ -n "$SDKDIR" ] || { echo "SDK dir not found after extract"; ls -la; exit 3; }
+          mv "$SDKDIR" SDK_IPK
 
       - name: Download & extract SDK (APK / snapshot)
+        shell: bash
         run: |
-          set -eux
+          set -euo pipefail
           cd "$TMPDIR"
-          wget -q "${{ steps.urls.outputs.apk_url }}" -O SDK_APK.tar.zst
-          tar --zstd -xf SDK_APK.tar.zst
-          mv openwrt-sdk-* SDK_APK
+
+          URL="${{ steps.urls.outputs.apk_url }}"
+          FN="$(basename "$URL")"
+          echo "Downloading (APK): $URL"
+          wget -q -O "$FN" "$URL"
+
+          case "$FN" in
+            *.tar.zst|*.zst)    tar --zstd -xf "$FN" ;;
+            *.tar.xz|*.xz)      tar -xJf "$FN" ;;
+            *.tar.gz|*.tgz)     tar -xzf "$FN" ;;
+            *.tar.bz2|*.tbz2)   tar -xjf "$FN" ;;
+            *.tar)              tar -xf  "$FN" ;;
+            *) echo "Unknown archive format: $FN" >&2; exit 2 ;;
+          esac
+
+          SDKDIR="$(find . -maxdepth 1 -type d -name 'openwrt-sdk-*' | head -n1)"
+          [ -n "$SDKDIR" ] || { echo "SDK dir not found after extract"; ls -la; exit 3; }
+          mv "$SDKDIR" SDK_APK
 
       # Minimal feeds: hanya luci, TANPA feeds install -a
       - name: Prepare minimal feeds & link package (IPK)
@@ -216,7 +231,7 @@ jobs:
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add .
-          git commit -m "Auto Package Update: v${{ needs.get_version.outputs.version }}" || echo "No changes"
+          git commit -m "Auto Package Update: v${{ needs.get_version.outputs.version }}" | true
           git push
 
       - name: Cleanup OUTDIR
