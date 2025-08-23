@@ -49,6 +49,7 @@ PKG_FILE="$JSHOLAT_TEMP_DIR/jsholat.ipk"   # bisa .ipk/.apk
 OPKG_LOG="$JSHOLAT_TEMP_DIR/opkg-update.log"
 OPKG_PID_FILE="$JSHOLAT_TEMP_DIR/opkg-update.pid"
 OPKG_RC_FILE="$JSHOLAT_TEMP_DIR/opkg-update.rc"
+OPKG_LOCK_FILE="$JSHOLAT_TEMP_DIR/opkg.lock"
 
 # ===== Pillow strategy (override via env) =====
 # Urutan prioritas versi: $PILLOW_VERSION > parse($PKGNAME) > $PILLOW_PIN_DEFAULT
@@ -57,18 +58,64 @@ PILLOW_VERSION="${PILLOW_VERSION:-}"         # contoh: 10.1.0
 PILLOW_ALLOW_LATEST="${PILLOW_ALLOW_LATEST:-1}"  # 1 = coba latest dulu; 0 = langsung pin
 
 # ===== UI helpers =====
-info(){ echo "[i] $*"; }
-ok(){ echo "[✓] $*"; }
-warn(){ echo "[!] $*"; }
-err(){ echo "[x] $*" >&2; }
+info(){ echo "📦 $*"; }
+ok(){ echo "✅ $*"; }
+warn(){ echo "⚠️  $*"; }
+err(){ echo "❌ $*" >&2; }
 is_root(){ [ "$(id -u)" -eq 0 ]; }
-has_whiptail(){ command -v whiptail >/dev/null 2>&1; }  # (NEW)
+has_whiptail(){ command -v whiptail >/dev/null 2>&1; }
+has_flock(){ command -v flock >/dev/null 2>&1; }
+
+# ===== Logging =====
+VERBOSE="${VERBOSE:-0}"
+LOG_FILE="$JSHOLAT_TEMP_DIR/install.log"
+log() {
+  [ "$VERBOSE" -eq 1 ] && echo "$(date '+%Y-%m-%d %H:%M:%S'): $*" >> "$LOG_FILE"
+  return 0
+}
+
+# ===== Output consolidation =====
+consolidate_output() {
+  local title="$1"
+  shift
+  local command="$*"
+  
+  if has_whiptail; then
+    # Untuk whiptail, tampilkan progress box
+    eval "$command" 2>&1 | whiptail --title "$title" --gauge "Sedang berjalan..." 8 78 0
+    local status=$?
+    if [ $status -eq 0 ]; then
+      whiptail --title "Sukses" --msgbox "$title selesai!" 8 78
+    else
+      whiptail --title "Error" --msgbox "Gagal menjalankan: $title" 8 78
+    fi
+    return $status
+  else
+    # Untuk mode teks, tampilkan output biasa dengan emoji
+    echo "🚀 Memulai: $title"
+    eval "$command"
+    local status=$?
+    if [ $status -eq 0 ]; then
+      echo "✅ $title selesai!"
+    else
+      echo "❌ Gagal: $title"
+    fi
+    return $status
+  fi
+}
 
 # ===== OPKG helpers =====
-# (NEW) Jalankan opkg update di background dan tampilkan progress (gauge/spinner)
 start_opkg_update_bg(){
   rm -f "$OPKG_LOG" "$OPKG_RC_FILE" "$OPKG_PID_FILE" 2>/dev/null || true
-  ( opkg update >"$OPKG_LOG" 2>&1; RC=$?; [ $RC -eq 0 ] && touch /tmp/opkg-lists/.updated; echo "$RC" >"$OPKG_RC_FILE" ) &
+  (
+    if has_flock; then
+      flock -x 200
+    fi
+    opkg update >"$OPKG_LOG" 2>&1
+    RC=$?
+    [ $RC -eq 0 ] && touch /tmp/opkg-lists/.updated
+    echo "$RC" >"$OPKG_RC_FILE"
+  ) 200>"$OPKG_LOCK_FILE" &
   echo $! >"$OPKG_PID_FILE"
 }
 show_opkg_progress(){
@@ -85,14 +132,14 @@ show_opkg_progress(){
         sleep 0.2
       done
       echo 100
-    ) | whiptail --gauge "Menjalankan 'opkg update' di belakang layar...
-Log: $OPKG_LOG" 8 60 0
+    ) | whiptail --gauge "🔄 Menjalankan 'opkg update' di belakang layar...
+📋 Log: $OPKG_LOG" 10 60 0
   else
     sp='|/-\' ; i=0
-    printf "[i] opkg update berjalan "
+    printf "🔄 opkg update berjalan "
     while kill -0 "$PID" 2>/dev/null; do
       i=$(( (i+1) % 4 ))
-      printf "\r[i] opkg update berjalan %s" "${sp:$i:1}"
+      printf "\r🔄 opkg update berjalan %s" "${sp:$i:1}"
       sleep 0.2
     done
     printf "\r"
@@ -138,25 +185,26 @@ remove_pkg_if_installed(){
 # ===== HTTP helpers =====
 _fetch(){
   URL="$1"; DEST="$2"
-  if command -v wget >/dev/null 2>&1; then wget -q -O "$DEST" "$URL"; return $?
-  elif command -v uclient-fetch >/dev/null 2>&1; then uclient-fetch -q -O "$DEST" "$URL"; return $?
-  elif command -v curl >/dev/null 2>&1; then curl -fsSL "$URL" -o "$DEST"; return $?
+  TIMEOUT=30
+  if command -v wget >/dev/null 2>&1; then wget -q -T $TIMEOUT -O "$DEST" "$URL"; return $?
+  elif command -v uclient-fetch >/dev/null 2>&1; then uclient-fetch -q -T $TIMEOUT -O "$DEST" "$URL"; return $?
+  elif command -v curl >/dev/null 2>&1; then curl -fsSL --connect-timeout $TIMEOUT "$URL" -o "$DEST"; return $?
   else err "butuh wget/uclient-fetch/curl"; return 1; fi
 }
 gh_api_fetch(){
   URL="$1"
+  TIMEOUT=30
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: curl/7.88" "$URL"
+    curl -fsSL --connect-timeout $TIMEOUT -H "Accept: application/vnd.github+json" -H "User-Agent: curl/7.88" "$URL"
     return $?
   elif command -v wget >/dev/null 2>&1; then
-    wget -qO- --user-agent="curl/7.88" "$URL"
+    wget -qO- --timeout=$TIMEOUT --user-agent="curl/7.88" "$URL"
     return $?
   else
     err "butuh curl/wget untuk akses GitHub API"
     return 1
   fi
 }
-# (DEST, URL) atau (URL, DEST)
 download_if_missing(){
   A="$1"; B="$2"
   case "$A" in
@@ -168,7 +216,6 @@ download_if_missing(){
   _fetch "$URL" "$DEST" || return 1
   [ -s "$DEST" ] && ok "Terunduh: $(basename "$DEST")" || return 1
 }
-# Ubah URL github.com/.../blob/... -> raw.githubusercontent.com/...
 to_raw_github(){
   URL="$1"
   case "$URL" in
@@ -198,49 +245,46 @@ enable_and_start(){
 sanitize_exec(){ [ -f "$1" ] && strip_crlf "$1" && chmod 755 "$1" 2>/dev/null || true; }
 sanitize_data644(){ [ -f "$1" ] && chmod 644 "$1" 2>/dev/null || true; }
 
-# ===== Python & PIL/Pillow (pip ONLY, with robust fallbacks) =====
+# ===== Python & PIL/Pillow =====
 pip_has_break_flag(){ command -v pip3 >/dev/null 2>&1 && pip3 --help 2>/dev/null | grep -q -- '--break-system-packages'; }
 python_can_import_pillow(){
-python3 - <<'PY'
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 - <<'PY'
 try:
-    from PIL import Image, ImageDraw, ImageFont  # noqa: F401
+    from PIL import Image, ImageDraw, ImageFont
 except Exception:
     import sys
     sys.exit(1)
-print("[✓] Test pillow berhasil")
+print("✅ Test pillow berhasil")
 PY
 }
-# standard pip install/upgrade
 pip_install(){
   PKGNAME="$1"
-  if pip_has_break_flag; then
-    BASE_OPTS="--no-cache-dir --upgrade --break-system-packages"
-  else
-    BASE_OPTS="--no-cache-dir --upgrade"
-  fi
-  if pip3 install $BASE_OPTS "$PKGNAME"; then
+  if python3 -m pip install --no-cache-dir --upgrade "$PKGNAME"; then
     return 0
   fi
-  warn "pip install $PKGNAME gagal, coba --force-reinstall ..."
-  pip3 install $BASE_OPTS --force-reinstall "$PKGNAME"
+  if pip_has_break_flag; then
+    warn "pip install $PKGNAME gagal, coba dengan --break-system-packages ..."
+    python3 -m pip install --no-cache-dir --upgrade --break-system-packages "$PKGNAME"
+  else
+    warn "pip install $PKGNAME gagal, coba --force-reinstall ..."
+    python3 -m pip install --no-cache-dir --upgrade --force-reinstall "$PKGNAME"
+  fi
 }
-# ignore-installed + no-deps (raw module invocation)
 pip_install_ignore_nodeps(){
-  PKGNAME="$1" # contoh: pillow==10.1.0 atau pillow
+  PKGNAME="$1"
   if pip_has_break_flag; then
     python3 -m pip install --ignore-installed --no-deps --break-system-packages "$PKGNAME"
   else
     python3 -m pip install --ignore-installed --no-deps "$PKGNAME"
   fi
 }
-# parse versi Pillow dari $PKGNAME jika ada (contoh: "luci-app-jsholat-pillow-10.1.0" → 10.1.0)
 parse_pillow_ver_from_pkgname(){
   [ -n "${PKGNAME:-}" ] || return 1
   VER=$(echo "$PKGNAME" | sed -n 's/.*pillow[-_=]\([0-9][0-9.]*\).*/\1/p' | head -n1)
   [ -n "$VER" ] || return 1
   echo "$VER"
 }
-# tentukan versi pin yang akan dipakai
 resolve_pillow_version(){
   if [ -n "$PILLOW_VERSION" ]; then
     echo "$PILLOW_VERSION"; return 0
@@ -250,23 +294,17 @@ resolve_pillow_version(){
   echo "$PILLOW_PIN_DEFAULT"
 }
 
-# ===== NEW: Fungsi cleanup Pillow =====
+# ===== Cleanup Pillow =====
 cleanup_pillow(){
   info "Bersihkan semua instalasi Pillow..."
-  
-  # Uninstall via pip
   python3 -m pip uninstall -y pillow || true
-  
-  # Hapus file sisa PIL/Pillow
   rm -rf /usr/lib/python3.*/site-packages/PIL \
          /usr/lib/python3.*/site-packages/Pillow-*.dist-info \
          /usr/lib/python3.*/site-packages/__pycache__/PIL* \
          2>/dev/null || true
-  
   ok "Cleanup Pillow selesai"
 }
 
-# ===== NEW: Cek apakah Pillow sudah berfungsi =====
 pillow_already_works(){
   if python_can_import_pillow; then
     info "Pillow sudah berfungsi dengan baik"
@@ -275,7 +313,6 @@ pillow_already_works(){
   return 1
 }
 
-# ===== NEW: Fallback ke Pillow versi opkg =====
 install_pillow_opkg(){
   info "Fallback: Coba install Pillow via opkg..."
   if install_pkg python3-pillow; then
@@ -294,41 +331,41 @@ install_pillow_opkg(){
 
 ensure_base_deps(){
   opkg_update_once || true
-  install_pkg ca-bundle || true
-  install_pkg alsa-utils || true
-  install_pkg curl || true
-  install_pkg jq || true
-  install_pkg whiptail || true   # (NEW) pasang UI bila ada
+  install_pkg ca-bundle || warn "ca-bundle gagal"
+  install_pkg alsa-utils || warn "alsa-utils gagal"
+  install_pkg curl || warn "curl gagal"
+  install_pkg jq || warn "jq gagal"
+  install_pkg whiptail || warn "whiptail gagal"
+  
   if ! install_pkg madplay; then
     warn "madplay tidak tersedia; coba mpg123"
     install_pkg mpg123 || warn "mpg123 juga tidak ada"
   fi
+  
   if ! install_pkg luci-lib-json; then
     info "fallback luci-lib-jsonc"
     install_pkg luci-lib-jsonc || warn "luci-lib-json(c) tak ada"
   fi
-  # lib runtime penting utk Pillow
-  install_pkg zlib || true
-  install_pkg libjpeg-turbo || true
-  install_pkg libpng || true
-  install_pkg libfreetype || true
-  install_pkg python3 || err "python3 gagal"
+  
+  install_pkg zlib || warn "zlib gagal"
+  install_pkg libjpeg-turbo || warn "libjpeg-turbo gagal"
+  install_pkg libpng || warn "libpng gagal"
+  install_pkg libfreetype || warn "libfreetype gagal"
+  install_pkg python3 || { err "python3 gagal"; return 1; }
   pkg_installed python3-pip || install_pkg python3-pip || warn "pip3 tak ada"
+  
+  return 0
 }
 
 ensure_pillow(){
-  # Cek dulu apakah Pillow sudah berfungsi
   if pillow_already_works; then
     return 0
   fi
   
-  # Bersihkan instalasi Pillow sebelumnya
   cleanup_pillow
-  
   VER_PIN="$(resolve_pillow_version)"
   info "Strategi Pillow: PILLOW_ALLOW_LATEST=$PILLOW_ALLOW_LATEST, pin=$VER_PIN"
 
-  # 1) jika diizinkan, coba latest dulu (upgrade)
   if [ "${PILLOW_ALLOW_LATEST:-1}" = "1" ]; then
     info "memasang Pillow (latest) via pip ..."
     pip_install pillow || true
@@ -336,23 +373,19 @@ ensure_pillow(){
     warn "Import Pillow (latest) masih gagal, lanjut ke pin=$VER_PIN"
   fi
 
-  # 2) coba pin via pip normal
   info "memasang Pillow==$VER_PIN via pip ..."
   pip_install "pillow==$VER_PIN" || true
   if python_can_import_pillow; then ok "Pillow OK (pillow==$VER_PIN)"; return 0; fi
   warn "Import Pillow pin masih gagal, pakai --ignore-installed --no-deps"
 
-  # 3) hard fallback: ignore-installed + no-deps (sesuai permintaan)
   info "fallback keras: python3 -m pip install --ignore-installed --no-deps pillow==$VER_PIN"
   pip_install_ignore_nodeps "pillow==$VER_PIN" || true
   if python_can_import_pillow; then ok "Pillow OK (ignore-installed/no-deps pin)"; return 0; fi
 
-  # 4) opsi terakhir: ignore-installed + no-deps latest (kadang membantu environment aneh)
   warn "fallback terakhir: ignore-installed/no-deps (latest)"
   pip_install_ignore_nodeps "pillow" || true
   if python_can_import_pillow; then ok "Pillow OK (ignore-installed/no-deps latest)"; return 0; fi
 
-  # 5) Final fallback: coba install via opkg
   if install_pillow_opkg; then
     return 0
   fi
@@ -377,74 +410,49 @@ install_support_files(){
   ok "file pendukung lengkap"
 }
 
-# ===== Instal manual (raw) =====
-install_manual(){
-  info "instalasi manual (tarik file raw)..."
-  mkdir -p /usr/lib/lua/luci/controller \
-           /usr/lib/lua/luci/model/cbi \
-           /usr/lib/lua/luci/view/jsholat \
-           /usr/share/jsholat \
-           /root/jsholat
-
-  download_if_missing /etc/config/jsholat                           "$GH_DATA/etc/config/jsholat" || return 1
-  download_if_missing /etc/init.d/jsholat                           "$GH_DATA/etc/init.d/jsholat" || return 1
-  download_if_missing /etc/init.d/jadwal                            "$GH_DATA/etc/init.d/jadwal"  || return 1
-
-  download_if_missing /usr/bin/jsholat                              "$GH_DATA/usr/bin/jsholat"    || return 1
-  download_if_missing /usr/bin/jadwal                               "$GH_DATA/usr/bin/jadwal"     || return 1
-  download_if_missing /usr/bin/jadwal2                              "$GH_DATA/usr/bin/jadwal2"    || true
-
-  download_if_missing /usr/lib/lua/luci/controller/jsholat.lua      "$GH_DATA/usr/lib/lua/luci/controller/jsholat.lua" || return 1
-  download_if_missing /usr/lib/lua/luci/model/cbi/jsholat.lua       "$GH_DATA/usr/lib/lua/luci/model/cbi/jsholat.lua"   || return 1
-  download_if_missing /usr/lib/lua/luci/view/jsholat/jsholat.htm    "$GH_DATA/usr/lib/lua/luci/view/jsholat/jsholat.htm" || return 1
-  download_if_missing /usr/lib/lua/luci/view/jsholat/jadwal.htm     "$GH_DATA/usr/lib/lua/luci/view/jsholat/jadwal.htm"  || return 1
-  download_if_missing /usr/lib/lua/luci/view/jsholat/output.htm     "$GH_DATA/usr/lib/lua/luci/view/jsholat/output.htm"  || return 1
-  download_if_missing /usr/lib/lua/luci/view/jsholat/status_jadwal.htm  "$GH_DATA/usr/lib/lua/luci/view/jsholat/status_jadwal.htm" || return 1
-  download_if_missing /usr/lib/lua/luci/view/jsholat/status_jsholat.htm "$GH_DATA/usr/lib/lua/luci/view/jsholat/status_jsholat.htm" || return 1
-  download_if_missing /usr/lib/lua/luci/view/jsholat/update_button.htm  "$GH_DATA/usr/lib/lua/luci/view/jsholat/update_button.htm"   || return 1
-
-  download_if_missing /usr/share/jsholat/cities.json                "$GH_DATA/usr/share/jsholat/cities.json" || return 1
-  download_if_missing /usr/share/jsholat/last_updated.txt           "$GH_DATA/usr/share/jsholat/last_updated.txt" || true
-  download_if_missing /root/jsholat/jadwal.txt                      "$GH_DATA/root/jsholat/jadwal.txt" || true
-
-  install_support_files
-
-  sanitize_exec /etc/init.d/jsholat
-  sanitize_exec /etc/init.d/jadwal
-  sanitize_exec /usr/bin/jsholat
-  sanitize_exec /usr/bin/jadwal
-  sanitize_exec /usr/bin/jadwal2
-
-  enable_and_start jsholat
-  enable_and_start jadwal
-  /etc/init.d/uhttpd restart 2>/dev/null || true
-  /etc/init.d/rpcd restart 2>/dev/null || true
-  ok "instalasi manual selesai"
+# ===== Consolidated installation functions =====
+install_dependencies_consolidated() {
+  if has_whiptail; then
+    {
+      ensure_base_deps
+      ensure_pillow || warn "Pillow belum aktif"
+      install_support_files
+    } 2>&1 | whiptail --title "Install Dependencies" --gauge "Sedang menginstall dependencies..." 8 78 0
+    if [ ${PIPESTATUS[0]} -eq 0 ]; then
+      whiptail --title "Sukses" --msgbox "✅ Install dependensi & paket pendukung selesai!" 8 78
+    else
+      whiptail --title "Error" --msgbox "❌ Ada error saat install dependencies" 8 78
+    fi
+  else
+    echo "🚀 Memulai install dependensi & paket pendukung..."
+    ensure_base_deps
+    ensure_pillow || warn "Pillow belum aktif"
+    install_support_files
+    echo "✅ Install dependensi & paket pendukung selesai!"
+  fi
 }
 
 # ===== Sort versi =====
 if sort -V </dev/null >/dev/null 2>&1; then SORTV="sort -V"; else SORTV="sort"; fi
 
-# ===== Pilih paket terbaik (utamakan .ipk) TANPA lihat arsitektur =====
+# ===== Pilih paket terbaik =====
 choose_best_pkg_from_urls() {
   LIST="$JSHOLAT_TEMP_DIR/pkg_urls.txt"
   : > "$LIST"
   cat > "$LIST"
 
-  # Urutan prioritas: *_all.ipk > *.ipk > *_all.apk > *.apk
   for PAT in '_all\.ipk$' '\.ipk$' '_all\.apk$' '\.apk$'; do
     SEL="$(grep -E "$PAT" "$LIST" | $SORTV | tail -n1)"
     [ -n "$SEL" ] && echo "$SEL" && return 0
   done
-  # fallback: ambil entri terakhir (kalau ada)
   SEL="$($SORTV "$LIST" | tail -n1)"
   [ -n "$SEL" ] && echo "$SEL"
 }
 
-# ===== IPK/APK dari branch (Contents API) =====
+# ===== IPK/APK dari branch =====
 fetch_pkg_from_branch(){
-  BRANCH="$1"   # "package"
-  SUBPATH="$2"  # "main" atau "dev"
+  BRANCH="$1"
+  SUBPATH="$2"
   API_URL="https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${SUBPATH}?ref=${BRANCH}"
   info "Query GitHub API: $API_URL"
   J="$(gh_api_fetch "$API_URL" 2>/dev/null)" || return 1
@@ -473,7 +481,7 @@ fetch_pkg_from_branch(){
   ok "Paket siap: $PKG_FILE"
 }
 
-# ===== Coba URL langsung (blob .apk) =====
+# ===== Coba URL langsung =====
 try_direct_url_install(){
   RAW_URL="$(to_raw_github "$1")"
   info "Coba URL langsung: $RAW_URL"
@@ -518,7 +526,24 @@ install_via_release_latest(){
   install_pkg_file "$PKG_FILE"
 }
 
-# ===== Pasang paket (.ipk/.apk), file/URL =====
+# ===== Rollback mechanism =====
+install_with_rollback() {
+  local temp_backup="$JSHOLAT_TEMP_DIR/backup"
+  mkdir -p "$temp_backup"
+  
+  opkg list-installed > "$temp_backup/installed.before" 2>/dev/null || true
+  
+  if ! install_pkg_file "$1"; then
+    if [ -f "$temp_backup/installed.before" ]; then
+      info "Rollback: menghapus paket yang baru terinstall..."
+      opkg list-installed | grep -v -f "$temp_backup/installed.before" | xargs opkg remove --autoremove --force-depends 2>/dev/null || true
+    fi
+    return 1
+  fi
+  return 0
+}
+
+# ===== Pasang paket =====
 install_pkg_file(){
   SRC="$1"
   FILE="$SRC"
@@ -529,7 +554,16 @@ install_pkg_file(){
       FILE="$PKG_FILE"
       ;;
     *)
-      [ -s "$FILE" ] || { err "file paket tidak ditemukan: $FILE"; return 1; }
+      FILE="$(realpath "$SRC" 2>/dev/null || echo "$SRC")"
+      case "$FILE" in
+        /tmp/*|$JSHOLAT_TEMP_DIR/*|./*|/*.ipk|/*.apk)
+          [ -s "$FILE" ] || { err "file paket tidak ditemukan: $FILE"; return 1; }
+          ;;
+        *)
+          err "Path file tidak diizinkan: $FILE"
+          return 1
+          ;;
+      esac
       ;;
   esac
   info "Sedang Menginstall $FILE..."
@@ -541,16 +575,14 @@ install_pkg_file(){
 }
 
 install_via_main(){
-  # 1) coba URL langsung (blob .apk)
   if try_direct_url_install "$MAIN_DIRECT_URL"; then return 0; fi
   warn "URL langsung MAIN gagal; fallback Contents API"
-  # 2) fallback: cari via Contents API — path 'main' di branch 'package'
-  fetch_pkg_from_branch "package" "main" && install_pkg_file "$PKG_FILE" || err "tak menemukan paket di MAIN"
+  fetch_pkg_from_branch "package" "main" && install_with_rollback "$PKG_FILE" || err "tak menemukan paket di MAIN"
 }
 install_via_dev(){
   if try_direct_url_install "$DEV_DIRECT_URL"; then return 0; fi
   warn "URL langsung DEV gagal; fallback Contents API"
-  fetch_pkg_from_branch "package" "dev" && install_pkg_file "$PKG_FILE" || err "tak menemukan paket di DEV"
+  fetch_pkg_from_branch "package" "dev" && install_with_rollback "$PKG_FILE" || err "tak menemukan paket di DEV"
 }
 
 # ===== Uninstall =====
@@ -560,12 +592,11 @@ uninstall_any(){
     info "remove via opkg (auto bersih file paket)"
     opkg remove --autoremove "$APP_PKG" || warn "opkg remove gagal"
   fi
-  # stop & disable service (kalau masih ada sisa manual)
   [ -x /etc/init.d/jsholat ] && /etc/init.d/jsholat stop 2>/dev/null || true
   [ -x /etc/init.d/jadwal ]  && /etc/init.d/jadwal stop 2>/dev/null  || true
   [ -x /etc/init.d/jsholat ] && /etc/init.d/jsholat disable 2>/dev/null || true
   [ -x /etc/init.d/jadwal ]  && /etc/init.d/jadwal disable 2>/dev/null  || true
-  # Bersihkan sisa manual NON-view (jangan hapus file view — termasuk update_button.htm)
+  
   for f in \
     /etc/config/jsholat \
     /etc/init.d/jsholat /etc/init.d/jadwal \
@@ -581,19 +612,19 @@ uninstall_any(){
 
 # ===== Menu =====
 menu(){
-  echo " ====================================="
-  echo "           JSHOLAT INSTALLER          "
-  echo " ====================================="
-  echo " 1) Install paket pendukung (deps + MP3)"
-  echo " 2) Install IPK/APK"
-  echo "    a) Paket dari URL/file"
-  echo "    b) Paket dari MAIN*"
-  echo "    c) Paket dari DEV*"
-  echo "    d) Paket dari Latest Release (GitHub) - Recommended"
-  echo " 3) Uninstall (opkg remove)"
-  echo " 4) Bersihkan cache LuCI"
-  echo " 5) Keluar"
-  echo " ====================================="
+  echo " ==========================================="
+  echo "           🕌 JSHOLAT INSTALLER 🕌          "
+  echo " ==========================================="
+  echo " 1) 📦 Install paket pendukung (deps + MP3)"
+  echo " 2) 📥 Install IPK/APK"
+  echo "    a) 🌐 Paket dari URL/file"
+  echo "    b) 📦 Paket dari MAIN*"
+  echo "    c) 🔧 Paket dari DEV*"
+  echo "    d) 🚀 Paket dari Latest Release (GitHub) - Recommended"
+  echo " 3) 🗑️  Uninstall (opkg remove)"
+  echo " 4) 🧹 Bersihkan cache LuCI"
+  echo " 5) ❌ Keluar"
+  echo " ==========================================="
   printf "Pilih: "
 }
 
@@ -601,14 +632,13 @@ menu(){
 is_root || { err "jalankan sebagai root"; exit 1; }
 
 while true; do
-  # (NEW) Menu interaktif bila whiptail tersedia; kalau tidak, fallback ke menu teks asli
   if has_whiptail; then
-    choice=$(whiptail --title "JSHOLAT INSTALLER" --menu "Pilih aksi:" 20 74 10 \
-      "1" "Install paket pendukung (deps + MP3)" \
-      "2" "Install IPK/APK" \
-      "3" "Uninstall (opkg remove)" \
-      "4" "Bersihkan cache LuCI" \
-      "5" "Keluar" \
+    choice=$(whiptail --title "🕌 JSHOLAT INSTALLER" --menu "Pilih aksi:" 20 74 10 \
+      "1" "📦 Install paket pendukung (deps + MP3)" \
+      "2" "📥 Install IPK/APK" \
+      "3" "🗑️  Uninstall (opkg remove)" \
+      "4" "🧹 Bersihkan cache LuCI" \
+      "5" "❌ Keluar" \
       3>&1 1>&2 2>&3)
     [ $? -ne 0 ] && choice=6
   else
@@ -618,19 +648,17 @@ while true; do
 
   case "${choice:-}" in
     1)
-      ensure_base_deps
-      ensure_pillow || warn "Pillow belum aktif (cek libjpeg/libpng/freetype/zlib jika perlu)"
-      install_support_files
+      install_dependencies_consolidated
       ;;
     2)
       ensure_base_deps
       ensure_pillow || warn "Pillow belum aktif"
       if has_whiptail; then
         sub=$(whiptail --title "Install IPK/APK" --menu "Sumber paket:" 16 72 8 \
-          "a" "Paket dari URL/file" \
-          "b" "Paket dari MAIN*" \
-          "c" "Paket dari DEV*" \
-          "d" "Paket dari Latest Release (GitHub) - Recommended" \
+          "a" "🌐 Paket dari URL/file" \
+          "b" "📦 Paket dari MAIN*" \
+          "c" "🔧 Paket dari DEV*" \
+          "d" "🚀 Paket dari Latest Release (GitHub) - Recommended" \
           3>&1 1>&2 2>&3)
       else
         printf "   Pilih (a/b/c/d): "; read -r sub
@@ -643,23 +671,41 @@ while true; do
           else
             printf "Masukkan URL/path paket (.ipk/.apk): "; read -r SRC
           fi
-          [ -n "${SRC:-}" ] && install_pkg_file "$SRC" || warn "kosong"
+          [ -n "${SRC:-}" ] && install_with_rollback "$SRC" || warn "kosong"
           ;;
         b|B) install_via_main ;;
         c|C) install_via_dev  ;;
         d|D) install_via_release_latest ;;
-        *) [ -n "${sub:-}" ] || true ;; # cancel => no-op
+        *) [ -n "${sub:-}" ] || true ;;
       esac
       ;;
-#    7)
-#      ensure_base_deps
-#      ensure_pillow || warn "Pillow belum aktif"
-#      clean_luci_cache
-#      install_manual
-#      ;;
-    3) uninstall_any ;;
-    4) clean_luci_cache ;;
-    5) echo "keluar."; exit 0 ;;
-    *) warn "pilihan tidak valid" ;;
+    3) 
+      if has_whiptail; then
+        whiptail --yesno "Yakin ingin uninstall?" 8 78 && uninstall_any
+      else
+        uninstall_any
+      fi
+      ;;
+    4) 
+      clean_luci_cache
+      if has_whiptail; then
+        whiptail --msgbox "🧹 Cache LuCI dibersihkan!" 8 78
+      fi
+      ;;
+    5) 
+      if has_whiptail; then
+        whiptail --msgbox "👋 Selamat tinggal!" 8 78
+      else
+        echo "👋 Selamat tinggal!"
+      fi
+      exit 0 
+      ;;
+    *) 
+      if has_whiptail; then
+        whiptail --msgbox "❌ Pilihan tidak valid" 8 78
+      else
+        warn "pilihan tidak valid"
+      fi
+      ;;
   esac
 done
