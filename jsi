@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # jsholat-installer — luci-app-jsholat installer (OpenWrt)
 # Menu:
 #  1) Install paket pendukung (deps + MP3)
