@@ -1,5 +1,6 @@
 #!/bin/bash
-# jsholat-installer — luci-app-jsholat installer (OpenWrt)
+# (c) jsholat-installer — luci-app-jsholat installer (OpenWrt) 
+# (c) Jsholat created by @ajisetiawan716 - www.ajisetiawan.com
 # Menu:
 #  1) Install paket pendukung (deps + MP3)
 #  2) Install IPK/APK (URL/file | MAIN* | DEV* | Latest Release)
