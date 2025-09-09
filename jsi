@@ -488,6 +488,7 @@ try_direct_url_install(){
   rm -f "$PKG_FILE" 2>/dev/null || true
   if _fetch "$RAW_URL" "$PKG_FILE" && [ -s "$PKG_FILE" ]; then
     install_pkg_file "$PKG_FILE"
+	rm -f "$PKG_FILE" 2>/dev/null || true
     return $?
   fi
   return 1
