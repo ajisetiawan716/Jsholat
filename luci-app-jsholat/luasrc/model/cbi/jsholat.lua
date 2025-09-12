@@ -8,7 +8,7 @@ m.description = translate("Untuk mengatur jadwal sholat dan mengatur suara adzan
 "1. Pengaturan Jadwal: Untuk mengatur jadwal sholat berdasarkan nama kota/wilayah beserta durasi setiap jadwal diperbarui.<br>" ..
 "2. Lihat Jadwal: Untuk melihat jadwal sholat saat ini.<br>"..
 "3. Pengaturan Suara: Untuk mengatur penyimpanan jadwal, mengatur suara adzan.<br>"..
-"4. Pengaturan Service: Untuk mengatur jalannya aplikasi pembaruan jadwal dan pemutar suara waktu adzan.<br>"..
+"4. Pengaturan Service: Untuk mengatur jalannya aplikasi pembaruan jadwal, pemutar suara waktu adzan, serta manajemen bot Telegram.<br>"..
 [[<br/><br/><a href="https://github.com/ajisetiawan716" target="_blank">Powered by ajisetiawan716</a>]])
 
 -- Load data kota dari JSON
@@ -299,6 +299,11 @@ status_jsholat = s3:option(DummyValue, "_status_jsholat", "Status Service Jshola
 status_jsholat.template = "jsholat/status_jsholat"
 status_jsholat.description = "Status: "
 
+-- Status service Bot Telegram
+status_bot_tg = s3:option(DummyValue, "_status_jsholat", "Status Service Bot Telegram")
+status_bot_tg.template = "jsholat/status_bot_telegram"
+status_bot_tg.description = "Status: "
+
 -- Fungsi untuk menampilkan status cron job jadwal
 cron_status = s3:option(DummyValue, "_cron_status", "Status Cronjob Jadwal")
 cron_status.rawhtml = true
@@ -322,12 +327,7 @@ debug_mode.default = "0"
 debug_mode.description = "Mode debug untuk logging lebih detail"
 
 -- Fungsi validasi untuk provinsi dan kota
--- Gantikan seluruh bagian on_save dan on_apply dengan ini:
-
-
--- Hapus seluruh manipulasi UCI langsung dari fungsi city.write
 -- Fungsi khusus untuk menangani perubahan kota
--- Ganti seluruh fungsi city.write dengan ini:
 function city.write(self, section, value)
     -- Dapatkan nilai terbaru dari form
     local city_val = luci.http.formvalue("cbid.jsholat."..section..".city_value") or value
