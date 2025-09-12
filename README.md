@@ -82,16 +82,17 @@ wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/re
 - Simpan (Save) dan Apply.
 - Daftar perintah bot Telegram
   ```
-  /jadwal - Lihat jadwal sholat hari ini
-  /jdwlbulan - Lihat jadwal sholat bulan ini
-  /setjadwal - Ubah sumber jadwal sholat
-  /lokasi - Lihat wilayah jadwal saat ini
-  /setlokasi - Ubah lokasi untuk jadwal sholat
-  /setvolume - Atur volume suara adzan (0-100)
-  /control - Kontrol service jsholat
-  /status - Lihat status pengaturan
-  /update - Update jadwal sholat terbaru
-  /help - Tampilkan bantuan ini
+	/jadwal - Lihat jadwal sholat hari ini
+	/jdwlbulan - Lihat jadwal sholat bulan ini
+	/setjadwal - Ubah sumber jadwal sholat
+	/lokasi - Lihat wilayah jadwal saat ini
+	/setlokasi - Ubah lokasi untuk jadwal sholat
+	/setvolume - Atur volume suara adzan (0-100)
+	/reminder - Atur durasi pengingat sholat
+	/control - Kontrol service jsholat
+	/status - Lihat status pengaturan
+	/update - Update jadwal sholat terbaru
+	/help - Tampilkan bantuan ini
   ```
 
 #### **f. Konfigurasi Speaker**
