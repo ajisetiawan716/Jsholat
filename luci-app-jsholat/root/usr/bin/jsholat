@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =============================================
-# JSHOLAT SERVICE SCRIPT v1.7.4 (FIXED)
+# JSHOLAT SERVICE SCRIPT v1.7.5 (FIXED)
 # Penjadwal dan Pemutar Adzan Otomatis
 # (C) 2025 Jsholat - @ajisetiawan716
 # Original script by Mikodemos
@@ -14,22 +14,75 @@ LOG_FILE="$LOG_DIR/service.log"
 MAX_LOG_SIZE=1048576  # 1MB
 DEBUG_MODE=$(uci -q get jsholat.setting.debug_mode || echo "0")
 
-# Variabel untuk tracking reminder
-REMINDER_IMSYAK=0
-REMINDER_SUBUH=0
-REMINDER_DZUHUR=0
-REMINDER_ASHAR=0
-REMINDER_MAGHRIB=0
-REMINDER_ISYA=0
+# File untuk menyimpan status reminder
+REMINDER_STATUS_FILE="/var/lib/jsholat/reminder_status"
+
+# Fungsi untuk menyimpan status reminder ke file
+save_reminder_status() {
+    local status_dir=$(dirname "$REMINDER_STATUS_FILE")
+    [ -d "$status_dir" ] || mkdir -p "$status_dir"
+    
+    echo "REMINDER_IMSYAK=$REMINDER_IMSYAK" > "$REMINDER_STATUS_FILE"
+    echo "REMINDER_SUBUH=$REMINDER_SUBUH" >> "$REMINDER_STATUS_FILE"
+    echo "REMINDER_DZUHUR=$REMINDER_DZUHUR" >> "$REMINDER_STATUS_FILE"
+    echo "REMINDER_ASHAR=$REMINDER_ASHAR" >> "$REMINDER_STATUS_FILE"
+    echo "REMINDER_MAGHRIB=$REMINDER_MAGHRIB" >> "$REMINDER_STATUS_FILE"
+    echo "REMINDER_ISYA=$REMINDER_ISYA" >> "$REMINDER_STATUS_FILE"
+    
+    [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "💾 Status reminder disimpan"
+}
+
+# Fungsi untuk membaca status reminder dari file
+load_reminder_status() {
+    local REMINDER_BEFORE=$(uci -q get jsholat.setting.reminder_before || echo "5")
+    
+    # ✅ JIKA REMINDER DINONAKTIFKAN, SKIP LOAD
+    if [ "$REMINDER_BEFORE" = "0" ]; then
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Skip load reminder status (fitur dinonaktifkan)"
+        return
+    fi
+    
+    if [ -f "$REMINDER_STATUS_FILE" ]; then
+        # Source file untuk load variabel
+        . "$REMINDER_STATUS_FILE"
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📖 Status reminder dimuat dari file"
+    else
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📖 File status reminder tidak ditemukan, menggunakan default"
+    fi
+}
 
 # Fungsi untuk reset reminder setiap hari baru
 reset_reminder_status() {
-    REMINDER_IMSYAK=0
-    REMINDER_SUBUH=0
-    REMINDER_DZUHUR=0
-    REMINDER_ASHAR=0
-    REMINDER_MAGHRIB=0
-    REMINDER_ISYA=0
+    local TODAY=$(date +"%d-%m-%Y")
+    local LAST_RESET_DATE=""
+    local REMINDER_BEFORE=$(uci -q get jsholat.setting.reminder_before || echo "5")
+    
+    # ✅ JIKA REMINDER DINONAKTIFKAN, SKIP RESET
+    if [ "$REMINDER_BEFORE" = "0" ]; then
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Skip reset reminder (fitur dinonaktifkan)"
+        return
+    fi
+    
+    # Cek file last reset date jika ada
+    if [ -f "/var/lib/jsholat/last_reset_date" ]; then
+        LAST_RESET_DATE=$(cat "/var/lib/jsholat/last_reset_date")
+    fi
+    
+    # Reset hanya jika hari berbeda
+    if [ "$LAST_RESET_DATE" != "$TODAY" ]; then
+        REMINDER_IMSYAK=0
+        REMINDER_SUBUH=0
+        REMINDER_DZUHUR=0
+        REMINDER_ASHAR=0
+        REMINDER_MAGHRIB=0
+        REMINDER_ISYA=0
+        
+        # Simpan tanggal reset terakhir
+        echo "$TODAY" > "/var/lib/jsholat/last_reset_date"
+        save_reminder_status
+        
+        log "INFO" "🔄 Status reminder direset untuk hari baru: $TODAY"
+    fi
 }
 
 # Fungsi konversi waktu ke detik yang lebih aman
@@ -110,7 +163,8 @@ init_log_system() {
 send_telegram() {
     local telegram_enabled=$(uci -q get jsholat.setting.telegram_enabled || echo "1")
     if [ "$telegram_enabled" = "0" ]; then
-        log "DEBUG" "Notifikasi Telegram dinonaktifkan"
+        log "INFO" "🔕 Notifikasi Telegram dinonaktifkan"
+		[ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Notifikasi Telegram dinonaktifkan"
         return
     fi
 
@@ -123,7 +177,7 @@ send_telegram() {
         return
     fi
 
-    curl -s -X POST \
+    curl -s --connect-timeout 10 --max-time 15 -X POST \
         "https://api.telegram.org/bot${telegram_token}/sendMessage" \
         -d chat_id="${chat_id}" \
         -d text="${message}" \
@@ -258,12 +312,6 @@ play_audio_ayat() {
 
 # Fungsi Pemutar Adzan dengan Fallback
 play_adzan() {
-    local sound_enabled=$(uci -q get jsholat.setting.sound_enabled || echo "1")
-    if [ "$sound_enabled" = "0" ]; then
-        log "INFO" "🔊 Pemutaran suara dinonaktifkan"
-        return
-    fi
-
     if [ $# -lt 3 ]; then
         log "ERROR" "Parameter kurang untuk play_adzan: file_path=$1, salat_name=$2, prayer_time=$3"
         return 1
@@ -277,23 +325,37 @@ play_adzan() {
     [ -n "$timezone" ] && timezone_display=" $timezone"
     local LOKASI=$(uci get jsholat.setting.city_label 2>/dev/null || echo "Wilayah Tidak Diketahui")
 
-    # Format pesan khusus untuk Imsyak
-    if [ "$salat_name" = "Imsyak" ]; then
-        send_telegram "🕌 *SAATNYA WAKTU IMSYAK*
+    # ✅ 1. KIRIM NOTIFIKASI JIKA TELEGRAM ENABLED
+    local telegram_enabled=$(uci -q get jsholat.setting.telegram_enabled || echo "1")
+    if [ "$telegram_enabled" = "1" ]; then
+        # Format pesan khusus untuk Imsyak
+        if [ "$salat_name" = "Imsyak" ]; then
+            send_telegram "🕌 *SAATNYA WAKTU IMSYAK*
   
 ⏰ *$salat_name*: $prayer_time$timezone_display
 📍 Untuk Wilayah: *$LOKASI* dan sekitarnya."
-    else
-        # Format pesan untuk waktu sholat lainnya
-        send_telegram "🕌 *SAATNYA WAKTU SHOLAT ${salat_name}*
+        else
+            # Format pesan untuk waktu sholat lainnya
+            send_telegram "🕌 *SAATNYA WAKTU SHOLAT ${salat_name}*
   
 ⏰ *$salat_name*: $prayer_time$timezone_display
 📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
   
 Selamat menunaikan sholat *$salat_name*."
+        fi
+    else
+	log "INFO" "🔕 Notifikasi waktu sholat dinonaktifkan"
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Notifikasi waktu sholat dinonaktifkan"
     fi
        
     log "INFO" "⏰ WAKTU SHOLAT: Saatnya waktu $salat_name untuk wilayah $LOKASI pada $prayer_time$timezone_display."
+    
+    # ✅ 2. CEK SOUND ENABLED UNTUK PEMUTARAN AUDIO
+    local sound_enabled=$(uci -q get jsholat.setting.sound_enabled || echo "1")
+    if [ "$sound_enabled" = "0" ]; then
+        log "INFO" "🔇 Pemutaran suara dinonaktifkan"
+        return 0
+    fi
     
     local volume_control=$(uci -q get jsholat.setting.volume_control || echo "hardware")
     local volume_level=$(uci -q get jsholat.setting.volume_level || echo "80")
@@ -317,7 +379,7 @@ Selamat menunaikan sholat *$salat_name*."
             
             # Coba madplay pertama
             if command -v madplay >/dev/null 2>&1; then
-                log "DEBUG" "Mencoba memutar dengan madplay..."
+                log "INFO" "▶ Mencoba memutar dengan madplay..."
                 if madplay "$audio_file" >/dev/null 2>&1; then
                     return 0
                 fi
@@ -325,7 +387,7 @@ Selamat menunaikan sholat *$salat_name*."
             
             # Fallback 1: mpg123 (jika tersedia)
             if command -v mpg123 >/dev/null 2>&1; then
-                log "DEBUG" "Fallback ke mpg123..."
+                log "INFO" "🔁 Fallback ke mpg123..."
                 if mpg123 -q "$audio_file" >/dev/null 2>&1; then
                     return 0
                 fi
@@ -378,12 +440,19 @@ reminder_before_prayer() {
     local reminder_mins=$(uci -q get jsholat.setting.reminder_before || echo "5")
     local LOKASI=$(uci get jsholat.setting.city_label 2>/dev/null || echo "Wilayah Tidak Diketahui")
     local ayat_enabled=$(uci -q get jsholat.setting.ayat_enabled || echo "1")
+    local telegram_enabled=$(uci -q get jsholat.setting.telegram_enabled || echo "1")
+    
+    # ✅ CEK JIKA REMINDER DINONAKTIFKAN (nilai 0)
+    if [ "$reminder_mins" = "0" ]; then
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Fitur reminder dinonaktifkan untuk semua waktu sholat"
+        return 1
+    fi
     
     # Skip jika reminder sudah dikirim
     case "$salat_name" in
         "Imsyak") [ "$REMINDER_IMSYAK" -eq 1 ] && return 1 ;;
         "Subuh") [ "$REMINDER_SUBUH" -eq 1 ] && return 1 ;;
-        "Dzuhur"|"Jumat") [ "$REMINDER_DZUHUR" -eq 1 ] && return 1 ;;  # ✅ Solusi inti
+        "Dzuhur"|"Jumat") [ "$REMINDER_DZUHUR" -eq 1 ] && return 1 ;;
         "Ashar") [ "$REMINDER_ASHAR" -eq 1 ] && return 1 ;;
         "Maghrib") [ "$REMINDER_MAGHRIB" -eq 1 ] && return 1 ;;
         "Isya") [ "$REMINDER_ISYA" -eq 1 ] && return 1 ;;
@@ -403,36 +472,41 @@ reminder_before_prayer() {
     if [ "$current_sec" -ge "$reminder_sec" ] && [ "$current_sec" -lt "$prayer_sec" ]; then
         log "INFO" "🔔 REMINDER: Waktu $salat_name untuk wilayah $LOKASI akan tiba dalam $reminder_mins menit ($prayer_time)"
 
-        # Format pesan dengan pengecekan timezone
-        local timezone_display=""
-        [ -n "$timezone" ] && timezone_display=" $timezone"
+        # Kirim notifikasi jika telegram enabled
+        if [ "$telegram_enabled" = "1" ]; then
+            # Format pesan dengan pengecekan timezone
+            local timezone_display=""
+            [ -n "$timezone" ] && timezone_display=" $timezone"
 
-        # Kirim reminder terlebih dahulu
-        send_telegram "🔔 *PENGINGAT SHOLAT*
+            # Kirim reminder terlebih dahulu
+            send_telegram "🔔 *PENGINGAT SHOLAT*
   
 Waktu *$salat_name* akan tiba dalam *$reminder_mins menit*!  
 🕒 Pukul: $prayer_time$timezone_display
 📍 Untuk Wilayah: *$LOKASI* dan sekitarnya."
 
-        # Tambahkan ayat acak jika fitur aktif
-        # Kirim ayat acak terpisah jika fitur aktif
-        if [ "$ayat_enabled" = "1" ]; then
-            local random_ayat=$(get_random_ayat)
-            if [ -n "$random_ayat" ]; then
-                send_telegram "$(printf "💫 *Ayat Pilihan Hari Ini*\n%s" "$random_ayat")"
+            # Kirim ayat acak terpisah jika fitur aktif
+            if [ "$ayat_enabled" = "1" ]; then
+                local random_ayat=$(get_random_ayat)
+                if [ -n "$random_ayat" ]; then
+                    send_telegram "$(printf "💫 *Ayat Pilihan Hari Ini*\n%s" "$random_ayat")"
+                fi
             fi
+        else
+            [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Notifikasi reminder dinonaktifkan"
         fi
         
         # Tandai reminder sudah dikirim
-		case "$salat_name" in
-			"Imsyak") REMINDER_IMSYAK=1 ;;
-			"Subuh") REMINDER_SUBUH=1 ;;
-			"Jumat") REMINDER_DZUHUR=1 ;;  # ✅ Update REMINDER_DZUHUR meski nama "Jumat"
-			"Dzuhur") REMINDER_DZUHUR=1 ;;
-			"Ashar") REMINDER_ASHAR=1 ;;
-			"Maghrib") REMINDER_MAGHRIB=1 ;;
-			"Isya") REMINDER_ISYA=1 ;;
-		esac
+        case "$salat_name" in
+            "Imsyak") REMINDER_IMSYAK=1 ;;
+            "Subuh") REMINDER_SUBUH=1 ;;
+            "Jumat") REMINDER_DZUHUR=1 ;;
+            "Dzuhur") REMINDER_DZUHUR=1 ;;
+            "Ashar") REMINDER_ASHAR=1 ;;
+            "Maghrib") REMINDER_MAGHRIB=1 ;;
+            "Isya") REMINDER_ISYA=1 ;;
+        esac
+        save_reminder_status
         return 0
     fi
     
@@ -446,6 +520,7 @@ Waktu *$salat_name* akan tiba dalam *$reminder_mins menit*!
             "Maghrib") REMINDER_MAGHRIB=0 ;;
             "Isya") REMINDER_ISYA=0 ;;
         esac
+        save_reminder_status
     fi
     
     return 1
@@ -454,10 +529,14 @@ Waktu *$salat_name* akan tiba dalam *$reminder_mins menit*!
 # Fungsi Utama Service
 run_service() {
     init_log_system
-    reset_reminder_status
+    # Jangan reset di sini, tapi load status yang ada
+    load_reminder_status  # ✅ LOAD STATUS YANG ADA
+    reset_reminder_status  # ✅ RESET HANYA JIKA HARI BERBEDA
+	
     log "INFO" "=========== SERVICE JSHOLAT DIMULAI ==========="
+    log "INFO" "📊 Status Reminder: Imsyak=$REMINDER_IMSYAK, Subuh=$REMINDER_SUBUH, Dzuhur=$REMINDER_DZUHUR, Ashar=$REMINDER_ASHAR, Maghrib=$REMINDER_MAGHRIB, Isya=$REMINDER_ISYA"
     
-    # Load konfigurasi
+	# Load konfigurasi
     local JADWAL=$(uci get jsholat.setting.file_jadwal 2>/dev/null)
     local FILE_ADZAN=$(uci get jsholat.setting.sound_adzan 2>/dev/null)
     local FILE_ADZAN_SHUBUH=$(uci get jsholat.setting.sound_adzan_shubuh 2>/dev/null)
@@ -465,6 +544,7 @@ run_service() {
     local LOKASI=$(uci get jsholat.setting.city_label 2>/dev/null)
     local TIMEZONE=$(uci -q get jsholat.setting.timezone_value || echo "")
     local SUMBER=$(uci get jsholat.setting.source 2>/dev/null)
+	local REMINDER_BEFORE=$(uci -q get jsholat.setting.reminder_before || echo "15")
     DEBUG_MODE=$(uci -q get jsholat.setting.debug_mode || echo "0")
     
     # Tambahan: Load konfigurasi kontrol fitur
@@ -473,17 +553,22 @@ run_service() {
     local SERVICE_ENABLED=$(uci -q get jsholat.setting.service || echo "1")
     
     # Log status fitur
-    log "INFO" "⚙️ Status Fitur:"
-    log "INFO" " - Service: $([ "$SERVICE_ENABLED" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
-    log "INFO" " - Notifikasi Telegram: $([ "$TELEGRAM_ENABLED" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
-    log "INFO" " - Pemutar Suara: $([ "$SOUND_ENABLED" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
-    log "INFO" " - Debug Mode: $([ "$DEBUG_MODE" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
+	log "INFO" "⚙️ Status Fitur:"
+	log "INFO" " - Service: $([ "$SERVICE_ENABLED" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
+	log "INFO" " - Notifikasi Telegram: $([ "$TELEGRAM_ENABLED" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
+	log "INFO" " - Pemutar Suara: $([ "$SOUND_ENABLED" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
+	log "INFO" " - Reminder Sholat: $([ "$REMINDER_BEFORE" = "0" ] && echo "NONAKTIF" || echo "AKTIF (${REMINDER_BEFORE} menit)")"
+	log "INFO" " - Ayat Acak: $([ "$AYAT_ENABLED" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
+	log "INFO" " - Debug Mode: $([ "$DEBUG_MODE" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
     
     # Validasi file
-    validate_file "$JADWAL" "Jadwal Sholat" || exit 1
-    validate_file "$FILE_ADZAN" "Suara Adzan" || exit 1
-    validate_file "$FILE_ADZAN_SHUBUH" "Suara Adzan Subuh" || exit 1
-    validate_file "$FILE_IMSYAK" "Suara Imsyak" || exit 1
+	# HANYA cek file audio kalau pemutar suara aktif
+	if [ "$SOUND_ENABLED" = "1" ]; then
+		validate_file "$JADWAL" "Jadwal Sholat" || exit 1
+		validate_file "$FILE_ADZAN" "Suara Adzan" || exit 1
+		validate_file "$FILE_ADZAN_SHUBUH" "Suara Adzan Subuh" || exit 1
+		validate_file "$FILE_IMSYAK" "Suara Imsyak" || exit 1
+	fi	
     
     # Log konfigurasi 
     log "INFO" "⚙️ Konfigurasi yang digunakan:"
@@ -501,7 +586,8 @@ run_service() {
     
     # Main Service Loop
     while true; do
-        local service_enabled=$(uci -q get jsholat.setting.service || echo "1")
+        local service_enabled=$(uci -q get jsholat.setting.service || echo "1")	
+		local REMINDER_BEFORE=$(uci -q get jsholat.setting.reminder_before || echo "5")
         if [ "$service_enabled" = "0" ]; then
             log "INFO" "Service dinonaktifkan, menunggu 60 detik..."
             sleep 60
@@ -576,13 +662,18 @@ run_service() {
             play_adzan "$FILE_ADZAN" "Isya" "$ISYA"
             sleep 60
         else
-            reminder_before_prayer "Imsyak" "$IMSYAK"
-            reminder_before_prayer "Subuh" "$SHUBUH"
-            reminder_before_prayer "$(get_salat_name "Dzuhur")" "$DZUHUR"
-            reminder_before_prayer "Ashar" "$ASHAR"
-            reminder_before_prayer "Maghrib" "$MAGHRIB"
-            reminder_before_prayer "Isya" "$ISYA"
-        fi
+			# ✅ HANYA CEK REMINDER JIKA FITUR AKTIF
+			if [ "$REMINDER_BEFORE" != "0" ]; then
+				reminder_before_prayer "Imsyak" "$IMSYAK"
+				reminder_before_prayer "Subuh" "$SHUBUH"
+				reminder_before_prayer "$(get_salat_name "Dzuhur")" "$DZUHUR" #cek jika hari Jumat
+				reminder_before_prayer "Ashar" "$ASHAR"
+				reminder_before_prayer "Maghrib" "$MAGHRIB"
+				reminder_before_prayer "Isya" "$ISYA"
+			else
+				[ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Skip pengecekan reminder (fitur dinonaktifkan)"
+			fi
+		fi
         
         sleep 5
     done
@@ -635,9 +726,8 @@ EOF
         echo "Instalasi berhasil! Service jsholat telah diaktifkan."
         ;;
     "uninstall")
-        /etc/init.d/jsholat stop
-        rm -f /usr/bin/jsholat
-        rm -f /etc/init.d/jsholat
+        opkg remove luci-app-jsholat
+        rm -rf /var/lib/jsholat  
         echo "jsholat berhasil dihapus"
         ;;
     "run")
