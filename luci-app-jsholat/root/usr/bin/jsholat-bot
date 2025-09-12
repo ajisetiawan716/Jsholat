@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # File: /usr/bin/jsholat-bot
 # Versi: 2.5
@@ -918,6 +918,77 @@ time_to_seconds_with_sec() {
     return 0
 }
 
+
+# Fungsi untuk mendapatkan info sholat berikutnya dengan format jam, menit, detik
+get_next_prayer_info() {
+    local current_time="$1"
+    local imsyak="$2"
+    local subuh="$3"
+    local dzuhur="$4"
+    local ashar="$5"
+    local magrib="$6"
+    local isya="$7"
+    
+    # Konversi waktu sekarang ke detik
+    local current_sec=$(time_to_seconds_with_sec "$current_time")
+    local next_prayer=""
+    local next_prayer_time=""
+    local next_prayer_sec=""
+
+    # Fungsi helper untuk cek waktu sholat berikutnya
+    check_next_prayer() {
+        local prayer_name="$1"
+        local prayer_time="$2"
+        # Konversi waktu sholat ke detik (format HH:MM tanpa detik)
+        local prayer_sec=$(time_to_seconds_with_sec "$prayer_time")
+        
+        if [ "$prayer_sec" -gt "$current_sec" ]; then
+            if [ -z "$next_prayer_time" ] || [ "$prayer_sec" -lt "$next_prayer_sec" ]; then
+                next_prayer="$prayer_name"
+                next_prayer_time="$prayer_time"
+                next_prayer_sec="$prayer_sec"
+            fi
+        fi
+    }
+    
+    # Cek semua waktu sholat
+    check_next_prayer "Imsyak" "$imsyak"
+    check_next_prayer "Subuh" "$subuh"
+    check_next_prayer "Dzuhur" "$dzuhur"
+    check_next_prayer "Ashar" "$ashar"
+    check_next_prayer "Maghrib" "$magrib"
+    check_next_prayer "Isya" "$isya"
+    
+    # Format info waktu berikutnya
+    if [ -n "$next_prayer" ]; then
+        local time_diff_sec=$(( next_prayer_sec - current_sec ))
+        
+        # Hitung jam, menit, detik
+        local hours=$(( time_diff_sec / 3600 ))
+        local minutes=$(( (time_diff_sec % 3600) / 60 ))
+        local seconds=$(( time_diff_sec % 60 ))
+        
+        local next_info="⏳ *Sholat berikutnya*: $next_prayer pukul $next_prayer_time"
+        
+        # Format countdown berdasarkan durasi
+        if [ "$hours" -gt 0 ]; then
+            # Lebih dari 1 jam: 6j 25m 17d
+            next_info+=" (${hours}j ${minutes}m ${seconds}d lagi)"
+        elif [ "$minutes" -gt 0 ]; then
+            # Kurang dari 1 jam: 25m 17d
+            next_info+=" (${minutes}m ${seconds}d lagi)"
+        else
+            # Kurang dari 1 menit: 17d
+            next_info+=" (${seconds}d lagi)"
+        fi
+        
+        echo "$next_info"
+    else
+        # Jika sudah melewati semua sholat hari ini
+        echo "⏳ *Sholat berikutnya*: Imsyak (besok pukul $imsyak)"
+    fi
+}
+
 # Fungsi untuk menampilkan jadwal sholat hari ini
 show_daily_schedule() {
     local chat_id="$1"
@@ -1049,69 +1120,6 @@ ${next_prayer_info}
 $update_info$source_info"
 
     return 0
-}
-
-# Fungsi untuk mendapatkan info sholat berikutnya (dengan detik)
-get_next_prayer_info() {
-    local current_time="$1"
-    local imsyak="$2"
-    local subuh="$3"
-    local dzuhur="$4"
-    local ashar="$5"
-    local magrib="$6"
-    local isya="$7"
-    
-    # Konversi waktu sekarang ke detik (dengan handle format HH:MM:SS)
-    local current_sec=$(time_to_seconds_with_sec "$current_time")
-    local next_prayer=""
-    local next_prayer_time=""
-    local next_prayer_sec=""
-
-    # Fungsi helper untuk cek waktu sholat berikutnya
-    check_next_prayer() {
-        local prayer_name="$1"
-        local prayer_time="$2"
-        # Konversi waktu sholat ke detik (format HH:MM tanpa detik)
-        local prayer_sec=$(time_to_seconds "$prayer_time")
-        
-        if [ "$prayer_sec" -gt "$current_sec" ]; then
-            if [ -z "$next_prayer_time" ] || [ "$prayer_sec" -lt "$next_prayer_sec" ]; then
-                next_prayer="$prayer_name"
-                next_prayer_time="$prayer_time"
-                next_prayer_sec="$prayer_sec"
-            fi
-        fi
-    }
-    
-    # Cek semua waktu sholat
-    check_next_prayer "Imsyak" "$imsyak"
-    check_next_prayer "Subuh" "$subuh"
-    check_next_prayer "Dzuhur" "$dzuhur"
-    check_next_prayer "Ashar" "$ashar"
-    check_next_prayer "Maghrib" "$magrib"
-    check_next_prayer "Isya" "$isya"
-    
-    # Format info waktu berikutnya
-    if [ -n "$next_prayer" ]; then
-        local time_diff_sec=$(( next_prayer_sec - current_sec ))
-        local time_diff_min=$(( time_diff_sec / 60 ))
-        local time_diff_sec_remain=$(( time_diff_sec % 60 ))
-        
-        local next_info="⏳ *Sholat berikutnya*: $next_prayer pukul $next_prayer_time"
-        
-        if [ "$time_diff_min" -gt 0 ]; then
-            if [ "$time_diff_sec_remain" -gt 0 ]; then
-                next_info+=" (${time_diff_min}m ${time_diff_sec_remain}s lagi)"
-            else
-                next_info+=" (${time_diff_min}m lagi)"
-            fi
-        else
-            next_info+=" (${time_diff_sec_remain}s lagi)"
-        fi
-        echo "$next_info"
-    else
-        echo "⏳ *Sholat berikutnya*: Imsyak (besok pukul $imsyak)"
-    fi
 }
 
 # Fungsi untuk menampilkan pesan bantuan
