@@ -8,10 +8,6 @@
 # Inisiasi pertama kali boot
 [ "$1" = "boot" ] && sleep 15
 
-# Load config UCI
-#CONFIG_FILE="/etc/config/jsholat"
-#[ -f "$CONFIG_FILE" ] && . $CONFIG_FILE
-
 # State management
 STATE_FILE="${1:-/tmp/last_update}"
 echo "Bot starting with state file: $STATE_FILE" >&2
@@ -35,9 +31,45 @@ log() {
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] - $log_message" >> "$LOG_FILE"
 }
 
+# Fungsi untuk load config UCI
+load_uci_config() {
+    # Section: schedule
+    SCHEDULE_COUNTRY=$(uci -q get jsholat.schedule.country || echo "Indonesia")
+    SCHEDULE_TIMEZONE=$(uci -q get jsholat.schedule.timezone_value || echo "Tidak diatur")
+    SCHEDULE_PROVINCE=$(uci -q get jsholat.schedule.province || echo "Tidak diketahui")
+    SCHEDULE_CITY_VALUE=$(uci -q get jsholat.schedule.city_value || echo "")
+    SCHEDULE_CITY_LABEL=$(uci -q get jsholat.schedule.city_label || echo "")
+    SCHEDULE_SOURCE=$(uci -q get jsholat.schedule.source || echo "jadwalsholat")
+    SCHEDULE_INTERVAL=$(uci -q get jsholat.schedule.interval || echo "monthly_special")
+    SCHEDULE_FILE_JADWAL=$(uci -q get jsholat.schedule.file_jadwal || echo "/usr/share/jsholat/jadwal.txt")
+    
+    # Section: sound
+    SOUND_VOLUME_CONTROL=$(uci -q get jsholat.sound.volume_control || echo "hardware")
+    SOUND_VOLUME_LEVEL=$(uci -q get jsholat.sound.volume_level || echo "60")
+    SOUND_MIXER_DEVICE=$(uci -q get jsholat.sound.mixer_device || echo "Speaker")
+    SOUND_ADZAN=$(uci -q get jsholat.sound.sound_adzan || echo "/usr/share/jsholat/adzan.mp3")
+    SOUND_ADZAN_SHUBUH=$(uci -q get jsholat.sound.sound_adzan_shubuh || echo "/usr/share/jsholat/adzan_subuh.mp3")
+    SOUND_ADZAN_IMSY=$(uci -q get jsholat.sound.sound_adzan_imsy || echo "/usr/share/jsholat/tarhim.mp3")
+    SOUND_REMINDER_BEFORE=$(uci -q get jsholat.sound.reminder_before || echo "15")
+    SOUND_ENABLED=$(uci -q get jsholat.sound.sound_enabled || echo "1")
+    
+    # Section: service
+    SERVICE_ENABLED=$(uci -q get jsholat.service.service || echo "1")
+    SERVICE_TELEGRAM_ENABLED=$(uci -q get jsholat.service.telegram_enabled || echo "1")
+    TELEGRAM_TOKEN=$(uci -q get jsholat.service.telegram_bot_token || echo "")
+    AUTHORIZED_CHAT_ID=$(uci -q get jsholat.service.telegram_chat_id || echo "")
+    DEBUG_MODE=$(uci -q get jsholat.service.debug_mode || echo "0")
+    SERVICE_AYAT_ENABLED=$(uci -q get jsholat.service.ayat_enabled || echo "0")
+}
 
-# Inisiasi debug mode
-DEBUG_MODE=$(uci -q get jsholat.service.debug_mode || echo "0")
+# Panggil fungsi untuk load config
+load_uci_config
+
+# Validasi token (setelah load config)
+[ -z "$TELEGRAM_TOKEN" ] && {
+    log "ERROR: ❌ Token bot Telegram tidak ditemukan!"
+    exit 1
+}
 
 # Trap errors
 #trap 'log "ERROR: Script terminated unexpectedly"; exit 1' ERR INT TERM
@@ -49,15 +81,6 @@ if ! command -v jq >/dev/null 2>&1; then
     log "ERROR: jq tidak terinstall. Silakan install package jq terlebih dahulu."
     exit 1
 fi
-
-TELEGRAM_TOKEN=$(uci get jsholat.service.telegram_bot_token 2>/dev/null)
-[ -z "$TELEGRAM_TOKEN" ] && {
-    log "ERROR: Token bot Telegram tidak ditemukan!"
-    exit 1
-}
-
-# Load authorized chat ID from config
-AUTHORIZED_CHAT_ID=$(uci -q get jsholat.service.telegram_chat_id || echo "")
 
 # Fungsi untuk mengecek authorization chat ID
 check_authorization() {
@@ -313,7 +336,13 @@ set_location() {
     uci set jsholat.schedule.city_value="$city_value"
     uci set jsholat.schedule.timezone_value="$timezone"
     uci commit jsholat
-
+	
+    # Update variabel config
+    SCHEDULE_CITY_LABEL="$city_label"
+    SCHEDULE_PROVINCE="$province"
+    SCHEDULE_CITY_VALUE="$city_value"
+    SCHEDULE_TIMEZONE="$timezone"
+	
     log "Lokasi disimpan: $city_label, $province ($timezone)"
 
     # Kirim konfirmasi
@@ -331,7 +360,7 @@ set_location() {
     # Proses output untuk ditampilkan
     while IFS= read -r line; do
         # Bersihkan line dari karakter khusus
-        clean_line=$(echo "$line" | sed -E 's/^\[[0-9-]+ [0-9:]+\] //')
+        clean_line=$(echo "$line" | sed 's/[[:cntrl:]]//g' | sed 's/"/\\"/g')
         
         curl -s -X POST \
         "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
@@ -581,6 +610,9 @@ update_service_status() {
     uci set jsholat.service.service="$status"
     uci commit jsholat
     /etc/init.d/jsholat restart
+	
+	# Update variabel config
+    SERVICE_ENABLED="$status"
     
     local status_text=$([ "$status" = "1" ] && echo "diaktifkan" || echo "dinonaktifkan")
     remove_keyboard "$chat_id" "$message_id" "✅ Service jsholat telah $status_text"
@@ -591,11 +623,14 @@ toggle_sound_setting() {
     local chat_id="$1"
     local message_id="$2"
     
-    local current_status=$(uci -q get jsholat.sound.sound_enabled || echo "1")
+    local current_status="$SOUND_ENABLED"
     local new_status=$([ "$current_status" = "1" ] && echo "0" || echo "1")
     
     uci set jsholat.sound.sound_enabled="$new_status"
     uci commit jsholat
+	
+	# Update variabel config
+    SOUND_ENABLED="$new_status"
     
     local status_text=$([ "$new_status" = "1" ] && echo "diaktifkan" || echo "dinonaktifkan")
     remove_keyboard "$chat_id" "$message_id" "🔊 Suara adzan telah $status_text"
@@ -606,11 +641,14 @@ toggle_telegram_setting() {
     local chat_id="$1"
     local message_id="$2"
     
-    local current_status=$(uci -q get jsholat.service.telegram_enabled || echo "1")
+    local current_status="$SERVICE_TELEGRAM_ENABLED"
     local new_status=$([ "$current_status" = "1" ] && echo "0" || echo "1")
     
     uci set jsholat.service.telegram_enabled="$new_status"
-    uci commit jsholat
+    uci commit jsholat    
+	
+	# Update variabel config
+    SERVICE_TELEGRAM_ENABLED="$new_status"
     
     local status_text=$([ "$new_status" = "1" ] && echo "diaktifkan" || echo "dinonaktifkan")
     remove_keyboard "$chat_id" "$message_id" "📱 Notifikasi Telegram telah $status_text"
@@ -621,7 +659,7 @@ show_reminder_menu() {
     local chat_id="$1"
     local message_id="$2"
     
-    local current_reminder=$(uci -q get jsholat.sound.reminder_before || echo "5")
+    local current_reminder="$SOUND_REMINDER_BEFORE"
     
     local keyboard='[[
         {"text": "🔕 OFF '$( [ "$current_reminder" = "0" ] && echo "✅" )'", "callback_data": "set_reminder_0"}
@@ -634,14 +672,16 @@ show_reminder_menu() {
         {"text": "❌ Batal", "callback_data": "cancel_update"}
     ]]'
     
+    local message=$(printf '🔔 *Pengaturan Pengingat Sholat*\nDurasi saat ini: *%s menit*' "$current_reminder")
+    
     if [ -z "$message_id" ]; then
-        send_inline_keyboard "$chat_id" "🔔 *Pengaturan Pengingat Sholat*\nDurasi saat ini: *${current_reminder} menit*" "$keyboard"
+        send_inline_keyboard "$chat_id" "$message" "$keyboard"
     else
         curl -s -X POST \
             "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
             -d chat_id="${chat_id}" \
             -d message_id="${message_id}" \
-            -d text="🔔 *Pengaturan Pengingat Sholat*\nDurasi saat ini: *${current_reminder} menit*" \
+            -d text="$message" \
             -d parse_mode="Markdown" \
             -d reply_markup="{\"inline_keyboard\":${keyboard}}" \
             > /dev/null 2>&1
@@ -655,7 +695,10 @@ set_reminder_duration() {
     local duration="$3"
     
     uci set jsholat.sound.reminder_before="$duration"
-    uci commit jsholat
+    uci commit jsholat    
+	
+	# Update variabel config
+    SOUND_REMINDER_BEFORE="$duration"
     
     local status_text=""
     if [ "$duration" = "0" ]; then
@@ -675,9 +718,9 @@ show_settings_menu() {
     local chat_id="$1"
     local message_id="$2"
     
-    local sound_status=$(uci -q get jsholat.sound.sound_enabled || echo "1")
-    local telegram_status=$(uci -q get jsholat.service.telegram_enabled || echo "1")
-    local reminder_status=$(uci -q get jsholat.sound.reminder_before || echo "15")
+    local sound_status="$SOUND_ENABLED"
+    local telegram_status="$SERVICE_TELEGRAM_ENABLED"
+    local reminder_status="$SOUND_REMINDER_BEFORE"
     
     local sound_text=$([ "$sound_status" = "1" ] && echo "🔊 ON" || echo "🔇 OFF")
     local telegram_text=$([ "$telegram_status" = "1" ] && echo "📱 ON" || echo "📵 OFF")
@@ -712,7 +755,7 @@ show_control_menu() {
     local chat_id="$1"
     local message_id="$2"
     
-    local current_status=$(uci -q get jsholat.service.service || echo "1")
+    local current_status="$SERVICE_ENABLED"
     local status_text=$([ "$current_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
     
     local keyboard='[[
@@ -745,7 +788,7 @@ show_source_menu() {
     local chat_id="$1"
     local message_id="$2"
     
-    local current_source=$(uci -q get jsholat.schedule.source || echo "jadwalsholat")
+    local current_source="$SCHEDULE_SOURCE"
     
     local keyboard='[[
         {"text": "JadwalSholat.org '$( [ "$current_source" = "jadwalsholat" ] && echo "✅" )'", "callback_data": "set_source_jadwalsholat"}
@@ -786,7 +829,10 @@ set_jadwal_source() {
         log "Mengatur method ke 20 untuk AlAdhan API"
     fi
     
-    uci commit jsholat
+    uci commit jsholat    
+	
+	# Update variabel config
+    SCHEDULE_SOURCE="$source"
     
     local source_name=""
     case "$source" in
@@ -803,7 +849,7 @@ set_jadwal_source() {
 # Fungsi untuk menampilkan menu volume
 show_volume_menu() {
     local chat_id="$1"
-    local current_volume=$(uci -q get jsholat.sound.volume_level || echo "60")
+    local current_volume="$SOUND_VOLUME_LEVEL"
     
     local keyboard='[[
         {"text": "🔇 0%", "callback_data": "set_volume_0"},
@@ -811,10 +857,14 @@ show_volume_menu() {
         {"text": "🔉 50%", "callback_data": "set_volume_50"}
     ],[
         {"text": "🔊 75%", "callback_data": "set_volume_75"},
+        {"text": "🔊 80%", "callback_data": "set_volume_80"},
+        {"text": "🔊 85%", "callback_data": "set_volume_85"},
+        {"text": "🔊 90%", "callback_data": "set_volume_90"},
+        {"text": "🔊 95%", "callback_data": "set_volume_95"},
         {"text": "📢 100%", "callback_data": "set_volume_100"},
         {"text": "🎧 Tes Suara", "callback_data": "test_volume"}
     ],[
-        {"text": "⬅️ Kembali", "callback_data": "back_to_control"}
+        {"text": "❌ Batal", "callback_data": "cancel_update"}
     ]]'
     
     send_inline_keyboard "$chat_id" "🔊 *Pengaturan Volume*\nVolume saat ini: *${current_volume}%*" "$keyboard"
@@ -829,6 +879,9 @@ set_volume() {
     # Simpan ke config
     uci set jsholat.sound.volume_level="$volume_level"
     uci commit jsholat
+	
+   # Update variabel config
+    SOUND_VOLUME_LEVEL="$volume_level"	
     
     # Terapkan volume (contoh menggunakan alsa)
     amixer -q set Master "${volume_level}%" >/dev/null 2>&1 || true
@@ -836,7 +889,7 @@ set_volume() {
     # Bangun keyboard dengan tombol tes suara
     local keyboard='[[
         {"text": "🎧 Tes Suara", "callback_data": "test_volume"},
-        {"text": "⬅️ Kembali", "callback_data": "back_to_control"}
+        {"text": "⬅️ Kembali", "callback_data": "set_volume()"}
     ]]'
     
     # Edit pesan untuk menampilkan konfirmasi
@@ -849,14 +902,14 @@ set_volume() {
         -d reply_markup="{\"inline_keyboard\":${keyboard}}" \
         > /dev/null 2>&1
     
-    log "Volume diatur ke ${volume_level}%"
+    log "🔊 Volume diatur ke ${volume_level}%"
 }
 
 # Fungsi untuk menguji suara
 test_volume() {
     local chat_id="$1"
     local message_id="$2"
-    local volume_level=$(uci -q get jsholat.sound.volume_level || echo "60")
+    local volume_level="$SOUND_VOLUME_LEVEL"
     
     # Edit pesan untuk menunjukkan sedang memainkan suara
     curl -s -X POST \
@@ -867,18 +920,33 @@ test_volume() {
         -d parse_mode="Markdown" \
         > /dev/null 2>&1
     
-    # Mainkan suara uji (contoh menggunakan beep atau file audio)
-    # Anda bisa mengganti ini dengan perintah play audio yang sesuai
+    # Mainkan suara uji
     speaker-test -D default -t sine -f 1000 -l 1 >/dev/null 2>&1
     
-    # Edit pesan lagi setelah selesai
+    # Edit pesan lagi setelah selesai - TIDAK perlu tombol kembali di sini
     curl -s -X POST \
         "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
         -d chat_id="${chat_id}" \
         -d message_id="${message_id}" \
         -d text="✅ Tes suara selesai pada volume *${volume_level}%*" \
         -d parse_mode="Markdown" \
-        -d reply_markup="{\"inline_keyboard\":[[{\"text\":\"⬅️ Kembali\",\"callback_data\":\"back_to_control\"}]]}" \
+        > /dev/null 2>&1
+    
+    # Tunggu sebentar lalu hapus pesan dan kembali ke volume menu
+    sleep 2
+    delete_message "$chat_id" "$message_id"
+    show_volume_menu "$chat_id"
+}
+
+# Tambahkan fungsi delete_message
+delete_message() {
+    local chat_id="$1"
+    local message_id="$2"
+    
+    curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/deleteMessage" \
+        -d chat_id="${chat_id}" \
+        -d message_id="${message_id}" \
         > /dev/null 2>&1
 }
 
@@ -1015,8 +1083,8 @@ show_daily_schedule() {
     local month_name=$(date +"%B")
     local year=$(date +"%Y")
     local today=$(date +"%d-%m-%Y")  
-    local timezone=$(uci -q get jsholat.schedule.timezone_value || echo "")  
-    local jadwal_file=$(uci get jsholat.schedule.file_jadwal 2>/dev/null)
+    local timezone="$SCHEDULE_TIMEZONE"
+    local jadwal_file="$SCHEDULE_FILE_JADWAL"
     
     # Dapatkan waktu saat ini dengan format yang termasuk detik
     local current_time=$(date +"%H:%M:%S")           # 24 jam dengan detik
@@ -1078,8 +1146,8 @@ show_daily_schedule() {
     local ashar=$(echo "$jadwal" | awk '{print $5}')
     local magrib=$(echo "$jadwal" | awk '{print $6}')
     local isya=$(echo "$jadwal" | awk '{print $7}')
-    local lokasi=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Tidak diketahui")
-    local provinsi=$(uci get jsholat.schedule.province 2>/dev/null || echo "Tidak diketahui")
+    local lokasi="$SCHEDULE_CITY_LABEL"
+    local provinsi="$SCHEDULE_PROVINCE"
     
     # Translate day and month to Indonesian
     case "$day_name" in
@@ -1195,8 +1263,8 @@ process_message() {
             send_monthly_schedule "$chat_id"
             ;;
         "/lokasi")
-            local lokasi=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Tidak diketahui")
-            local provinsi=$(uci get jsholat.schedule.province 2>/dev/null || echo "Tidak diketahui")
+            local lokasi="$SCHEDULE_CITY_LABEL"
+            local provinsi="$SCHEDULE_PROVINCE"
             send_message "$chat_id" "📍 Lokasi jadwal saat ini: *$lokasi, $provinsi*"
             ;;
         "/control")
@@ -1206,15 +1274,15 @@ process_message() {
             show_volume_menu "$chat_id"
             ;;    
         "/status")
-            local city_label=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Tidak diketahui")
-            local provinsi=$(uci get jsholat.schedule.province 2>/dev/null || echo "Tidak diketahui")
-            local service_status=$(uci get jsholat.service.service 2>/dev/null || echo "1")
-            local sound_status=$(uci get jsholat.sound.sound_enabled 2>/dev/null || echo "1")
-            local telegram_status=$(uci get jsholat.service.telegram_enabled 2>/dev/null || echo "1")
-            local timezone=$(uci -q get jsholat.schedule.timezone_value || echo "Tidak diatur")
-            local source=$(uci -q get jsholat.schedule.source || echo "jadwalsholat")
-            local interval=$(uci -q get jsholat.schedule.interval || echo "3600")
-			local reminder_status=$(uci -q get jsholat.sound.reminder_before || echo "15")
+            local city_label="$SCHEDULE_CITY_LABEL"
+            local provinsi="$SCHEDULE_PROVINCE"
+            local service_status="$SERVICE_ENABLED"
+            local sound_status="$SOUND_ENABLED"
+            local telegram_status="$SERVICE_TELEGRAM_ENABLED"
+            local timezone="$SCHEDULE_TIMEZONE"
+            local source="$SCHEDULE_SOURCE"
+            local interval="$SCHEDULE_INTERVAL"
+			local reminder_status="$SOUND_REMINDER_BEFORE"
 
             # Convert status to human-readable format
             service_status=$([ "$service_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
@@ -1331,7 +1399,7 @@ process_callback() {
             remove_keyboard "$chat_id" "$message_id" "🛠 Kontrol service selesai"
             ;;
         "status")
-            local current_status=$(uci -q get jsholat.service.service || echo "1")
+            local current_status="$SERVICE_ENABLED"
             local status_text=$([ "$current_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
             
             curl -s -X POST \
@@ -1363,6 +1431,9 @@ process_callback() {
         "back_to_control")
             show_control_menu "$chat_id" "$message_id"
             ;;
+		"back_to_volume")
+			show_volume_menu "$chat_id" "$message_id"
+			;;	
         "set_source_jadwalsholat")
             set_jadwal_source "$chat_id" "$message_id" "jadwalsholat"
             ;;
