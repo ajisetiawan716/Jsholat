@@ -5,7 +5,7 @@
 
 # ===== CONFIGURATION =====
 # Prioritaskan argumen command line jika ada, jika tidak gunakan konfig UCI
-API_SOURCE="${1:-$(uci get jsholat.setting.source 2>/dev/null || echo "aladhan")}"
+API_SOURCE="${1:-$(uci get jsholat.schedule.source 2>/dev/null || echo "aladhan")}"
 LAST_UPDATED_FILE="/usr/share/jsholat/last_updated.txt"
 
 # ===== FUNGSI VALIDASI =====
@@ -87,12 +87,12 @@ get_city_id() {
 # ===== API SOURCE FUNCTIONS =====
 update_aladhan() {
     # Baca konfigurasi dari UCI
-    CITY_VALUE=$(uci get jsholat.setting.city_value 2>/dev/null)
-    CITY_LABEL=$(uci get jsholat.setting.city_label 2>/dev/null)
-    PROVINCE=$(uci get jsholat.setting.province 2>/dev/null)
-    COUNTRY=$(uci get jsholat.setting.country 2>/dev/null)
-    METHOD=$(uci get jsholat.setting.method 2>/dev/null || echo "20")
-    JADWAL_FILE=$(uci get jsholat.setting.file_jadwal 2>/dev/null)
+    CITY_VALUE=$(uci get jsholat.schedule.city_value 2>/dev/null)
+    CITY_LABEL=$(uci get jsholat.schedule.city_label 2>/dev/null)
+    PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null)
+    COUNTRY=$(uci get jsholat.schedule.country 2>/dev/null)
+    METHOD=$(uci get jsholat.schedule.method 2>/dev/null || echo "20")
+    JADWAL_FILE=$(uci get jsholat.schedule.file_jadwal 2>/dev/null)
 
     CITY=$(capitalize "$CITY_VALUE")
 
@@ -168,13 +168,13 @@ update_aladhan() {
 
 update_jadwalsholatorg() {
     # Baca konfigurasi dari UCI
-    CITY=$(uci get jsholat.setting.city_value | awk '{print tolower($0)}' | sed 's/-//g')
-    CITY_LABEL=$(uci get jsholat.setting.city_label 2>/dev/null)
-    PROVINCE=$(uci get jsholat.setting.province 2>/dev/null)
-    COUNTRY=$(uci get jsholat.setting.country 2>/dev/null)
+    CITY=$(uci get jsholat.schedule.city_value | awk '{print tolower($0)}' | sed 's/-//g')
+    CITY_LABEL=$(uci get jsholat.schedule.city_label 2>/dev/null)
+    PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null)
+    COUNTRY=$(uci get jsholat.schedule.country 2>/dev/null)
     YEAR=$(date +"%Y")
     MONTH=$(date +"%m")
-    JADWAL_FILE=$(uci get jsholat.setting.file_jadwal)
+    JADWAL_FILE=$(uci get jsholat.schedule.file_jadwal)
     CURRENT_TIME=$(date +"%d-%m-%Y %H:%M:%S")
 
     logger "jadwal: Memulai pembaruan jadwal sholat pada $CURRENT_TIME (JadwalSholat.Org)"
@@ -250,13 +250,13 @@ update_jadwalsholatorg() {
 
 update_myquran() {
     # Baca konfigurasi
-    CITY=$(uci get jsholat.setting.city_value 2>/dev/null | awk '{print tolower($0)}' | sed 's/-//g')
-    CITY_LABEL=$(uci get jsholat.setting.city_label 2>/dev/null)
-    PROVINCE=$(uci get jsholat.setting.province 2>/dev/null)
-    COUNTRY=$(uci get jsholat.setting.country 2>/dev/null)
+    CITY=$(uci get jsholat.schedule.city_value 2>/dev/null | awk '{print tolower($0)}' | sed 's/-//g')
+    CITY_LABEL=$(uci get jsholat.schedule.city_label 2>/dev/null)
+    PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null)
+    COUNTRY=$(uci get jsholat.schedule.country 2>/dev/null)
     YEAR=$(date +"%Y")
     MONTH=$(date +"%m")
-    JADWAL_FILE=$(uci get jsholat.setting.file_jadwal)
+    JADWAL_FILE=$(uci get jsholat.schedule.file_jadwal)
     CURRENT_TIME=$(date +"%d-%m-%Y %H:%M:%S") # Format ISO 8601
 
     echo "Memulai pembaruan jadwal sholat pada $CURRENT_TIME (myQuran API)"
@@ -335,13 +335,13 @@ update_myquran() {
 }
 update_apiajimedia() {
     # Baca konfigurasi dari UCI
-PROVINCE=$(uci get jsholat.setting.province 2>/dev/null | awk '{print tolower($0)}' | sed 's/ /+/g')
-CITY_LABEL=$(uci get jsholat.setting.city_label 2>/dev/null)
-CITY_VALUE=$(uci get jsholat.setting.city_value 2>/dev/null)
-COUNTRY=$(uci get jsholat.setting.country 2>/dev/null)
+PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null | awk '{print tolower($0)}' | sed 's/ /+/g')
+CITY_LABEL=$(uci get jsholat.schedule.city_label 2>/dev/null)
+CITY_VALUE=$(uci get jsholat.schedule.city_value 2>/dev/null)
+COUNTRY=$(uci get jsholat.schedule.country 2>/dev/null)
 YEAR=$(date +"%Y")
 MONTH=$(date +"%m")
-JADWAL_FILE=$(uci get jsholat.setting.file_jadwal)
+JADWAL_FILE=$(uci get jsholat.schedule.file_jadwal)
 LAST_UPDATED_FILE="/usr/share/jsholat/last_updated.txt"
 CURRENT_TIME=$(date +"%d-%m-%Y %H:%M:%S")
 
@@ -396,7 +396,7 @@ printf "%b\n" "$(daftar_kota_yang_tersedia)"
 }
 
     logger "jadwal: Memulai pembaruan jadwal sholat pada $CURRENT_TIME (API AjiMedia)"
-    echo "Membaca data jadwal sholat bulan $MONTH tahun $YEAR untuk $CITY_LABEL, $(uci get jsholat.setting.province 2>/dev/null), $COUNTRY..."
+    echo "Membaca data jadwal sholat bulan $MONTH tahun $YEAR untuk $CITY_LABEL, $(uci get jsholat.schedule.province 2>/dev/null), $COUNTRY..."
     
     # Dapatkan data kota yang cocok
     MATCHED_CITY=$(match_city "$CITY_VALUE" "$PROVINCE")
@@ -411,7 +411,7 @@ printf "%b\n" "$(daftar_kota_yang_tersedia)"
     
     # Update city_value jika berupa ID
     if [[ "$CITY_VALUE" =~ ^[0-9a-f]{32}$ ]]; then
-        uci set jsholat.setting.city_value="$API_CITY_NAME"
+        uci set jsholat.schedule.city_value="$API_CITY_NAME"
         uci commit jsholat
     fi
     
@@ -479,7 +479,7 @@ printf "%b\n" "$(daftar_kota_yang_tersedia)"
     
     echo "Sedang menyimpan semua data jadwal sholat..."
     sleep 3
-    echo '{"status":"success","last_updated":"'"$CURRENT_TIME"'","data_source":"API AjiMedia","location":{"city":"'"$CITY_LABEL"'","city_value":"'"$CITY_VALUE"'","province":"'"$(uci get jsholat.setting.province 2>/dev/null)"'","country":"'"$COUNTRY"'"}}' > "$LAST_UPDATED_FILE"
+    echo '{"status":"success","last_updated":"'"$CURRENT_TIME"'","data_source":"API AjiMedia","location":{"city":"'"$CITY_LABEL"'","city_value":"'"$CITY_VALUE"'","province":"'"$(uci get jsholat.schedule.province 2>/dev/null)"'","country":"'"$COUNTRY"'"}}' > "$LAST_UPDATED_FILE"
     
     echo "Jadwal sholat berhasil diperbarui pada $CURRENT_TIME (API AjiMedia)."
     logger "jadwal: Jadwal sholat berhasil diperbarui pada $CURRENT_TIME (API AjiMedia)"

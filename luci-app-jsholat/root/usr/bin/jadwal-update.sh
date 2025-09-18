@@ -8,10 +8,10 @@ LOG_TAG="jadwal-update"
 MAX_LOG_SIZE=1048576  # 1MB
 MAX_RETRIES=3
 RETRY_DELAY=300  # 5 menit
-JADWAL_FILE=$(uci get jsholat.setting.file_jadwal)
+JADWAL_FILE=$(uci get jsholat.schedule.file_jadwal)
 LAST_UPDATED_FILE="/usr/share/jsholat/last_updated.txt"
 EXPIRY_THRESHOLD=$((36 * 3600))  # 36 jam
-DEBUG_MODE=$(uci -q get jsholat.setting.debug_mode || echo "0")
+DEBUG_MODE=$(uci -q get jsholat.service.debug_mode || echo "0")
 
 # ===== FUNGSI UTILITAS =====
 
@@ -90,8 +90,8 @@ check_jadwal_file() {
 has_config_changed() {
     [ ! -f "$LAST_UPDATED_FILE" ] && return 0
     
-    local current_source=$(uci get jsholat.setting.source)
-    local current_city=$(uci get jsholat.setting.city_value | awk '{print tolower($0)}')
+    local current_source=$(uci get jsholat.schedule.source)
+    local current_city=$(uci get jsholat.schedule.city_value | awk '{print tolower($0)}')
     
     local last_source_json=$(jq -r '.data_source' "$LAST_UPDATED_FILE" 2>/dev/null)
     local last_source
@@ -142,7 +142,7 @@ is_jadwal_expired() {
 
     local now_epoch=$(date +%s)
     local age=$((now_epoch - last_epoch))
-    local interval=$(uci get jsholat.setting.interval 2>/dev/null || echo "3600")
+    local interval=$(uci get jsholat.schedule.interval 2>/dev/null || echo "3600")
 
     # Handle monthly_special interval
     if [ "$interval" = "monthly_special" ]; then
@@ -171,7 +171,7 @@ is_jadwal_expired() {
 
 run_update() {
     local source_override="$1"
-    local source="${source_override:-$(uci get jsholat.setting.source || echo "aladhan")}"
+    local source="${source_override:-$(uci get jsholat.schedule.source || echo "aladhan")}"
 
     log "Memulai update dari sumber: $source"
 
@@ -219,7 +219,7 @@ run_update_with_retry() {
         
         # Tambahan debug info untuk interval
         [ "$DEBUG_MODE" = "1" ] && {
-            local interval=$(uci get jsholat.setting.interval 2>/dev/null || echo "default")
+            local interval=$(uci get jsholat.schedule.interval 2>/dev/null || echo "default")
             log "DEBUG: Interval setting: $interval"
         }
         
@@ -234,7 +234,7 @@ run_update_with_retry() {
         local interval_info=""
         
         # Tambahan info interval khusus
-        if [ "$(uci get jsholat.setting.interval 2>/dev/null)" = "monthly_special" ]; then
+        if [ "$(uci get jsholat.schedule.interval 2>/dev/null)" = "monthly_special" ]; then
             interval_info=" (Pembaruan bulanan)"
         fi
         
@@ -242,8 +242,8 @@ run_update_with_retry() {
     fi
 
     if has_config_changed; then
-        local current_source=$(uci get jsholat.setting.source)
-        local current_city=$(uci get jsholat.setting.city_value)
+        local current_source=$(uci get jsholat.schedule.source)
+        local current_city=$(uci get jsholat.schedule.city_value)
         local last_source=$(jq -r '.data_source' "$LAST_UPDATED_FILE" 2>/dev/null)
         local last_city=$(jq -r '.location.city_value' "$LAST_UPDATED_FILE" 2>/dev/null)
         

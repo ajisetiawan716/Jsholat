@@ -101,7 +101,8 @@ wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/re
    ```bash
    opkg list-installed | grep alsa-utils
    ```
-2. (Opsional) Tes suara:
+2. Melalui perintah `jsi` kemudian pilih No.2 Install driver soundcard. Seharusnya driver dapat ter-install secara otomatis.
+3. (Opsional) Tes suara:
    ```bash
    speaker-test -D default -t sine -f 1000 -l 1
    ```

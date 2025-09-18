@@ -9,8 +9,8 @@
 [ "$1" = "boot" ] && sleep 15
 
 # Load config UCI
-CONFIG_FILE="/etc/config/jsholat"
-[ -f "$CONFIG_FILE" ] && . $CONFIG_FILE
+#CONFIG_FILE="/etc/config/jsholat"
+#[ -f "$CONFIG_FILE" ] && . $CONFIG_FILE
 
 # State management
 STATE_FILE="${1:-/tmp/last_update}"
@@ -37,7 +37,7 @@ log() {
 
 
 # Inisiasi debug mode
-DEBUG_MODE=$(uci -q get jsholat.setting.debug_mode || echo "0")
+DEBUG_MODE=$(uci -q get jsholat.service.debug_mode || echo "0")
 
 # Trap errors
 #trap 'log "ERROR: Script terminated unexpectedly"; exit 1' ERR INT TERM
@@ -50,14 +50,14 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 1
 fi
 
-TELEGRAM_TOKEN=$(uci get jsholat.setting.telegram_bot_token 2>/dev/null)
+TELEGRAM_TOKEN=$(uci get jsholat.service.telegram_bot_token 2>/dev/null)
 [ -z "$TELEGRAM_TOKEN" ] && {
     log "ERROR: Token bot Telegram tidak ditemukan!"
     exit 1
 }
 
 # Load authorized chat ID from config
-AUTHORIZED_CHAT_ID=$(uci -q get jsholat.setting.telegram_chat_id || echo "")
+AUTHORIZED_CHAT_ID=$(uci -q get jsholat.service.telegram_chat_id || echo "")
 
 # Fungsi untuk mengecek authorization chat ID
 check_authorization() {
@@ -206,14 +206,20 @@ show_location_results() {
 
     if ! search_location "$query"; then
         log "Pencarian gagal untuk: $query"
-        local example_cities=$(jq -r '.DKI_Jakarta[0,1,2] | .label' "$CITIES_FILE" | tr '\n' ', ')
-        local error_msg="❌ Tidak ditemukan lokasi dengan kata kunci '$query'"
-        error_msg+="\n\nContoh pencarian yang valid: ${example_cities%,}"
         
+        # Ambil contoh kota yang valid
+        local example_cities=$(jq -r '.[][0:2].label' "$CITIES_FILE" 2>/dev/null | head -n 3 | grep -v null | tr '\n' ', ' | sed 's/,$//')
+        if [ -z "$example_cities" ]; then
+            example_cities="Jakarta, Bandung, Surabaya"
+        fi
+        
+        # Langsung gunakan printf dalam send_message
         if [ -z "$message_id" ]; then
-            send_message "$chat_id" "$error_msg"
+            send_message "$chat_id" "$(printf '❌ Tidak ditemukan lokasi dengan kata kunci '\''%s'\''\n\nContoh pencarian yang valid: %s\n\nPastikan mengetik nama kota/kabupaten dengan benar.' "$query" "$example_cities")"
         else
-            remove_keyboard "$chat_id" "$message_id" "$error_msg"
+            remove_keyboard
+
+ "$chat_id" "$message_id" "$(printf '❌ Tidak ditemukan lokasi dengan kata kunci '\''%s'\''\n\nContoh pencarian yang valid: %s\n\nPastikan mengetik nama kota/kabupaten dengan benar.' "$query" "$example_cities")"
         fi
         return 1
     fi
@@ -302,10 +308,10 @@ set_location() {
     local city_label=$(echo "$location_info" | jq -r '.label')
 
     # Simpan ke config
-    uci set jsholat.setting.city_label="$city_label"
-    uci set jsholat.setting.province="$province"
-    uci set jsholat.setting.city_value="$city_value"
-    uci set jsholat.setting.timezone_value="$timezone"
+    uci set jsholat.schedule.city_label="$city_label"
+    uci set jsholat.schedule.province="$province"
+    uci set jsholat.schedule.city_value="$city_value"
+    uci set jsholat.schedule.timezone_value="$timezone"
     uci commit jsholat
 
     log "Lokasi disimpan: $city_label, $province ($timezone)"
@@ -355,13 +361,23 @@ send_message() {
     local text="$2"
     local parse_mode="${3:-Markdown}"
     
-    log "Mengirim pesan ke chat_id=$chat_id dengan isi: $text"
+    # Generate JSON payload dengan jq (jika available)
+    local json_payload=$(jq -n \
+        --arg chat_id "$chat_id" \
+        --arg text "$text" \
+        --arg parse_mode "$parse_mode" \
+        '{
+            chat_id: $chat_id,
+            text: $text,
+            parse_mode: $parse_mode
+        }')
+    
+    log "Mengirim pesan ke chat_id=$chat_id"
     
     local response=$(curl -s -X POST \
         "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-        -d chat_id="${chat_id}" \
-        -d text="${text}" \
-        -d parse_mode="${parse_mode}")
+        -H "Content-Type: application/json" \
+        -d "$json_payload")
     
     [ "$DEBUG_MODE" = "1" ] && log "Response sendMessage: $response"
     echo "$response"
@@ -562,7 +578,7 @@ update_service_status() {
     local message_id="$2"
     local status="$3"
     
-    uci set jsholat.setting.service="$status"
+    uci set jsholat.service.service="$status"
     uci commit jsholat
     /etc/init.d/jsholat restart
     
@@ -575,10 +591,10 @@ toggle_sound_setting() {
     local chat_id="$1"
     local message_id="$2"
     
-    local current_status=$(uci -q get jsholat.setting.sound_enabled || echo "1")
+    local current_status=$(uci -q get jsholat.sound.sound_enabled || echo "1")
     local new_status=$([ "$current_status" = "1" ] && echo "0" || echo "1")
     
-    uci set jsholat.setting.sound_enabled="$new_status"
+    uci set jsholat.sound.sound_enabled="$new_status"
     uci commit jsholat
     
     local status_text=$([ "$new_status" = "1" ] && echo "diaktifkan" || echo "dinonaktifkan")
@@ -590,10 +606,10 @@ toggle_telegram_setting() {
     local chat_id="$1"
     local message_id="$2"
     
-    local current_status=$(uci -q get jsholat.setting.telegram_enabled || echo "1")
+    local current_status=$(uci -q get jsholat.service.telegram_enabled || echo "1")
     local new_status=$([ "$current_status" = "1" ] && echo "0" || echo "1")
     
-    uci set jsholat.setting.telegram_enabled="$new_status"
+    uci set jsholat.service.telegram_enabled="$new_status"
     uci commit jsholat
     
     local status_text=$([ "$new_status" = "1" ] && echo "diaktifkan" || echo "dinonaktifkan")
@@ -605,7 +621,7 @@ show_reminder_menu() {
     local chat_id="$1"
     local message_id="$2"
     
-    local current_reminder=$(uci -q get jsholat.setting.reminder_before || echo "5")
+    local current_reminder=$(uci -q get jsholat.sound.reminder_before || echo "5")
     
     local keyboard='[[
         {"text": "🔕 OFF '$( [ "$current_reminder" = "0" ] && echo "✅" )'", "callback_data": "set_reminder_0"}
@@ -638,7 +654,7 @@ set_reminder_duration() {
     local message_id="$2"
     local duration="$3"
     
-    uci set jsholat.setting.reminder_before="$duration"
+    uci set jsholat.sound.reminder_before="$duration"
     uci commit jsholat
     
     local status_text=""
@@ -659,9 +675,9 @@ show_settings_menu() {
     local chat_id="$1"
     local message_id="$2"
     
-    local sound_status=$(uci -q get jsholat.setting.sound_enabled || echo "1")
-    local telegram_status=$(uci -q get jsholat.setting.telegram_enabled || echo "1")
-    local reminder_status=$(uci -q get jsholat.setting.reminder_before || echo "15")
+    local sound_status=$(uci -q get jsholat.sound.sound_enabled || echo "1")
+    local telegram_status=$(uci -q get jsholat.service.telegram_enabled || echo "1")
+    local reminder_status=$(uci -q get jsholat.sound.reminder_before || echo "15")
     
     local sound_text=$([ "$sound_status" = "1" ] && echo "🔊 ON" || echo "🔇 OFF")
     local telegram_text=$([ "$telegram_status" = "1" ] && echo "📱 ON" || echo "📵 OFF")
@@ -696,7 +712,7 @@ show_control_menu() {
     local chat_id="$1"
     local message_id="$2"
     
-    local current_status=$(uci -q get jsholat.setting.service || echo "1")
+    local current_status=$(uci -q get jsholat.service.service || echo "1")
     local status_text=$([ "$current_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
     
     local keyboard='[[
@@ -729,7 +745,7 @@ show_source_menu() {
     local chat_id="$1"
     local message_id="$2"
     
-    local current_source=$(uci -q get jsholat.setting.source || echo "jadwalsholat")
+    local current_source=$(uci -q get jsholat.schedule.source || echo "jadwalsholat")
     
     local keyboard='[[
         {"text": "JadwalSholat.org '$( [ "$current_source" = "jadwalsholat" ] && echo "✅" )'", "callback_data": "set_source_jadwalsholat"}
@@ -763,10 +779,10 @@ set_jadwal_source() {
     local message_id="$2"
     local source="$3"
     
-    uci set jsholat.setting.source="$source"
+    uci set jsholat.schedule.source="$source"
     # Jika sumber adalah aladhan, set method ke 20 (default untuk Indonesia)
     if [ "$source" = "aladhan" ]; then
-        uci set jsholat.setting.method="20"
+        uci set jsholat.schedule.method="20"
         log "Mengatur method ke 20 untuk AlAdhan API"
     fi
     
@@ -787,7 +803,7 @@ set_jadwal_source() {
 # Fungsi untuk menampilkan menu volume
 show_volume_menu() {
     local chat_id="$1"
-    local current_volume=$(uci -q get jsholat.setting.volume_level || echo "60")
+    local current_volume=$(uci -q get jsholat.sound.volume_level || echo "60")
     
     local keyboard='[[
         {"text": "🔇 0%", "callback_data": "set_volume_0"},
@@ -811,7 +827,7 @@ set_volume() {
     local volume_level="$3"
     
     # Simpan ke config
-    uci set jsholat.setting.volume_level="$volume_level"
+    uci set jsholat.sound.volume_level="$volume_level"
     uci commit jsholat
     
     # Terapkan volume (contoh menggunakan alsa)
@@ -840,7 +856,7 @@ set_volume() {
 test_volume() {
     local chat_id="$1"
     local message_id="$2"
-    local volume_level=$(uci -q get jsholat.setting.volume_level || echo "60")
+    local volume_level=$(uci -q get jsholat.sound.volume_level || echo "60")
     
     # Edit pesan untuk menunjukkan sedang memainkan suara
     curl -s -X POST \
@@ -999,8 +1015,8 @@ show_daily_schedule() {
     local month_name=$(date +"%B")
     local year=$(date +"%Y")
     local today=$(date +"%d-%m-%Y")  
-    local timezone=$(uci -q get jsholat.setting.timezone_value || echo "")  
-    local jadwal_file=$(uci get jsholat.setting.file_jadwal 2>/dev/null)
+    local timezone=$(uci -q get jsholat.schedule.timezone_value || echo "")  
+    local jadwal_file=$(uci get jsholat.schedule.file_jadwal 2>/dev/null)
     
     # Dapatkan waktu saat ini dengan format yang termasuk detik
     local current_time=$(date +"%H:%M:%S")           # 24 jam dengan detik
@@ -1045,7 +1061,8 @@ show_daily_schedule() {
     source_info="🌐 Sumber: $data_source"
 
     if [ -z "$jadwal_file" ] || [ ! -f "$jadwal_file" ]; then
-        send_message "$chat_id" "❌ File jadwal tidak ditemukan"
+        local error_msg=$(printf '❌ File jadwal tidak ditemukan\n\nCoba /update jadwal.')
+		send_message "$chat_id" "$error_msg"
         return 1
     fi
     
@@ -1061,8 +1078,8 @@ show_daily_schedule() {
     local ashar=$(echo "$jadwal" | awk '{print $5}')
     local magrib=$(echo "$jadwal" | awk '{print $6}')
     local isya=$(echo "$jadwal" | awk '{print $7}')
-    local lokasi=$(uci get jsholat.setting.city_label 2>/dev/null || echo "Tidak diketahui")
-    local provinsi=$(uci get jsholat.setting.province 2>/dev/null || echo "Tidak diketahui")
+    local lokasi=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Tidak diketahui")
+    local provinsi=$(uci get jsholat.schedule.province 2>/dev/null || echo "Tidak diketahui")
     
     # Translate day and month to Indonesian
     case "$day_name" in
@@ -1178,8 +1195,8 @@ process_message() {
             send_monthly_schedule "$chat_id"
             ;;
         "/lokasi")
-            local lokasi=$(uci get jsholat.setting.city_label 2>/dev/null || echo "Tidak diketahui")
-            local provinsi=$(uci get jsholat.setting.province 2>/dev/null || echo "Tidak diketahui")
+            local lokasi=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Tidak diketahui")
+            local provinsi=$(uci get jsholat.schedule.province 2>/dev/null || echo "Tidak diketahui")
             send_message "$chat_id" "📍 Lokasi jadwal saat ini: *$lokasi, $provinsi*"
             ;;
         "/control")
@@ -1189,15 +1206,15 @@ process_message() {
             show_volume_menu "$chat_id"
             ;;    
         "/status")
-            local city_label=$(uci get jsholat.setting.city_label 2>/dev/null || echo "Tidak diketahui")
-            local provinsi=$(uci get jsholat.setting.province 2>/dev/null || echo "Tidak diketahui")
-            local service_status=$(uci get jsholat.setting.service 2>/dev/null || echo "1")
-            local sound_status=$(uci get jsholat.setting.sound_enabled 2>/dev/null || echo "1")
-            local telegram_status=$(uci get jsholat.setting.telegram_enabled 2>/dev/null || echo "1")
-            local timezone=$(uci -q get jsholat.setting.timezone_value || echo "Tidak diatur")
-            local source=$(uci -q get jsholat.setting.source || echo "jadwalsholat")
-            local interval=$(uci -q get jsholat.setting.interval || echo "3600")
-			local reminder_status=$(uci -q get jsholat.setting.reminder_before || echo "15")
+            local city_label=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Tidak diketahui")
+            local provinsi=$(uci get jsholat.schedule.province 2>/dev/null || echo "Tidak diketahui")
+            local service_status=$(uci get jsholat.service.service 2>/dev/null || echo "1")
+            local sound_status=$(uci get jsholat.sound.sound_enabled 2>/dev/null || echo "1")
+            local telegram_status=$(uci get jsholat.service.telegram_enabled 2>/dev/null || echo "1")
+            local timezone=$(uci -q get jsholat.schedule.timezone_value || echo "Tidak diatur")
+            local source=$(uci -q get jsholat.schedule.source || echo "jadwalsholat")
+            local interval=$(uci -q get jsholat.schedule.interval || echo "3600")
+			local reminder_status=$(uci -q get jsholat.sound.reminder_before || echo "15")
 
             # Convert status to human-readable format
             service_status=$([ "$service_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
@@ -1247,9 +1264,8 @@ process_message() {
                 {"text": "❌ Batal", "callback_data": "cancel_update"}
             ]]'
             
-            send_inline_keyboard "$chat_id" "⚠️ *Update Jadwal Sholat*
-            Anda yakin ingin mengupdate jadwal sholat? 
-            Proses ini akan menjalankan update dan mungkin memakan waktu beberapa detik." "$keyboard"
+            local update_message=$(printf '⚠️ *Update Jadwal Sholat*\n\nAnda yakin ingin mengupdate jadwal sholat?\n\nProses ini akan menjalankan update dan mungkin memakan waktu beberapa detik.')
+			send_inline_keyboard "$chat_id" "$update_message" "$keyboard"
             ;;
         "/setjadwal")
             show_source_menu "$chat_id"
@@ -1315,7 +1331,7 @@ process_callback() {
             remove_keyboard "$chat_id" "$message_id" "🛠 Kontrol service selesai"
             ;;
         "status")
-            local current_status=$(uci -q get jsholat.setting.service || echo "1")
+            local current_status=$(uci -q get jsholat.service.service || echo "1")
             local status_text=$([ "$current_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
             
             curl -s -X POST \

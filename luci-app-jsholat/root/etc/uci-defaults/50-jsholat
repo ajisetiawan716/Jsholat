@@ -4,27 +4,32 @@ CFG=/etc/config/jsholat
 [ -f "$CFG" ] && exit 0
 
 cat > "$CFG" <<'EOF'
-config global 'setting'
-        option file_jadwal '/root/jsholat/jadwal.txt'
+config schedule 'schedule'
         option country 'Indonesia'
-        option sound_adzan_shubuh '/root/jsholat/adzan_subuh.mp3'
-        option sound_adzan_imsy '/root/jsholat/tarhim.mp3'
-        option telegram_enabled '0'
-        option reminder_before '15'
         option timezone_value 'WIB'
-        option ayat_enabled '0'
-        option sound_adzan '/root/jsholat/adzan.mp3'
-        option volume_control 'hardware'
-        option volume_level '80'
-        option mixer_device 'Speaker'
-        option debug_mode '0'
         option province 'Jawa Tengah'
         option city_value 'brebes'
         option city_label 'Brebes'
-        option sound_enabled '1'
         option source 'jadwalsholat'
         option interval 'monthly_special'
+        option file_jadwal '/root/jsholat/jadwal.txt'
+
+config sound 'sound'
+        option volume_control 'hardware'
+        option volume_level '90'
+        option mixer_device 'Speaker'
+        option sound_adzan '/root/jsholat/adzan.mp3'
+        option sound_adzan_shubuh '/root/jsholat/adzan_subuh.mp3'
+        option sound_adzan_imsy '/root/jsholat/tarhim.mp3'
+        option reminder_before '15'
+        option sound_enabled '1'
+
+config service 'service'
         option service '1'
+        option telegram_enabled '0'
+        option debug_mode '0'
+        option ayat_enabled '0'
+
 EOF
 
 exit 0		

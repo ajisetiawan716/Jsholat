@@ -5,14 +5,15 @@ import subprocess
 import textwrap
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
+import sys  # Import modul sys untuk keluar dari program
 
 def get_config():
     """Ambil konfigurasi dari UCI"""
     try:
-        city = subprocess.getoutput("uci get jsholat.setting.city_label")
-        province = subprocess.getoutput("uci get jsholat.setting.province")
-        jadwal_file = subprocess.getoutput("uci get jsholat.setting.file_jadwal")
-        timezone = subprocess.getoutput("uci get jsholat.setting.timezone_value")
+        city = subprocess.getoutput("uci get jsholat.schedule.city_label")
+        province = subprocess.getoutput("uci get jsholat.schedule.province")
+        jadwal_file = subprocess.getoutput("uci get jsholat.schedule.file_jadwal")
+        timezone = subprocess.getoutput("uci get jsholat.schedule.timezone_value")
         
         return {
             'city': city if city else "Kota",
@@ -71,6 +72,24 @@ def parse_jadwal_line(line):
 
 def generate_schedule_image():
     config = get_config()
+    
+    # Periksa apakah file jadwal ada sebelum melanjutkan
+    if not os.path.exists(config['jadwal_file']):
+        print(f"ERROR: File jadwal tidak ditemukan: {config['jadwal_file']}")
+        sys.exit(1)  # Keluar dengan kode error
+    
+    # Periksa apakah file jadwal dapat dibaca
+    try:
+        with open(config['jadwal_file'], 'r') as f:
+            # Coba baca beberapa baris untuk memastikan file valid
+            lines = f.readlines()
+            if not lines:
+                print("ERROR: File jadwal kosong")
+                sys.exit(1)
+    except IOError as e:
+        print(f"ERROR: Tidak dapat membaca file jadwal: {e}")
+        sys.exit(1)
+    
     update_info = get_last_updated_info()
     
     # Warna sesuai style
@@ -192,9 +211,9 @@ def generate_schedule_image():
                 # Batasi jumlah baris
                 if y_offset > 1200:
                     break
-    except FileNotFoundError:
-        draw.text((50, y_offset), "File jadwal tidak ditemukan", fill=(231, 76, 60), font=font_bold)
-        y_offset += 30
+    except Exception as e:
+        print(f"ERROR: Terjadi kesalahan saat memproses file jadwal: {e}")
+        sys.exit(1)
 
     # Garis pemisah konten utama dengan footer
     draw.line((0, y_offset+10, img_width, y_offset+10), fill=border_color, width=1)
@@ -220,7 +239,15 @@ def generate_schedule_image():
     # Simpan gambar
     output_file = "/tmp/jadwal_bulanan.png"
     img.save(output_file, optimize=True, quality=95, dpi=(300, 300))  # Balance kualitas & ukuran
+    print(f"SUCCESS: Gambar berhasil dibuat: {output_file}")
     return output_file
 
 if __name__ == "__main__":
-    generate_schedule_image()
+    try:
+        generate_schedule_image()
+    except SystemExit:
+        # Script sudah menampilkan pesan error, cukup exit
+        pass
+    except Exception as e:
+        print(f"ERROR: Terjadi kesalahan tak terduga: {e}")
+        sys.exit(1)

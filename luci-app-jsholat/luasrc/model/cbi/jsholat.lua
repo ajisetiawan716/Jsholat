@@ -12,22 +12,19 @@ m.description = translate("Untuk mengatur jadwal sholat dan mengatur suara adzan
 [[<br/><br/><a href="https://github.com/ajisetiawan716" target="_blank">Powered by ajisetiawan716</a>]])
 
 -- Load data kota dari JSON
--- Load modul JSON (luci.jsonc diutamakan, fallback ke luci.json)
 local json
 do
     local ok, mod = pcall(require, "luci.jsonc")
     if ok then
         json = mod
-        -- Gunakan parse jika decode tidak tersedia
         json.decode = json.decode or json.parse
     else
-        json = require("luci.json")  -- fallback lama
+        json = require("luci.json")
     end
 end
 
 local uci = luci.model.uci.cursor()
 local city_data = {}
-local city_value = {}
 local city_timezone_map = {}
 
 local file = io.open("/usr/share/jsholat/cities.json", "r")
@@ -37,7 +34,6 @@ if file then
     local status, data = pcall(json.decode, content)
     if status then
         city_data = data
-        -- Bangun mapping timezone
         for prov, cities in pairs(city_data) do
             for _, city in ipairs(cities) do
                 city_timezone_map[city.value] = city.timezone
@@ -50,9 +46,8 @@ else
     m.description = m.description .. [[<br><div class="alert-message error">File cities.json tidak ditemukan</div>]]
 end
 
-
--- Section untuk pengaturan jadwal
-s = m:section(TypedSection, "global", "Pengaturan Jadwal")
+-- ==================== SECTION SCHEDULE ====================
+s = m:section(TypedSection, "schedule", "Pengaturan Jadwal")
 s.anonymous = true
 s.addremove = false
 
@@ -87,16 +82,18 @@ city.datatype = "string"
 local city_hidden = s:option(Value, "city_value", "")
 city_hidden.template = "cbi/value_hidden"
 city_hidden.rmempty = false
+city_hidden.forcewrite = true
 
 -- Field tersembunyi untuk label dan timezone
 local city_label = s:option(Value, "city_label", "")
 city_label.template = "cbi/value_hidden"
 city_label.rmempty = false
+city_label.forcewrite = true
 
 local tz_hidden = s:option(Value, "timezone_value", "")
 tz_hidden.template = "cbi/value_hidden"
 tz_hidden.rmempty = false
-
+tz_hidden.forcewrite = true
 
 -- Opsi untuk negara
 country = s:option(Value, "country", "Negara")
@@ -131,6 +128,9 @@ interval.description = [[
 • Skrip dijalankan otomatis untuk tiap bulan pada awal hari pertama (tengah malam).
 ]]
 
+file_jadwal = s:option(Value, "file_jadwal", "File Jadwal")
+file_jadwal.datatype = "file"
+file_jadwal.placeholder = "/root/jsholat/jadwal.txt"
 
 -- Tombol untuk menjalankan pembaruan manual
 button = s:option(Button, "_button", "")
@@ -144,8 +144,8 @@ button:depends("source", "apiajimedia")
 output = s:option(DummyValue, "_output", "Output Pembaruan")
 output.template = "jsholat/output"
 
--- Section untuk pengaturan file suara
-s2 = m:section(TypedSection, "global", "Pengaturan File Suara")
+-- ==================== SECTION SOUND ====================
+s2 = m:section(TypedSection, "sound", "Pengaturan File Suara")
 s2.anonymous = true
 s2.addremove = false
 
@@ -166,7 +166,7 @@ volume_control:depends("sound_enabled", "1")
 -- Opsi level volume untuk hardware
 volume_level = s2:option(ListValue, "volume_level", "Level Volume (0-100%)")
 for i=0,10 do
-    volume_level:value(tostring(i*10), tostring(i*10).."%")  -- Perbaikan: konversi ke string
+    volume_level:value(tostring(i*10), tostring(i*10).."%")
 end
 volume_level.default = "80"
 volume_level:depends("volume_control", "hardware")
@@ -177,10 +177,6 @@ mixer_device.default = "Speaker"
 mixer_device.placeholder = "Contoh: PCM, Master, Speaker"
 mixer_device.description = "Contoh: PCM, Master, Speaker (Default: Speaker)"
 mixer_device:depends("volume_control", "hardware")
-
-file_jadwal = s2:option(Value, "file_jadwal", "File Jadwal")
-file_jadwal.datatype = "file"
-file_jadwal.placeholder = "/root/jsholat/jadwal.txt"
 
 sound_adzan = s2:option(Value, "sound_adzan", "File Suara Adzan")
 sound_adzan.datatype = "file"
@@ -209,11 +205,10 @@ function lihat_jadwal.write(self, section)
     luci.http.redirect(luci.dispatcher.build_url("admin/services/jsholat/jadwal"))
 end
 
--- Section untuk pengaturan service
-s3 = m:section(TypedSection, "global", "Pengaturan Service")
+-- ==================== SECTION SERVICE ====================
+s3 = m:section(TypedSection, "service", "Pengaturan Service")
 s3.anonymous = true
 s3.addremove = false
-
 
 -- Opsi untuk mengaktifkan/menonaktifkan service
 service_enabled = s3:option(ListValue, "service", "Status Service Jsholat")
@@ -239,7 +234,7 @@ telegram_enabled.default = "1"
 -- Opsi untuk token bot Telegram
 telegram_bot_token = s3:option(Value, "telegram_bot_token", "Token Bot Telegram")
 telegram_bot_token.datatype = "string"
-telegram_bot_token.password = false
+telegram_bot_token.password = true  -- Ubah ke true untuk menyembunyikan input
 telegram_bot_token.placeholder = "Masukkan token bot Telegram"
 telegram_bot_token:depends("telegram_enabled", "1")
 
@@ -249,32 +244,40 @@ telegram_chat_id.datatype = "string"
 telegram_chat_id.placeholder = "Masukkan chat ID Telegram"
 telegram_chat_id:depends("telegram_enabled", "1")
 
+-- Opsi untuk debug mode
+debug_mode = s3:option(ListValue, "debug_mode", "Mode Debug")
+debug_mode:value("1", "Aktif")
+debug_mode:value("0", "Nonaktif")
+debug_mode.default = "0"
+debug_mode.description = "Mode debug untuk logging lebih detail"
+
+-- Opsi untuk ayat enabled
+ayat_enabled = s3:option(ListValue, "ayat_enabled", "Notifikasi Ayat")
+ayat_enabled:value("1", "Aktif")
+ayat_enabled:value("0", "Nonaktif")
+ayat_enabled.default = "0"
+ayat_enabled.description = "Mengaktifkan notifikasi ayat Al-Quran"
+
 -- Fungsi untuk memeriksa nilai interval jadwal
 function check_interval()
-    local handle = io.popen("uci get jsholat.setting.interval")
+    local handle = io.popen("uci get jsholat.schedule.interval")
     local interval = tonumber(handle:read("*a"))
     handle:close()
     return interval
 end
 
--- Definisikan pesan konfirmasi di awal
+-- Tombol untuk restart service jadwal
+restart_jadwal = s3:option(Button, "_restart_jadwal", "Restart Service Jadwal")
+restart_jadwal.inputtitle = "Restart Service Jadwal"
+restart_jadwal.inputstyle = "apply"
+
+function restart_jadwal.write(self, section)
+    os.execute("/etc/init.d/jadwal restart")
+    restart_jadwal_msg.value = "Service Jadwal telah di-restart pada " .. os.date("%Y-%m-%d %H:%M:%S")
+end
+
 restart_jadwal_msg = s3:option(DummyValue, "_restart_jadwal_msg", "Pesan Restart Jadwal")
 restart_jadwal_msg.value = "Belum ada perintah.."
-
--- Cek nilai interval sebelum membuat tombol
-if check_interval() ~= 0 then
-    -- Tombol untuk restart service jadwal
-    restart_jadwal = s3:option(Button, "_restart_jadwal", "Restart Service Jadwal")
-    restart_jadwal.inputtitle = "Restart Service Jadwal"
-    restart_jadwal.inputstyle = "apply"
-
-    function restart_jadwal.write(self, section)
-        os.execute("/etc/init.d/jadwal restart")
-        restart_jadwal_msg.value = "Service Jadwal telah di-restart pada " .. os.date("%Y-%m-%d %H:%M:%S")
-    end
-else
-    restart_jadwal_msg.value = "Restart jadwal dinonaktifkan"
-end
 
 -- Tombol untuk restart service jsholat
 restart_jsholat = s3:option(Button, "_restart_jsholat", "Restart Service Jsholat")
@@ -285,7 +288,6 @@ function restart_jsholat.write(self, section)
     restart_jsholat_msg.value = "Service Jsholat telah di-restart pada " .. os.date("%Y-%m-%d %H:%M:%S")
 end
 
--- Pesan konfirmasi
 restart_jsholat_msg = s3:option(DummyValue, "_restart_jsholat_msg", "Pesan Restart Jsholat")
 restart_jsholat_msg.value = "Belum ada perintah.."
 
@@ -300,7 +302,7 @@ status_jsholat.template = "jsholat/status_jsholat"
 status_jsholat.description = "Status: "
 
 -- Status service Bot Telegram
-status_bot_tg = s3:option(DummyValue, "_status_jsholat", "Status Service Bot Telegram")
+status_bot_tg = s3:option(DummyValue, "_status_bot_tg", "Status Service Bot Telegram")
 status_bot_tg.template = "jsholat/status_bot_telegram"
 status_bot_tg.description = "Status: "
 
@@ -319,23 +321,13 @@ function cron_status.cfgvalue(self)
     end
 end
 
--- Opsi untuk debug mode
-debug_mode = s3:option(ListValue, "debug_mode", "Mode Debug")
-debug_mode:value("1", "Aktif")
-debug_mode:value("0", "Nonaktif")
-debug_mode.default = "0"
-debug_mode.description = "Mode debug untuk logging lebih detail"
-
 -- Fungsi validasi untuk provinsi dan kota
--- Fungsi khusus untuk menangani perubahan kota
 function city.write(self, section, value)
-    -- Dapatkan nilai terbaru dari form
     local city_val = luci.http.formvalue("cbid.jsholat."..section..".city_value") or value
     local province_val = luci.http.formvalue("cbid.jsholat."..section..".province")
     local tz_val = luci.http.formvalue("cbid.jsholat."..section..".timezone_value")
     local label_val = luci.http.formvalue("cbid.jsholat."..section..".city_label")
 
-    -- Simpan semua nilai sekaligus
     self.map:set(section, "city", city_val)
     self.map:set(section, "city_label", label_val)
     self.map:set(section, "timezone", tz_val)
@@ -343,9 +335,7 @@ function city.write(self, section, value)
     return true
 end
 
--- Ganti m.on_save dengan ini:
 function m.on_save(self)
-    -- Restart service setelah simpan
     os.execute("/etc/init.d/jsholat restart >/dev/null 2>&1")
     return true
 end
