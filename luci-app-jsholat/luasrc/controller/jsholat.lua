@@ -27,7 +27,7 @@ end
 function action_jadwal()
     -- Membaca nilai file_jadwal dari konfigurasi UCI
     local uci = luci.model.uci.cursor()
-    local file_path = uci:get("jsholat", "setting", "file_jadwal") or "/root/jsholat/jadwal.txt"
+    local file_path = uci:get("jsholat", "schedule", "file_jadwal") or "/root/jsholat/jadwal.txt"
 
     -- Inisialisasi variabel untuk pesan error dan data jadwal
     local error_message = nil
@@ -58,7 +58,7 @@ function action_jadwal()
 
 -- Dapatkan nama kota dari konfigurasi UCI untuk tampilan output "Terakhir diperbarui"
     -- Dapatkan nama kota dari konfigurasi UCI
-    local cityName = uci:get("jsholat", "setting", "city_label") or "Kota Tidak Diketahui"
+    local cityName = uci:get("jsholat", "schedule", "city_label") or "Kota Tidak Diketahui"
 
 -- Baca isi file last_updated.txt
 -- Import library JSON (pastikan tersedia di OpenWRT/Luci)
@@ -271,7 +271,7 @@ function action_update()
 
     -- Main Process
     local response = ""
-    local source = uci:get("jsholat", "setting", "source") or "aladhan"
+    local source = uci:get("jsholat", "schedule", "source") or "aladhan"
     source = source:lower():gsub("[^%w]", "")
 
     -- Validasi sumber
@@ -375,11 +375,20 @@ end
 function get_init_data()
     local uci = require("luci.model.uci").cursor()
     local response = {
-        province = uci:get("jsholat", "setting", "province") or "",
-        city = uci:get("jsholat", "setting", "city") or "-",
-        city_label = uci:get("jsholat", "setting", "city_label") or "-",
-        timezone = uci:get("jsholat", "setting", "timezone") or "WIB"
+        province = uci:get("jsholat", "schedule", "province") or "",
+        city = uci:get("jsholat", "schedule", "city_value") or "",  -- ← GUNAKAN city_value BUKAN city
+        city_label = uci:get("jsholat", "schedule", "city_label") or "",
+        timezone = uci:get("jsholat", "schedule", "timezone_value") or "WIB"  -- ← GUNAKAN timezone_value
     }
+    
+    -- Clean up invalid values
+    if response.city == "-" or response.city == "" then
+        response.city = ""
+    end
+    
+    if response.city_label == "-" or response.city_label == "" then
+        response.city_label = ""
+    end
     
     luci.http.prepare_content("application/json")
     luci.http.write_json(response)
@@ -388,49 +397,155 @@ end
 -- Fungsi untuk mendapatkan data kota
 function get_cities()
     local http = require("luci.http")
-    local json = require("luci.json")
     local province = http.formvalue("province")
-    local response = { cities = {}, status = "error" }
+    local response = { cities = {}, status = "error", message = "" }
     
-    if province and province ~= "" then
-        local file = io.open("/usr/share/jsholat/cities.json", "r")
-        if file then
-            local data = json.decode(file:read("*a"))
-            file:close()
-            
-            if data and data[province] then
-                response.cities = data[province]
-                response.status = "success"
-            end
+    -- Load JSON library dengan fallback
+    local json
+    do
+        local ok, mod = pcall(require, "luci.jsonc")
+        if ok then
+            json = mod
+            json.decode = json.decode or json.parse
+        else
+            json = require("luci.json")
         end
     end
+    
+    -- Validasi input
+    if not province or province == "" then
+        response.message = "Provinsi tidak dipilih"
+        http.prepare_content("application/json")
+        http.write_json(response)
+        return
+    end
+    
+    -- Baca file JSON
+    local file, err = io.open("/usr/share/jsholat/cities.json", "r")
+    if not file then
+        response.message = "File cities.json tidak ditemukan: " .. tostring(err)
+        http.prepare_content("application/json")
+        http.write_json(response)
+        return
+    end
+    
+    local content = file:read("*a")
+    file:close()
+    
+    -- Parse JSON dengan error handling
+    local success, data = pcall(json.decode, content)
+    if not success then
+        response.message = "Error parsing JSON: " .. tostring(data)
+        http.prepare_content("application/json")
+        http.write_json(response)
+        return
+    end
+    
+    if not data or type(data) ~= "table" then
+        response.message = "Data JSON tidak valid"
+        http.prepare_content("application/json")
+        http.write_json(response)
+        return
+    end
+    
+    -- Cek apakah provinsi ada
+    if not data[province] then
+        response.message = "Provinsi '" .. province .. "' tidak ditemukan"
+        http.prepare_content("application/json")
+        http.write_json(response)
+        return
+    end
+    
+    -- ✅ PERBAIKAN: Format response yang konsisten
+    response.cities = {}
+    for _, city_data in ipairs(data[province]) do
+        table.insert(response.cities, {
+            value = city_data.value,
+            label = city_data.label
+            -- Hanya kirim value dan label saja
+        })
+    end
+    
+    response.status = "success"
+    response.message = "Berhasil mengambil " .. #response.cities .. " kota"
     
     http.prepare_content("application/json")
     http.write_json(response)
 end
+
 -- Fungsi untuk mendapatkan timezone
 function get_timezone()
     local http = require("luci.http")
-    local json = require("luci.json")
     local city = http.formvalue("city")
-    local response = { timezone = "WIB", city_label = "" }
+    local response = { timezone = "WIB", city_label = "", status = "success" }
     
-    local file = io.open("/usr/share/jsholat/cities.json", "r")
-    if file then
-        local data = json.decode(file:read("*a"))
-        file:close()
-        
-        if data then
-            for prov, cities in pairs(data) do
-                for _, c in ipairs(cities) do
-                    if c.value == city then
-                        response.timezone = c.timezone
-                        response.city_label = c.label
-                        break
-                    end
-                end
+    -- Load JSON library dengan fallback (SAMA SEPERTI get_cities)
+    local json
+    do
+        local ok, mod = pcall(require, "luci.jsonc")
+        if ok then
+            json = mod
+            json.decode = json.decode or json.parse
+        else
+            json = require("luci.json")
+        end
+    end
+    
+    if not city or city == "" then
+        response.status = "error"
+        response.message = "Kota tidak dipilih"
+        http.prepare_content("application/json")
+        http.write_json(response)
+        return
+    end
+    
+    local file, err = io.open("/usr/share/jsholat/cities.json", "r")
+    if not file then
+        response.status = "error"
+        response.message = "File cities.json tidak ditemukan: " .. tostring(err)
+        http.prepare_content("application/json")
+        http.write_json(response)
+        return
+    end
+    
+    local content = file:read("*a")
+    file:close()
+    
+    -- Parse JSON dengan error handling
+    local success, data = pcall(json.decode, content)
+    if not success then
+        response.status = "error"
+        response.message = "Error parsing JSON: " .. tostring(data)
+        http.prepare_content("application/json")
+        http.write_json(response)
+        return
+    end
+    
+    if not data or type(data) ~= "table" then
+        response.status = "error"
+        response.message = "Data JSON tidak valid"
+        http.prepare_content("application/json")
+        http.write_json(response)
+        return
+    end
+    
+    -- Cari kota di semua provinsi
+    local found = false
+    for prov, cities in pairs(data) do
+        for _, c in ipairs(cities) do
+            if c.value == city then
+                response.timezone = c.timezone or "WIB"
+                response.city_label = c.label or c.name or "Unknown"
+                found = true
+                break
             end
         end
+        if found then break end
+    end
+    
+    if not found then
+        response.status = "error"
+        response.message = "Kota '" .. city .. "' tidak ditemukan"
     end
     
     http.prepare_content("application/json")

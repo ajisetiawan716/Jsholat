@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-jsholat
-PKG_VERSION:=0.1.2
-PKG_RELEASE:=20250913
+PKG_VERSION:=0.1.3
+PKG_RELEASE:=20250918
 PKG_MAINTAINER:=Aji Setiawan <email@ajisetiawan.my.id>
 
 # LuCI metadata
@@ -61,7 +61,7 @@ chmod -R 755 /usr/lib/lua/luci/model/cbi 2>/dev/null || true
 chmod -R 755 /usr/lib/lua/luci/view 2>/dev/null || true
 
 # Pastikan skrip & init bisa dieksekusi
-chmod 0755 /usr/bin/jsholat /usr/bin/jadwal /usr/bin/jadwal-update.sh /usr/bin/jsholat-bot /usr/bin/jadwal-monthly 2>/dev/null || true
+chmod 0755 /usr/bin/jsholat /usr/bin/jadwal /usr/bin/jadwal-update.sh /usr/bin/jsholat-bot /usr/bin/jadwal-monthly /usr/share/jsholat/bot-checker.sh 2>/dev/null || true
 chmod 0755 /etc/init.d/jsholat /etc/init.d/jadwal /etc/init.d/jsholat-bot 2>/dev/null || true
 
 # Enable & start services (fallback via sh kalau belum +x)

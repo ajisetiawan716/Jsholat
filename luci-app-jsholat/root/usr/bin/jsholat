@@ -12,7 +12,7 @@
 LOG_DIR="/var/log/jsholat"
 LOG_FILE="$LOG_DIR/service.log"
 MAX_LOG_SIZE=1048576  # 1MB
-DEBUG_MODE=$(uci -q get jsholat.setting.debug_mode || echo "0")
+DEBUG_MODE=$(uci -q get jsholat.service.debug_mode || echo "0")
 
 # File untuk menyimpan status reminder
 REMINDER_STATUS_FILE="/var/lib/jsholat/reminder_status"
@@ -34,7 +34,7 @@ save_reminder_status() {
 
 # Fungsi untuk membaca status reminder dari file
 load_reminder_status() {
-    local REMINDER_BEFORE=$(uci -q get jsholat.setting.reminder_before || echo "5")
+    local REMINDER_BEFORE=$(uci -q get jsholat.sound.reminder_before || echo "5")
     
     # ✅ JIKA REMINDER DINONAKTIFKAN, SKIP LOAD
     if [ "$REMINDER_BEFORE" = "0" ]; then
@@ -55,7 +55,7 @@ load_reminder_status() {
 reset_reminder_status() {
     local TODAY=$(date +"%d-%m-%Y")
     local LAST_RESET_DATE=""
-    local REMINDER_BEFORE=$(uci -q get jsholat.setting.reminder_before || echo "5")
+    local REMINDER_BEFORE=$(uci -q get jsholat.sound.reminder_before || echo "5")
     
     # ✅ JIKA REMINDER DINONAKTIFKAN, SKIP RESET
     if [ "$REMINDER_BEFORE" = "0" ]; then
@@ -161,7 +161,7 @@ init_log_system() {
 
 # Fungsi bot telegram
 send_telegram() {
-    local telegram_enabled=$(uci -q get jsholat.setting.telegram_enabled || echo "1")
+    local telegram_enabled=$(uci -q get jsholat.service.telegram_enabled || echo "1")
     if [ "$telegram_enabled" = "0" ]; then
         log "INFO" "🔕 Notifikasi Telegram dinonaktifkan"
 		[ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Notifikasi Telegram dinonaktifkan"
@@ -169,8 +169,8 @@ send_telegram() {
     fi
 
     local message="$1"
-    local telegram_token=$(uci get jsholat.setting.telegram_bot_token 2>/dev/null)
-    local chat_id=$(uci get jsholat.setting.telegram_chat_id 2>/dev/null)
+    local telegram_token=$(uci get jsholat.service.telegram_bot_token 2>/dev/null)
+    local chat_id=$(uci get jsholat.service.telegram_chat_id 2>/dev/null)
     
     if [ -z "$telegram_token" ] || [ -z "$chat_id" ]; then
         log "ERROR" "❌ Telegram token/chat ID belum diatur!"
@@ -271,8 +271,8 @@ get_random_ayat() {
 # Fungsi untuk memutar audio ayat
 play_audio_ayat() {
     local audio_url="$1"
-    local ayat_enabled=$(uci -q get jsholat.setting.ayat_enabled || echo "1")
-    local sound_enabled=$(uci -q get jsholat.setting.sound_enabled || echo "1")
+    local ayat_enabled=$(uci -q get jsholat.service.ayat_enabled || echo "1")
+    local sound_enabled=$(uci -q get jsholat.service.sound_enabled || echo "1")
     
     # Cek status fitur
     if [ "$ayat_enabled" = "0" ] || [ "$sound_enabled" = "0" ]; then
@@ -284,9 +284,9 @@ play_audio_ayat() {
     [ -z "$audio_url" ] && { log "ERROR" "URL audio ayat kosong"; return 1; }
 
     # Gunakan pengaturan volume adzan
-    local volume_control=$(uci -q get jsholat.setting.volume_control || echo "hardware")
-    local volume_level=$(uci -q get jsholat.setting.volume_level || echo "80")
-    local mixer_device=$(uci -q get jsholat.setting.mixer_device || echo "Speaker")
+    local volume_control=$(uci -q get jsholat.sound.volume_control || echo "hardware")
+    local volume_level=$(uci -q get jsholat.sound.volume_level || echo "80")
+    local mixer_device=$(uci -q get jsholat.sound.mixer_device || echo "Speaker")
 
     # Set volume sesuai setting adzan
     if [ "$volume_control" = "hardware" ]; then
@@ -320,13 +320,13 @@ play_adzan() {
     local file_path="$1"
     local salat_name="$2"
     local prayer_time="$3"
-    local timezone=$(uci -q get jsholat.setting.timezone_value || echo "") 
+    local timezone=$(uci -q get jsholat.schedule.timezone_value || echo "") 
     local timezone_display=""
     [ -n "$timezone" ] && timezone_display=" $timezone"
-    local LOKASI=$(uci get jsholat.setting.city_label 2>/dev/null || echo "Wilayah Tidak Diketahui")
+    local LOKASI=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Wilayah Tidak Diketahui")
 
     # ✅ 1. KIRIM NOTIFIKASI JIKA TELEGRAM ENABLED
-    local telegram_enabled=$(uci -q get jsholat.setting.telegram_enabled || echo "1")
+    local telegram_enabled=$(uci -q get jsholat.service.telegram_enabled || echo "1")
     if [ "$telegram_enabled" = "1" ]; then
         # Format pesan khusus untuk Imsyak
         if [ "$salat_name" = "Imsyak" ]; then
@@ -351,15 +351,15 @@ Selamat menunaikan sholat *$salat_name*."
     log "INFO" "⏰ WAKTU SHOLAT: Saatnya waktu $salat_name untuk wilayah $LOKASI pada $prayer_time$timezone_display."
     
     # ✅ 2. CEK SOUND ENABLED UNTUK PEMUTARAN AUDIO
-    local sound_enabled=$(uci -q get jsholat.setting.sound_enabled || echo "1")
+    local sound_enabled=$(uci -q get jsholat.sound.sound_enabled || echo "1")
     if [ "$sound_enabled" = "0" ]; then
         log "INFO" "🔇 Pemutaran suara dinonaktifkan"
         return 0
     fi
     
-    local volume_control=$(uci -q get jsholat.setting.volume_control || echo "hardware")
-    local volume_level=$(uci -q get jsholat.setting.volume_level || echo "80")
-    local mixer_device=$(uci -q get jsholat.setting.mixer_device || echo "PCM")
+    local volume_control=$(uci -q get jsholat.sound.volume_control || echo "hardware")
+    local volume_level=$(uci -q get jsholat.sound.volume_level || echo "80")
+    local mixer_device=$(uci -q get jsholat.sound.mixer_device || echo "PCM")
 
     # Set volume sebelum memutar (jika mode hardware)
     if [ "$volume_control" = "hardware" ]; then
@@ -436,11 +436,11 @@ Selamat menunaikan sholat *$salat_name*."
 reminder_before_prayer() {
     local salat_name="$1"
     local prayer_time="$2"
-    local timezone=$(uci -q get jsholat.setting.timezone_value || echo "")
-    local reminder_mins=$(uci -q get jsholat.setting.reminder_before || echo "5")
-    local LOKASI=$(uci get jsholat.setting.city_label 2>/dev/null || echo "Wilayah Tidak Diketahui")
-    local ayat_enabled=$(uci -q get jsholat.setting.ayat_enabled || echo "1")
-    local telegram_enabled=$(uci -q get jsholat.setting.telegram_enabled || echo "1")
+    local timezone=$(uci -q get jsholat.schedule.timezone_value || echo "")
+    local reminder_mins=$(uci -q get jsholat.sound.reminder_before || echo "5")
+    local LOKASI=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Wilayah Tidak Diketahui")
+    local ayat_enabled=$(uci -q get jsholat.service.ayat_enabled || echo "1")
+    local telegram_enabled=$(uci -q get jsholat.service.telegram_enabled || echo "1")
     
     # ✅ CEK JIKA REMINDER DINONAKTIFKAN (nilai 0)
     if [ "$reminder_mins" = "0" ]; then
@@ -537,20 +537,20 @@ run_service() {
     log "INFO" "📊 Status Reminder: Imsyak=$REMINDER_IMSYAK, Subuh=$REMINDER_SUBUH, Dzuhur=$REMINDER_DZUHUR, Ashar=$REMINDER_ASHAR, Maghrib=$REMINDER_MAGHRIB, Isya=$REMINDER_ISYA"
     
 	# Load konfigurasi
-    local JADWAL=$(uci get jsholat.setting.file_jadwal 2>/dev/null)
-    local FILE_ADZAN=$(uci get jsholat.setting.sound_adzan 2>/dev/null)
-    local FILE_ADZAN_SHUBUH=$(uci get jsholat.setting.sound_adzan_shubuh 2>/dev/null)
-    local FILE_IMSYAK=$(uci get jsholat.setting.sound_adzan_imsy 2>/dev/null)
-    local LOKASI=$(uci get jsholat.setting.city_label 2>/dev/null)
-    local TIMEZONE=$(uci -q get jsholat.setting.timezone_value || echo "")
-    local SUMBER=$(uci get jsholat.setting.source 2>/dev/null)
-	local REMINDER_BEFORE=$(uci -q get jsholat.setting.reminder_before || echo "15")
-    DEBUG_MODE=$(uci -q get jsholat.setting.debug_mode || echo "0")
+    local JADWAL=$(uci get jsholat.schedule.file_jadwal 2>/dev/null)
+    local FILE_ADZAN=$(uci get jsholat.sound.sound_adzan 2>/dev/null)
+    local FILE_ADZAN_SHUBUH=$(uci get jsholat.sound.sound_adzan_shubuh 2>/dev/null)
+    local FILE_IMSYAK=$(uci get jsholat.sound.sound_adzan_imsy 2>/dev/null)
+    local LOKASI=$(uci get jsholat.schedule.city_label 2>/dev/null)
+    local TIMEZONE=$(uci -q get jsholat.schedule.timezone_value || echo "")
+    local SUMBER=$(uci get jsholat.schedule.source 2>/dev/null)
+	local REMINDER_BEFORE=$(uci -q get jsholat.sound.reminder_before || echo "15")
+    DEBUG_MODE=$(uci -q get jsholat.service.debug_mode || echo "0")
     
     # Tambahan: Load konfigurasi kontrol fitur
-    local TELEGRAM_ENABLED=$(uci -q get jsholat.setting.telegram_enabled || echo "1")
-    local SOUND_ENABLED=$(uci -q get jsholat.setting.sound_enabled || echo "1")
-    local SERVICE_ENABLED=$(uci -q get jsholat.setting.service || echo "1")
+    local TELEGRAM_ENABLED=$(uci -q get jsholat.service.telegram_enabled || echo "1")
+    local SOUND_ENABLED=$(uci -q get jsholat.sound.sound_enabled || echo "1")
+    local SERVICE_ENABLED=$(uci -q get jsholat.service.service || echo "1")
     
     # Log status fitur
 	log "INFO" "⚙️ Status Fitur:"
@@ -586,8 +586,8 @@ run_service() {
     
     # Main Service Loop
     while true; do
-        local service_enabled=$(uci -q get jsholat.setting.service || echo "1")	
-		local REMINDER_BEFORE=$(uci -q get jsholat.setting.reminder_before || echo "5")
+        local service_enabled=$(uci -q get jsholat.service.service || echo "1")	
+		local REMINDER_BEFORE=$(uci -q get jsholat.sound.reminder_before || echo "5")
         if [ "$service_enabled" = "0" ]; then
             log "INFO" "Service dinonaktifkan, menunggu 60 detik..."
             sleep 60
@@ -685,9 +685,9 @@ run_service() {
 
 case "$1" in
     "install")
-        uci -q set jsholat.setting.telegram_enabled=1
-        uci -q set jsholat.setting.sound_enabled=1
-        uci -q set jsholat.setting.service=1
+        uci -q set jsholat.service.telegram_enabled=1
+        uci -q set jsholat.sound.sound_enabled=1
+        uci -q set jsholat.service.service=1
         uci commit jsholat
         
         mkdir -p "/var/log/jsholat"

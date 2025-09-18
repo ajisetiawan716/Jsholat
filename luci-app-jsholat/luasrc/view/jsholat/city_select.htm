@@ -29,92 +29,296 @@
 
 <script type="text/javascript">
 document.addEventListener("DOMContentLoaded", function() {
-    const citySelect = document.getElementById('city-select');
-    const provinceSelect = document.querySelector('select[name="cbid.jsholat.setting.province"]');
-    
-    // 1. Load initial data
-    XHR.get('<%= url("admin/services/jsholat/get_init_data") %>', null, function(xhr, data) {
-        if (data.province && data.city) {
-            updateCityDisplay(data.city_label, data.timezone);
-            loadCities(data.province, data.city);
+    setTimeout(function() {
+        console.log('DOM loaded, initializing jsholat city select...');
+        
+        // ===== PERBAIKAN SELECTOR ELEMENT =====
+        // Coba berbagai selector untuk province element
+        const provinceSelectors = [
+            'select[name="cbid.jsholat.setting.province"]',
+            'select[name*="province"]',
+            'select.cbi-input-select',
+            '#cbid\\.jsholat\\.setting\\.province'  // Escape dots untuk ID
+        ];
+
+        let provinceSelect = null;
+        for (const selector of provinceSelectors) {
+            provinceSelect = document.querySelector(selector);
+            if (provinceSelect) {
+                console.log('Found province select with selector:', selector);
+                break;
+            }
         }
-    });
-    
-    // 2. Handle province change
-    if (provinceSelect) {
+
+        const citySelect = document.getElementById('city-select');
+        
+        // ===== DEBUGGING ELEMENT EXISTENCE =====
+        console.log('Province select element:', provinceSelect);
+        console.log('City select element:', citySelect);
+        console.log('All select elements:', document.querySelectorAll('select'));
+        
+        if (!provinceSelect) {
+            console.error('Province select element not found with any selector!');
+            console.log('Available elements with name containing "province":', 
+                document.querySelectorAll('[name*="province"]'));
+            return;
+        }
+        
+        if (!citySelect) {
+            console.error('City select element not found!');
+            console.log('Available elements with ID containing "city":',
+                document.querySelectorAll('[id*="city"]'));
+            return;
+        }
+        
+        console.log('Essential elements found');
+        
+        // ===== DEBUGGING EVENT LISTENERS =====
+        // Tambahkan temporary click handlers untuk debug
+        provinceSelect.addEventListener('click', function(e) {
+            console.log('DEBUG: Province select clicked, current value:', e.target.value);
+        }, { once: true });
+        
+        citySelect.addEventListener('click', function(e) {
+            console.log('DEBUG: City select clicked, current value:', e.target.value);
+        }, { once: true });
+
+        // ===== LOAD INITIAL DATA =====
+        // 1. Load initial data
+        XHR.get('<%= url("admin/services/jsholat/get_init_data") %>', null, 
+            function(xhr, data) {
+                console.log('Initial data response:', data);
+                
+                if (data && data.province) {
+                    const validCity = data.city && data.city !== "-" && data.city !== "";
+                    
+                    if (validCity) {
+                        console.log('Loading saved city:', data.city, data.city_label);
+                        updateCityDisplay(data.city_label, data.timezone);
+                        loadCities(data.province, data.city);
+                    } else {
+                        console.log('No valid city saved, loading province only:', data.province);
+                        provinceSelect.value = data.province;
+                        updateCityDisplay("", "WIB");
+                    }
+                }
+            },
+            function(xhr, status, error) {
+                console.error('Failed to load initial data:', error);
+            }
+        );
+        
+        // ===== EVENT LISTENERS =====
+        // 2. Handle province change - HANYA untuk province select
         provinceSelect.addEventListener('change', function() {
-            document.getElementById('city-change-notice').style.display = 'none';
+            console.log('PROVINCE CHANGE EVENT - Value:', this.value);
+            console.log('Event target:', this);
+            
+            const notice = document.getElementById('city-change-notice');
+            if (notice) notice.style.display = 'none';
+            
+            // Load cities untuk PROVINSI yang dipilih
             loadCities(this.value);
         });
-    }
-    
-    // 3. Handle city change
-    if (citySelect) {
+        
+        // 3. Handle city change - HANYA untuk city select
         citySelect.addEventListener('change', function() {
-            const selectedOption = this.options[this.selectedIndex];
+            console.log('CITY CHANGE EVENT - Value:', this.value);
+            console.log('Event target:', this);
+            
+            const notice = document.getElementById('city-change-notice');
+            
             if (this.value) {
-                document.getElementById('city-change-notice').style.display = 'inline';
+                if (notice) notice.style.display = 'inline';
+                // Update timezone untuk KOTA yang dipilih
                 updateTimezone(this.value);
             } else {
-                document.getElementById('city-change-notice').style.display = 'none';
+                if (notice) notice.style.display = 'none';
             }
         });
-    }
+        
+        // ===== DEBUGGING: TEST MANUAL EVENT TRIGGER =====
+        console.log('Event listeners attached. You can test with:');
+        console.log('1. provinceSelect.dispatchEvent(new Event("change"))');
+        console.log('2. citySelect.dispatchEvent(new Event("change"))');
+        
+    }, 300);
 });
 
+// Fungsi untuk mencari province select dengan berbagai selector
+function findProvinceSelect() {
+    const selectors = [
+        'select[name="cbid.jsholat.setting.province"]',
+        'select[name*="province"]',
+        '.cbi-input-select'
+    ];
+    
+    for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element && element.tagName === 'SELECT') {
+            return element;
+        }
+    }
+    return null;
+}
+
+// Fungsi load Cities list
 function loadCities(province, selectedCity) {
+    console.log('[DEBUG] loadCities called with:', { province, selectedCity });
+    
+    // Validasi input
+    if (!province || province === "") {
+        console.warn('No province provided to loadCities');
+        return;
+    }
+    
     const loading = document.getElementById('city-loading');
     const citySelect = document.getElementById('city-select');
+    
+    if (!loading || !citySelect) {
+        console.error('[DEBUG] Required elements not found!');
+        return;
+    }
     
     loading.style.display = 'block';
     citySelect.disabled = true;
     citySelect.innerHTML = '<option value=""><%= translate("-- Pilih Kota --") %></option>';
     
-    XHR.get('<%= url("admin/services/jsholat/get_cities") %>', 
+    const url = '<%= url("admin/services/jsholat/get_cities") %>';
+    console.log('[DEBUG] XHR to:', url, 'with province:', province);
+    
+    XHR.get(url, 
         { province: province },
         function(xhr, res) {
+            console.log('[DEBUG] XHR success:', res);
+            
             loading.style.display = 'none';
             citySelect.disabled = false;
             
-            if (res.status === "success") {
+            if (res && res.status === "success") {
+                console.log('[DEBUG] Cities count:', res.cities.length);
+                
+                if (res.cities.length === 0) {
+                    console.warn('[DEBUG] No cities found for province:', province);
+                    const option = new Option('<%= translate("Tidak ada kota tersedia") %>', '');
+                    citySelect.appendChild(option);
+                    return;
+                }
+                
+                // Populate cities
                 res.cities.forEach(function(city) {
                     const option = new Option(city.label, city.value);
-                    option.selected = (city.value === selectedCity);
                     citySelect.appendChild(option);
                 });
+                
+                // Set selected value JIKA provided dan valid
+                if (selectedCity && selectedCity !== "-" && selectedCity !== "") {
+                    let cityFound = false;
+                    for (let i = 0; i < citySelect.options.length; i++) {
+                        if (citySelect.options[i].value === selectedCity) {
+                            citySelect.selectedIndex = i;
+                            cityFound = true;
+                            
+                            // Update timezone untuk kota yang dipilih
+                            updateTimezone(selectedCity);
+                            break;
+                        }
+                    }
+                    
+                    if (!cityFound) {
+                        console.warn('Selected city not found in list:', selectedCity);
+                    }
+                }
+            } else {
+                console.error('[DEBUG] Error response:', res);
             }
+        },
+        function(xhr, status, error) {
+            console.error('[DEBUG] XHR error:', status, error);
+            loading.style.display = 'none';
+            citySelect.disabled = false;
         }
     );
 }
 
 function updateCityDisplay(cityLabel, timezone) {
-    document.getElementById('saved-city-label').textContent = cityLabel || '';
-    document.getElementById('tz-display').textContent = timezone || 'WIB';
-    document.getElementById('timezone-field').value = timezone || 'WIB';
+    console.log('Updating city display:', { cityLabel, timezone });
+    
+    // 1. Update label kota
+    const savedCityLabel = document.getElementById('saved-city-label');
+    if (savedCityLabel) {
+        savedCityLabel.textContent = cityLabel || '';
+    }
+    
+    // 2. Update display timezone
+    const tzDisplay = document.getElementById('tz-display');
+    if (tzDisplay) {
+        tzDisplay.textContent = timezone || 'WIB';
+    }
+    
+    // 3. PERBAIKAN: Cari input hidden dengan NAME selector, bukan ID
+    const timezoneFields = document.querySelectorAll('input[name*="timezone"]');
+    if (timezoneFields.length > 0) {
+        timezoneFields.forEach(field => {
+            field.value = timezone || 'WIB';
+        });
+        console.log('Updated', timezoneFields.length, 'timezone hidden fields');
+    } else {
+        console.warn('No timezone hidden fields found');
+    }
 }
 
+// Di updateTimezone dan fungsi lainnya
 function updateTimezone(cityValue) {
+    console.log('Updating timezone for city:', cityValue);
+    
     XHR.get('<%= url("admin/services/jsholat/get_timezone") %>',
         { city: cityValue },
         function(xhr, res) {
-            // Update tampilan zona waktu
-            document.getElementById('tz-display').textContent = res.timezone;
-            
-            // Update field hidden sesuai struktur baru
-            document.querySelector('input[name*="timezone_value"]').value = res.timezone;
-            document.querySelector('input[name*="city_value"]').value = cityValue;
-            
-            // Update field-label jika diperlukan
-            const cityLabelField = document.querySelector('input[name*="city_label"]');
-            if (cityLabelField) {
-                cityLabelField.value = res.city_label;
+            if (!res) {
+                console.error('Empty response from get_timezone');
+                return;
             }
             
-            // Tambahkan log untuk debugging
-            console.log('Timezone updated:', {
+            console.log('Timezone response:', res);
+            
+            // 1. Update display timezone
+            const tzDisplay = document.getElementById('tz-display');
+            if (tzDisplay) {
+                tzDisplay.textContent = res.timezone || 'WIB';
+            }
+            
+            // 2. PERBAIKAN: Update semua field hidden terkait
+            const timezoneFields = document.querySelectorAll('input[name*="timezone"]');
+            const cityValueFields = document.querySelectorAll('input[name*="city_value"]');
+            const cityLabelFields = document.querySelectorAll('input[name*="city_label"]');
+            
+            // Update timezone fields
+            timezoneFields.forEach(field => {
+                field.value = res.timezone || 'WIB';
+            });
+            
+            // Update city value fields
+            cityValueFields.forEach(field => {
+                field.value = cityValue;
+            });
+            
+            // Update city label fields
+            cityLabelFields.forEach(field => {
+                if (res.city_label) {
+                    field.value = res.city_label;
+                }
+            });
+            
+            console.log('Timezone update completed:', {
                 timezone: res.timezone,
                 city_value: cityValue,
-                city_label: res.city_label
+                city_label: res.city_label,
+                updated_fields: {
+                    timezone: timezoneFields.length,
+                    city_value: cityValueFields.length,
+                    city_label: cityLabelFields.length
+                }
             });
         }
     );
