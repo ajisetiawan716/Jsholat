@@ -51,7 +51,7 @@ wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/re
    ```bash
    jsi
    ```
-2. Pilih opsi 1 untuk update **dependensi** dan install file pendukung, pilih 2 untuk install Jsholat.
+2. Pilih opsi 1 untuk update **dependensi** dan install file pendukung, pilih 3 untuk install Jsholat.
 3. (Alternatif manual) pastikan semua dependensi terinstal:
    ```bash
    opkg update
@@ -101,7 +101,7 @@ wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/re
    ```bash
    opkg list-installed | grep alsa-utils
    ```
-2. Melalui perintah `jsi` kemudian pilih No.2 Install driver soundcard. Seharusnya driver dapat ter-install secara otomatis.
+2. Melalui perintah `jsi` kemudian pilih 2 Install driver soundcard. Seharusnya driver dapat ter-install secara otomatis.
 3. (Opsional) Tes suara:
    ```bash
    speaker-test -D default -t sine -f 1000 -l 1
