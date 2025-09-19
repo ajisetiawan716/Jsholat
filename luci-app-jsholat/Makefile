@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-jsholat
 PKG_VERSION:=0.1.3
-PKG_RELEASE:=20250918
+PKG_RELEASE:=20250919
 PKG_MAINTAINER:=Aji Setiawan <email@ajisetiawan.my.id>
 
 # LuCI metadata
