@@ -34,7 +34,7 @@ service_triggers() {
 
 start_service() {
     local service_status=$(uci -q get jsholat.service.service || echo "0")
-    log "✅ Memulai service dengan status: $service_status"
+    log "⚙️ Memulai service dengan status: $service_status"
 
     if [ "$service_status" = "1" ]; then
         log "⚙️ Starting jsholat service..."
@@ -51,19 +51,19 @@ start_service() {
 
 stop_service() {
     local pid=$(pgrep -f "/usr/bin/jsholat run")
-    log "INFO" "ℹ️ Menghentikan service (PID: ${pid:-Not Running})"
+    log "INFO" "🔌 Menghentikan service (PID: ${pid:-Not Running})"
 
     if [ -n "$pid" ]; then
         if kill "$pid"; then
-            log "⛔ Service berhasil dihentikan"
+            log "✔ Service berhasil dihentikan"
         else
-            log "❌ Gagal menghentikan service (PID: $pid)"
+            log "⚠️ Gagal menghentikan service (PID: $pid)"
         fi
     fi
 }
 
 reload_service() {
-    log "️🔁 Reloading service..."
+    log "🔁 Reloading service..."
     stop_service
     start_service
 }
