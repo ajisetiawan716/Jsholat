@@ -8,7 +8,7 @@ DEPENDS="cron"
 LOG_TAG="jadwal"
 LOG_FILE="/var/log/jsholat/jadwal.log"
 MAX_LOG_SIZE=1048576  # 1MB
-JADWAL_FILE=$(uci -q get jsholat.schedule.file_jadwal 2>/dev/null)
+JADWAL_FILE=$(uci -q get jsholat.setting.file_jadwal 2>/dev/null)
 LAST_UPDATED_FILE="/usr/share/jsholat/last_updated.txt"
 
 # Fungsi rotasi log
@@ -73,7 +73,7 @@ setup_cron_job() {
     esac
 
     echo "$cleaned_cron" | crontab -
-    log "⚙️ Setup cron job dengan interval $interval"
+    log "✅ Setup cron job dengan interval $interval"
     
     if [ "$interval" != "0" ]; then
         log "✔ Cron job aktif: $interval_desc"
@@ -87,7 +87,7 @@ start_service() {
     log "⚙️ Memulai service"
     [ -f "$JADWAL_FILE" ] && cp "$JADWAL_FILE" "${JADWAL_FILE}.bak"
     
-    setup_cron_job "$(uci -q get jsholat.schedule.interval|| echo "86400")"
+    setup_cron_job "$(uci -q get jsholat.setting.interval || echo "86400")"
 
     procd_open_instance
     procd_set_param command /sbin/sleep infinity
@@ -96,7 +96,7 @@ start_service() {
 }
 
 stop_service() {
-    log "⛔ Menghentikan service"
+    log "🔌 Menghentikan service"
     crontab -l | grep -v "/usr/bin/jadwal-update.sh" | crontab -
     /etc/init.d/cron restart
 }
