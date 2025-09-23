@@ -1,11 +1,13 @@
 #!/bin/bash
+#(c) 2022-2025 Jsholat by Aji Setiawan - github.com/ajisetiawan716/Jsholat
 # jsholat-installer — luci-app-jsholat installer (OpenWrt)
 # Menu:
 #  1) Install paket pendukung (deps + MP3)
-#  2) Install IPK/APK (URL/file | MAIN* | DEV* | Latest Release)
-#  3) Uninstall (opkg remove)
-#  4) Bersihkan cache LuCI
-#  5) Keluar
+#  2) Install paket pendukung (deps + MP3)
+#  3) Install IPK/APK (URL/file | MAIN* | DEV* | Latest Release)
+#  4) Uninstall (opkg remove)
+#  5) Bersihkan cache LuCI
+#  6) Keluar
 #
 # Catatan:
 # - Pillow SELALU via pip; kalau ada python3-pillow dari repo dihapus, lalu pasang pip (retry --force-reinstall).
