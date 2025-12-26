@@ -1,0 +1,1299 @@
+<%+header%>
+
+<div class="cbi-map">
+    <h2 name="content"><%:Status Detail Jsholat%></h2>
+    <div class="cbi-map-descr">
+        <%:Informasi detail status service jsholat dan jsholat-bot%>
+    </div>
+    
+    <!-- Status Service Jsholat -->
+    <fieldset class="cbi-section">
+        <legend><%:Status Service Jsholat%></legend>
+        <div class="cbi-section-node">
+            <table class="table" style="width:100%">
+                <tr>
+                    <td style="width:40%"><strong><%:Nama Service%></strong></td>
+                    <td id="service-name">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Status%></strong></td>
+                    <td id="service-status">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:PID%></strong></td>
+                    <td id="service-pid">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Uptime%></strong></td>
+                    <td id="service-uptime">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Waktu Mulai%></strong></td>
+                    <td id="service-start-time">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Aktifkan Service%></strong></td>
+                    <td id="service-enabled">-</td>
+                </tr>
+            </table>
+        </div>
+    </fieldset>
+    
+    <!-- Status Service Jsholat-Bot -->
+    <fieldset class="cbi-section">
+        <legend><%:Status Service Jsholat-Bot (Telegram)%></legend>
+        <div class="cbi-section-node">
+            <table class="table" style="width:100%">
+                <tr>
+                    <td style="width:40%"><strong><%:Nama Service%></strong></td>
+                    <td id="service-name-bot">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Status Bot%></strong></td>
+                    <td id="bot-status">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:PID Bot%></strong></td>
+                    <td id="bot-pid">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Uptime Bot%></strong></td>
+                    <td id="bot-uptime">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Waktu Mulai Bot%></strong></td>
+                    <td id="bot-start-time">-</td>
+                <tr>
+                    <td><strong><%:Bot Telegram%></strong></td>
+                    <td id="bot-telegram-enabled">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Konfigurasi Bot%></strong></td>
+                    <td id="bot-configured">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Memory Bot%></strong></td>
+                    <td id="bot-memory">-</td>
+                </tr>
+            </table>
+        </div>
+    </fieldset>
+    
+    <!-- Konfigurasi Fitur -->
+    <fieldset class="cbi-section">
+        <legend><%:Konfigurasi Fitur%></legend>
+        <div class="cbi-section-node">
+            <table class="table" style="width:100%">
+                <!-- Lokasi dipindahkan ke sini -->
+                <tr>
+                    <td style="width:40%"><strong><%:Lokasi%></strong></td>
+                    <td><span id="location-city">-</span>, <span id="location-province">-</span></td>
+                </tr>
+                <tr>
+                    <td><strong><%:Sumber Jadwal%></strong></td>
+                    <td id="schedule-source">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Terakhir Jadwal Diperbarui%></strong></td>
+                    <td id="schedule-last-updated">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Notifikasi Telegram%></strong></td>
+                    <td id="config-telegram">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Pemutar Suara%></strong></td>
+                    <td id="config-sound">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Volume Suara%></strong></td>
+                    <td id="config-volume">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Ayat Acak%></strong></td>
+                    <td id="config-ayat">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Pengingat Sholat%></strong></td>
+                    <td id="config-reminder">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Mode Debug%></strong></td>
+                    <td id="config-debug">-</td>
+                </tr>
+            </table>
+        </div>
+    </fieldset>
+
+    <!-- Jadwal Sholat Hari Ini -->
+    <fieldset class="cbi-section">
+        <legend><%:Jadwal Sholat Hari Ini%></legend>
+        <div class="cbi-section-node">
+            <table class="table" style="width:100%">
+                <tr>
+                    <th style="width:30%"><%:Waktu Sholat%></th>
+                    <th><%:Jam%> (<span id="location-timezone">-</span>)</th>
+                    <th><%:Status%></th>
+                </tr>
+                <tr>
+                    <td><strong>Imsyak</strong></td>
+                    <td id="imsyak-time">-</td>
+                    <td id="imsyak-status">-</td>
+                </tr>
+                <tr>
+                    <td><strong>Subuh</strong></td>
+                    <td id="subuh-time">-</td>
+                    <td id="subuh-status">-</td>
+                </tr>
+                <tr>
+                    <td><strong>Dzuhur</strong></td>
+                    <td id="dzuhur-time">-</td>
+                    <td id="dzuhur-status">-</td>
+                </tr>
+                <tr>
+                    <td><strong>Ashar</strong></td>
+                    <td id="ashar-time">-</td>
+                    <td id="ashar-status">-</td>
+                </tr>
+                <tr>
+                    <td><strong>Maghrib</strong></td>
+                    <td id="maghrib-time">-</td>
+                    <td id="maghrib-status">-</td>
+                </tr>
+                <tr>
+                    <td><strong>Isya</strong></td>
+                    <td id="isya-time">-</td>
+                    <td id="isya-status">-</td>
+                </tr>
+            </table>
+            
+            <!-- Sholat Berikutnya -->
+            <div class="cbi-value" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                <label class="cbi-value-title" style="font-weight: bold; color: #337ab7;">
+                    <%:Sholat Berikutnya%>
+                </label>
+                <div class="cbi-value-field">
+                    <span id="next-prayer-name">-</span>: 
+                    <span id="next-prayer-time">-</span> 
+                    (<span id="next-prayer-countdown">-</span>)
+                </div>
+            </div>
+        </div>
+    </fieldset>
+    
+    <!-- Informasi Sistem -->
+    <fieldset class="cbi-section">
+        <legend><%:Informasi Sistem%></legend>
+        <div class="cbi-section-node">
+            <div class="cbi-value">
+                <label class="cbi-value-title"><strong><%:Hari, Tanggal%></strong></label>
+                <div class="cbi-value-field">
+                    <span id="current-day">-</span>, 
+                    <span id="current-gregorian">-</span> / 
+                    <span id="current-hijri">-</span>
+                </div>
+            </div>
+            <div class="cbi-value">
+                <label class="cbi-value-title"><%:Waktu Sistem%></label>
+                <div class="cbi-value-field">
+                    <span id="current-time">-</span>
+                    <small style="color: #666; margin-left: 5px;">(update real-time)</small>
+                </div>
+            </div>
+            <div class="cbi-value">
+                <label class="cbi-value-title"><strong><%:Uptime Sistem%></strong></label>
+                <div class="cbi-value-field">
+                    <span id="system-uptime">-</span>
+                    <small style="color: #666; margin-left: 5px;">(update real-time)</small>
+                </div>
+            </div>
+            <div class="cbi-value">
+                <label class="cbi-value-title"><strong><%:Memori Sistem%></strong></label>
+                <div class="cbi-value-field">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="flex-grow: 1;">
+                            <div id="memory-human-readable" style="font-weight: bold; margin-bottom: 2px;"></div>
+                            <div id="memory-details" style="font-size: 12px; color: #666; margin-bottom: 5px;">
+                                Terpakai: <span id="memory-used">-</span> MB / 
+                                Total: <span id="memory-total">-</span> MB 
+                                (<span id="memory-percent">-</span>%)
+                            </div>
+                            <div class="progress" style="height: 10px;">
+                                <div id="memory-progress-bar" class="progress-bar" 
+                                     style="width: 0%; height: 100%;"></div>
+                            </div>
+                        </div>
+                        <button onclick="refreshMemoryNow()" 
+                                style="margin-left: 10px; padding: 2px 8px; font-size: 11px; border: 1px solid #ccc; background: #f8f9fa; border-radius: 3px; cursor: pointer;"
+                                title="Refresh memory sekarang">
+                            ⟳
+                        </button>
+                    </div>
+                    <div style="font-size: 10px; color: #888; margin-top: 3px;">
+                        Auto-update: <span id="memory-update-timer">5</span> detik
+                    </div>
+                </div>
+            </div>
+        </div>
+    </fieldset>
+    
+    <!-- Informasi Log -->
+    <fieldset class="cbi-section">
+        <legend><%:Informasi Log File%></legend>
+        <div class="cbi-section-node">
+            <div class="cbi-value">
+                <label class="cbi-value-title"><%:Log Jsholat%></label>
+                <div class="cbi-value-field">
+                    <span id="log-jsholat-file">-</span> 
+                    (Ukuran: <span id="log-jsholat-size">-</span>, 
+                    Baris: <span id="log-jsholat-lines">-</span>)
+                </div>
+            </div>
+            <div class="cbi-value">
+                <label class="cbi-value-title"><%:Log Bot%></label>
+                <div class="cbi-value-field">
+                    <span id="log-bot-file">-</span> 
+                    (Ukuran: <span id="log-bot-size">-</span>, 
+                    Baris: <span id="log-bot-lines">-</span>)
+                </div>
+            </div>
+            <div class="cbi-value">
+                <label class="cbi-value-title"><%:Update Terakhir%></label>
+                <div class="cbi-value-field">
+                    <span id="last-update">-</span>
+                </div>
+            </div>
+        </div>
+    </fieldset>
+    
+    <!-- Debug Console (Hanya untuk troubleshooting) -->
+    <div id="debug-console" style="display: none; background: #f8f9fa; border: 1px solid #ddd; padding: 10px; margin-top: 20px;">
+        <h4>Debug Console</h4>
+        <pre id="debug-output" style="max-height: 200px; overflow: auto;"></pre>
+    </div>
+    
+    <!-- Tombol Aksi -->
+    <div class="cbi-page-actions right">
+        <button type="button" class="cbi-button cbi-button-refresh" onclick="location.reload()">
+            <%:Refresh%>
+        </button>
+        <button type="button" class="cbi-button cbi-button-action" onclick="toggleDebug()">
+            <%:Toggle Debug%>
+        </button>
+    </div>
+</div>
+
+<script>
+// ==============================
+// VARIABEL GLOBAL
+// ==============================
+var debugMode = false;
+var memoryUpdateInterval = null;
+var memoryDataCache = null;
+var memoryLastUpdate = 0;
+var memoryLastUpdateTime = Date.now();
+var memoryUpdateIntervalMs = 5000; // 5 detik
+
+// Variabel global untuk perhitungan real-time
+window.systemStartTime = null;
+window.serviceStartTime = null;
+window.botStartTime = null;
+window.systemUptimeSeconds = 0;
+window.serviceUptimeSeconds = 0;
+window.botUptimeSeconds = 0;
+window.nextPrayerTimestamp = null;
+
+// ==============================
+// FUNGSI UTILITAS
+// ==============================
+
+// Fungsi untuk toggle debug console
+function toggleDebug() {
+    var debugConsole = document.getElementById('debug-console');
+    debugMode = !debugMode;
+    debugConsole.style.display = debugMode ? 'block' : 'none';
+    if (debugMode) {
+        console.log("Debug mode enabled");
+    }
+}
+
+// Fungsi untuk debug log
+function debugLog(message) {
+    if (debugMode) {
+        var debugOutput = document.getElementById('debug-output');
+        debugOutput.innerHTML += new Date().toLocaleTimeString() + ': ' + message + '\n';
+        debugOutput.scrollTop = debugOutput.scrollHeight;
+        console.log(message);
+    }
+}
+
+// Fungsi untuk memformat waktu dari detik ke format yang lebih baik
+function formatUptime(seconds, uptimeHuman) {
+    // Jika ada uptime_human dari API, gunakan itu
+    if (uptimeHuman && uptimeHuman !== "" && uptimeHuman !== "0 detik") {
+        return uptimeHuman;
+    }
+    
+    if (!seconds || seconds == 0 || seconds == "0") return "Tidak berjalan";
+    
+    var secs = parseInt(seconds);
+    if (isNaN(secs) || secs <= 0) return "Tidak berjalan";
+    
+    var days = Math.floor(secs / 86400);
+    var hours = Math.floor((secs % 86400) / 3600);
+    var minutes = Math.floor((secs % 3600) / 60);
+    var secsRemaining = secs % 60;
+    
+    var result = "";
+    if (days > 0) result += days + " hari ";
+    if (hours > 0) result += hours + " jam ";
+    if (minutes > 0) result += minutes + " menit ";
+    if (secsRemaining > 0 && days === 0 && hours === 0) result += secsRemaining + " detik ";
+    if (result === "" && secs > 0) result = "Kurang dari 1 menit";
+    
+    return result.trim();
+}
+
+// Fungsi untuk format detik ke string detail - PERBAIKAN
+function formatSecondsDetailed(seconds) {
+    var secs = parseInt(seconds);
+    if (isNaN(secs) || secs <= 0) return "0 detik";
+    
+    const days = Math.floor(secs / 86400);
+    const hours = Math.floor((secs % 86400) / 3600);
+    const minutes = Math.floor((secs % 3600) / 60);
+    const secondsRemaining = secs % 60;
+    
+    let result = "";
+    if (days > 0) result += days + " hari ";
+    if (hours > 0) result += hours + " jam ";
+    if (minutes > 0) result += minutes + " menit ";
+    result += secondsRemaining + " detik";
+    
+    return result.trim();
+}
+
+// Fungsi untuk mendapatkan status sholat berdasarkan waktu sekarang
+function getPrayerStatus(prayerTime, timezone) {
+    if (!prayerTime || prayerTime == "-" || prayerTime == "") return "";
+    
+    try {
+        var now = new Date();
+        var currentHours = now.getHours().toString().padStart(2, '0');
+        var currentMinutes = now.getMinutes().toString().padStart(2, '0');
+        var currentSeconds = now.getSeconds().toString().padStart(2, '0');
+        var currentTime = currentHours + ":" + currentMinutes;
+        
+        if (currentTime == prayerTime) {
+            return '<span class="label label-success">SAAT INI!</span>';
+        }
+        
+        // Parse waktu sholat
+        var prayerParts = prayerTime.split(':');
+        if (prayerParts.length < 2) return "";
+        
+        var prayerHours = parseInt(prayerParts[0]);
+        var prayerMinutes = parseInt(prayerParts[1]);
+        
+        if (isNaN(prayerHours) || isNaN(prayerMinutes)) return "";
+        
+        var prayerTotalSeconds = prayerHours * 3600 + prayerMinutes * 60;
+        var currentTotalSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+        
+        var diffSeconds = prayerTotalSeconds - currentTotalSeconds;
+        
+        if (diffSeconds > 0) {
+            if (diffSeconds <= 300) { // 5 menit = 300 detik
+                return '<span class="label label-warning">' + formatSecondsDetailed(diffSeconds) + ' lagi</span>';
+            } else if (diffSeconds <= 1800) { // 30 menit = 1800 detik
+                return '<span class="label label-info">' + formatSecondsDetailed(diffSeconds) + ' lagi</span>';
+            } else {
+                return formatSecondsDetailed(diffSeconds) + ' lagi';
+            }
+        } else {
+            return '<span class="label label-default">Sudah lewat</span>';
+        }
+    } catch (e) {
+        console.error("Error calculating prayer status:", e);
+        return "";
+    }
+}
+
+// Fungsi untuk mendapatkan label status bot berdasarkan running field (true/false)
+function getBotStatusLabel(running, telegramNotifications, configured) {
+    // Prioritas: running -> telegram_notifications -> configured
+    if (running === true || running === "true" || running === "1") {
+        return '<span class="label label-success">BERJALAN</span>';
+    } else if (telegramNotifications === false || telegramNotifications === "false" || telegramNotifications === "0") {
+        return '<span class="label label-warning">DINONAKTIFKAN</span>';
+    } else if (configured === false || configured === "false" || configured === "0") {
+        return '<span class="label label-warning">BELUM DIKONFIGURASI</span>';
+    } else {
+        return '<span class="label label-danger">BERHENTI</span>';
+    }
+}
+
+// Fungsi untuk mendapatkan label status bot telegram berdasarkan running field
+function getBotTelegramEnabledLabel(running) {
+    if (running === true || running === "true" || running === "1") {
+        return '<span class="label label-success">AKTIF</span>';
+    } else {
+        return '<span class="label label-danger">NONAKTIF</span>';
+    }
+}
+
+// ==============================
+// FUNGSI MEMORY SYSTEM (UPDATE 5 DETIK)
+// ==============================
+
+// Fungsi UPDATE MEMORY SAJA
+function updateMemoryOnly() {
+    // Skip jika halaman tidak fokus (optimasi)
+    if (document.hidden) {
+        debugLog("Halaman tidak fokus, skip update memory");
+        return;
+    }
+    
+    debugLog("Memulai update memory...");
+    
+    fetch('/cgi-bin/luci/admin/services/jsholat/status_json')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('HTTP error: ' + response.status);
+            }
+            return response.json();
+        })
+        .then(data => {
+            debugLog("Memory data diterima");
+            
+            if (data.system && data.system.memory) {
+                var memory = data.system.memory;
+                
+                // Simpan ke cache
+                memoryDataCache = memory;
+                memoryLastUpdate = Date.now();
+                
+                // RESET TIMER COUNTDOWN KE 5
+                memoryLastUpdateTime = Date.now();
+                
+                // Update tampilan
+                updateMemoryDisplay(memory);
+                
+                // Update countdown display segera
+                updateMemoryCountdownDisplay();
+            } else {
+                debugLog("Data memory tidak ditemukan dalam response");
+            }
+        })
+        .catch(error => {
+            console.error('Error updating memory:', error);
+            debugLog("Error update memory: " + error.message);
+            
+            // Fallback ke cache jika ada
+            if (memoryDataCache) {
+                debugLog("Menggunakan cache memory");
+                updateMemoryDisplay(memoryDataCache);
+            }
+        });
+}
+
+// Fungsi UPDATE DISPLAY MEMORY
+function updateMemoryDisplay(memory) {
+    if (!memory) return;
+    
+    debugLog("Updating memory display: " + JSON.stringify(memory).substring(0, 100));
+    
+    // Update human readable
+    var humanReadableElement = document.getElementById('memory-human-readable');
+    if (humanReadableElement) {
+        if (memory.human_readable && memory.human_readable !== "") {
+            humanReadableElement.textContent = memory.human_readable;
+            humanReadableElement.style.color = "";
+        } else {
+            humanReadableElement.textContent = "Memori: -";
+            humanReadableElement.style.color = "#999";
+        }
+    }
+    
+    // Update details jika data ada
+    if (memory.used_mb !== undefined && memory.total_mb !== undefined && memory.used_percent !== undefined) {
+        // Format: "Terpakai: 666 MB / Total: 11412 MB (5%)"
+        document.getElementById('memory-used').textContent = memory.used_mb;
+        document.getElementById('memory-total').textContent = memory.total_mb;
+        document.getElementById('memory-percent').textContent = memory.used_percent;
+        
+        // Update progress bar
+        var progressBar = document.getElementById('memory-progress-bar');
+        if (progressBar) {
+            var percent = parseInt(memory.used_percent) || 0;
+            
+            // Smooth animation
+            progressBar.style.transition = 'width 0.5s ease';
+            progressBar.style.width = percent + "%";
+            
+            // Warna berdasarkan penggunaan
+            if (percent < 50) {
+                progressBar.className = "progress-bar progress-bar-success";
+            } else if (percent < 75) {
+                progressBar.className = "progress-bar progress-bar-warning";
+            } else {
+                progressBar.className = "progress-bar progress-bar-danger";
+            }
+            
+            debugLog("Progress bar updated: " + percent + "%");
+        }
+    } else {
+        debugLog("Data memory tidak lengkap");
+    }
+}
+
+// Fungsi untuk MANUAL UPDATE MEMORY
+function refreshMemoryNow() {
+    debugLog("Manual memory refresh requested");
+    updateMemoryOnly();
+}
+
+// Timer countdown untuk memory update
+function updateMemoryCountdownDisplay() {
+    var now = Date.now();
+    var elapsed = now - memoryLastUpdateTime;
+    var remaining = memoryUpdateIntervalMs - elapsed;
+    
+    // Hitung detik tersisa (1-5)
+    var secondsRemaining = Math.max(1, Math.ceil(remaining / 1000));
+    if (secondsRemaining > 5) secondsRemaining = 5;
+    
+    // Update display
+    var timerElement = document.getElementById('memory-update-timer');
+    if (timerElement) {
+        timerElement.textContent = secondsRemaining;
+        
+        // Efek visual berdasarkan waktu tersisa
+        if (secondsRemaining <= 1) {
+            timerElement.style.color = "#d9534f"; // Merah
+            timerElement.style.fontWeight = "bold";
+        } else if (secondsRemaining <= 2) {
+            timerElement.style.color = "#f0ad4e"; // Kuning
+            timerElement.style.fontWeight = "bold";
+        } else {
+            timerElement.style.color = "#337ab7"; // Biru
+            timerElement.style.fontWeight = "normal";
+        }
+    }
+}
+
+// ==============================
+// FUNGSI REAL-TIME UPDATE SETIAP DETIK
+// ==============================
+
+// Fungsi untuk update waktu sistem setiap detik
+function updateCurrentTime() {
+    const now = new Date();
+    
+    // Format waktu: HH:MM:SS
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const seconds = now.getSeconds().toString().padStart(2, '0');
+    const currentTime = `${hours}:${minutes}:${seconds}`;
+    
+    // Update elemen waktu
+    const timeElement = document.getElementById('current-time');
+    if (timeElement) {
+        timeElement.textContent = currentTime;
+    }
+}
+
+// Fungsi untuk update uptime sistem setiap detik
+function updateSystemUptime() {
+    const uptimeElement = document.getElementById('system-uptime');
+    if (!uptimeElement || uptimeElement.textContent === '-' || !window.systemStartTime) return;
+    
+    const now = Date.now();
+    const uptimeMs = now - window.systemStartTime;
+    const uptimeSeconds = Math.floor(uptimeMs / 1000);
+    
+    // Format selalu dengan detik
+    const days = Math.floor(uptimeSeconds / 86400);
+    const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+    const seconds = uptimeSeconds % 60;
+    
+    let formatted = '';
+    if (days > 0) formatted += days + ' hari ';
+    if (hours > 0) formatted += hours + ' jam ';
+    if (minutes > 0) formatted += minutes + ' menit ';
+    formatted += seconds + ' detik';
+    
+    uptimeElement.textContent = formatted;
+}
+
+// Fungsi untuk update uptime service
+function updateServiceUptimes() {
+    // Update uptime jsholat
+    const serviceUptimeElement = document.getElementById('service-uptime');
+    if (serviceUptimeElement && serviceUptimeElement.textContent !== '-' && 
+        serviceUptimeElement.textContent !== 'Tidak berjalan' && window.serviceStartTime) {
+        
+        const uptimeMs = Date.now() - window.serviceStartTime;
+        const uptimeSeconds = Math.floor(uptimeMs / 1000);
+        
+        // Format dengan detik
+        const days = Math.floor(uptimeSeconds / 86400);
+        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+        const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+        const seconds = uptimeSeconds % 60;
+        
+        let formatted = '';
+        if (days > 0) formatted += days + ' hari ';
+        if (hours > 0) formatted += hours + ' jam ';
+        if (minutes > 0) formatted += minutes + ' menit ';
+        formatted += seconds + ' detik';
+        
+        serviceUptimeElement.textContent = formatted;
+    }
+    
+    // Update uptime bot (jika running)
+    const botUptimeElement = document.getElementById('bot-uptime');
+    if (botUptimeElement && botUptimeElement.textContent !== '-' && 
+        botUptimeElement.textContent !== 'Tidak berjalan' && window.botStartTime) {
+        
+        const uptimeMs = Date.now() - window.botStartTime;
+        const uptimeSeconds = Math.floor(uptimeMs / 1000);
+        
+        // Format dengan detik
+        const days = Math.floor(uptimeSeconds / 86400);
+        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+        const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+        const seconds = uptimeSeconds % 60;
+        
+        let formatted = '';
+        if (days > 0) formatted += days + ' hari ';
+        if (hours > 0) formatted += hours + ' jam ';
+        if (minutes > 0) formatted += minutes + ' menit ';
+        formatted += seconds + ' detik';
+        
+        botUptimeElement.textContent = formatted;
+    }
+}
+
+// Fungsi untuk update status sholat setiap detik
+function updatePrayerStatuses() {
+    // Dapatkan semua waktu sholat dari tabel
+    const prayerTimes = [
+        { id: 'imsyak-time', statusId: 'imsyak-status' },
+        { id: 'subuh-time', statusId: 'subuh-status' },
+        { id: 'dzuhur-time', statusId: 'dzuhur-status' },
+        { id: 'ashar-time', statusId: 'ashar-status' },
+        { id: 'maghrib-time', statusId: 'maghrib-status' },
+        { id: 'isya-time', statusId: 'isya-status' }
+    ];
+    
+    const timezone = document.getElementById('location-timezone').textContent;
+    
+    prayerTimes.forEach(prayer => {
+        const timeElement = document.getElementById(prayer.id);
+        const statusElement = document.getElementById(prayer.statusId);
+        
+        if (timeElement && statusElement && timeElement.textContent !== '-' && timeElement.textContent.trim() !== '') {
+            const prayerTime = timeElement.textContent.trim();
+            const newStatus = getPrayerStatus(prayerTime, timezone);
+            
+            // Update status
+            if (statusElement.innerHTML !== newStatus) {
+                statusElement.innerHTML = newStatus;
+            }
+        }
+    });
+}
+
+// Fungsi untuk update countdown sholat berikutnya
+function updateNextPrayerCountdown() {
+    const nextPrayerTime = document.getElementById('next-prayer-time').textContent;
+    const nextPrayerName = document.getElementById('next-prayer-name').textContent;
+    
+    if (nextPrayerTime && nextPrayerTime !== '-' && nextPrayerName && nextPrayerName !== '-') {
+        const now = new Date();
+        const currentHours = now.getHours();
+        const currentMinutes = now.getMinutes();
+        const currentSeconds = now.getSeconds();
+        
+        // Parse waktu sholat berikutnya
+        const prayerParts = nextPrayerTime.split(':');
+        if (prayerParts.length >= 2) {
+            const prayerHours = parseInt(prayerParts[0]);
+            const prayerMinutes = parseInt(prayerParts[1]);
+            const prayerSeconds = parseInt(prayerParts[2]) || 0;
+            
+            if (!isNaN(prayerHours) && !isNaN(prayerMinutes)) {
+                // Hitung selisih dalam detik
+                const prayerTotalSeconds = prayerHours * 3600 + prayerMinutes * 60 + prayerSeconds;
+                const currentTotalSeconds = currentHours * 3600 + currentMinutes * 60 + currentSeconds;
+                
+                let diffSeconds = prayerTotalSeconds - currentTotalSeconds;
+                
+                // Handle jika sudah lewat (untuk hari berikutnya)
+                if (diffSeconds < 0) {
+                    diffSeconds += 24 * 3600; // Tambah 24 jam
+                }
+                
+                // Format countdown
+                let countdownText;
+                if (diffSeconds <= 0) {
+                    countdownText = "SAAT INI!";
+                } else {
+                    const hoursRemaining = Math.floor(diffSeconds / 3600);
+                    const minutesRemaining = Math.floor((diffSeconds % 3600) / 60);
+                    const secondsRemaining = diffSeconds % 60;
+                    
+                    if (hoursRemaining > 0) {
+                        countdownText = `${hoursRemaining} jam ${minutesRemaining} menit ${secondsRemaining} detik`;
+                    } else if (minutesRemaining > 0) {
+                        countdownText = `${minutesRemaining} menit ${secondsRemaining} detik`;
+                    } else {
+                        countdownText = `${secondsRemaining} detik`;
+                    }
+                }
+                
+                // Update countdown display
+                const countdownElement = document.getElementById('next-prayer-countdown');
+                if (countdownElement) {
+                    countdownElement.textContent = countdownText;
+                    
+                    // Update class berdasarkan waktu
+                    if (diffSeconds <= 300) { // 5 menit
+                        countdownElement.className = 'label label-warning';
+                    } else if (diffSeconds <= 0) {
+                        countdownElement.className = 'label label-success';
+                    } else {
+                        countdownElement.className = '';
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Fungsi utama untuk update SEMUA data waktu setiap detik
+function updateAllTimeData() {
+    // 1. Update waktu sistem
+    updateCurrentTime();
+    
+    // 2. Update uptime sistem
+    updateSystemUptime();
+    
+    // 3. Update uptime service
+    updateServiceUptimes();
+    
+    // 4. Update status sholat
+    updatePrayerStatuses();
+    
+    // 5. Update countdown sholat berikutnya
+    updateNextPrayerCountdown();
+    
+    // 6. Update memory countdown
+    updateMemoryCountdownDisplay();
+    
+    debugLog("Real-time update executed");
+}
+
+// ==============================
+// FUNGSI LOAD DATA DARI SERVER (30 DETIK)
+// ==============================
+
+// Fungsi untuk memuat data status
+function loadStatus() {
+    debugLog("Memulai load status...");
+    
+    fetch('/cgi-bin/luci/admin/services/jsholat/status_json')
+        .then(response => {
+            debugLog("Response status: " + response.status);
+            if (!response.ok) {
+                throw new Error('Network response was not ok: ' + response.status);
+            }
+            return response.json();
+        })
+        .then(data => {
+            debugLog("Data diterima: " + JSON.stringify(data).substring(0, 500) + "...");
+            
+            // ===== SERVICE JSHOLAT =====
+            if (data.services && data.services.jsholat) {
+                var service = data.services.jsholat;
+                debugLog("Service jsholat ditemukan");
+                
+                document.getElementById('service-name').textContent = service.name || "jsholat";
+                document.getElementById('service-pid').textContent = service.pid && service.pid !== "0" && service.pid !== 0 && service.pid !== "" ? service.pid : "-";
+                document.getElementById('service-start-time').textContent = service.start_time || "-";
+                
+                // Simpan uptime awal untuk perhitungan real-time
+                if (service.uptime) {
+                    window.serviceUptimeSeconds = parseInt(service.uptime) || 0;
+                    window.serviceStartTime = Date.now() - (window.serviceUptimeSeconds * 1000);
+                }
+                
+                // Update uptime pertama kali
+                document.getElementById('service-uptime').textContent = formatUptime(service.uptime, service.uptime_human);
+                
+                // Status Service - gunakan running field (true/false)
+                if (service.running === true || service.running === "true" || service.running === "1") {
+                    document.getElementById('service-status').innerHTML = 
+                        '<span class="label label-success">BERJALAN</span>';
+                } else {
+                    document.getElementById('service-status').innerHTML = 
+                        '<span class="label label-danger">TIDAK BERJALAN</span>';
+                    window.serviceStartTime = null; // Reset jika tidak running
+                }
+                
+                // Status Enabled
+                document.getElementById('service-enabled').innerHTML = 
+                    service.enabled === true || service.enabled === "true" || service.enabled === "1" ? 
+                    '<span class="label label-success">AKTIF</span>' : 
+                    '<span class="label label-danger">NONAKTIF</span>';
+            } else {
+                debugLog("Service jsholat tidak ditemukan");
+                document.getElementById('service-status').innerHTML = 
+                    '<span class="label label-warning">TIDAK DITEMUKAN</span>';
+                window.serviceStartTime = null;
+            }
+            
+            // ===== SERVICE JSHOLAT-BOT =====
+            if (data.services && data.services["jsholat-bot"]) {
+                var bot = data.services["jsholat-bot"];
+                debugLog("Service bot ditemukan: " + JSON.stringify(bot));
+                
+                // 1. Nama Service Bot
+                document.getElementById('service-name-bot').textContent = bot.name || "jsholat-bot";
+                
+                // 2. Status Bot
+                var telegramNotifications = bot.telegram_notifications;
+                var configured = bot.configured;
+                
+                document.getElementById('bot-status').innerHTML = getBotStatusLabel(
+                    bot.running, 
+                    telegramNotifications,
+                    configured
+                );
+                
+                // Tampilkan PID hanya jika running
+                if ((bot.running === true || bot.running === "true" || bot.running === "1") && bot.pid && bot.pid !== 0 && bot.pid !== "0" && bot.pid !== "") {
+                    document.getElementById('bot-pid').textContent = bot.pid;
+                } else {
+                    document.getElementById('bot-pid').textContent = "-";
+                }
+                
+                // Simpan uptime awal untuk perhitungan real-time
+                if (bot.running === true || bot.running === "true" || bot.running === "1") {
+                    if (bot.uptime) {
+                        window.botUptimeSeconds = parseInt(bot.uptime) || 0;
+                        window.botStartTime = Date.now() - (window.botUptimeSeconds * 1000);
+                    }
+                    document.getElementById('bot-start-time').textContent = bot.start_time || "-";
+                    document.getElementById('bot-memory').textContent = bot.memory_mb && bot.memory_mb !== 0 && bot.memory_mb !== "0" ? bot.memory_mb + " MB" : "-";
+                } else {
+                    document.getElementById('bot-start-time').textContent = "-";
+                    document.getElementById('bot-memory').textContent = "-";
+                    window.botStartTime = null; // Reset jika tidak running
+                }
+                
+                // Update uptime pertama kali
+                document.getElementById('bot-uptime').textContent = formatUptime(bot.uptime, bot.uptime_human);
+                
+                // Status Telegram menggunakan running field dari bot
+                document.getElementById('bot-telegram-enabled').innerHTML = getBotTelegramEnabledLabel(bot.running);
+                
+                // Status Konfigurasi
+                document.getElementById('bot-configured').innerHTML = 
+                    configured === true || configured === "true" || configured === "1" ? 
+                    '<span class="label label-success">TERKONFIGURASI</span>' : 
+                    '<span class="label label-warning">BELUM DIKONFIGURASI</span>';
+            } else {
+                debugLog("Service bot tidak ditemukan");
+                document.getElementById('bot-status').innerHTML = 
+                    '<span class="label label-warning">TIDAK DITEMUKAN</span>';
+                document.getElementById('bot-pid').textContent = "-";
+                document.getElementById('bot-uptime').textContent = "-";
+                document.getElementById('bot-start-time').textContent = "-";
+                document.getElementById('bot-memory').textContent = "-";
+                document.getElementById('bot-telegram-enabled').innerHTML = 
+                    '<span class="label label-default">Tidak diketahui</span>';
+                document.getElementById('bot-configured').innerHTML = 
+                    '<span class="label label-default">Tidak diketahui</span>';
+                window.botStartTime = null;
+            }
+            
+            // ===== KONFIGURASI FITUR =====
+            if (data.config) {
+                debugLog("Config ditemukan");
+                
+                // Telegram - menggunakan telegram_enabled dari config untuk notifikasi
+                document.getElementById('config-telegram').innerHTML = 
+                    data.config.telegram_enabled === true || data.config.telegram_enabled === "true" || data.config.telegram_enabled === "1" ? 
+                    '<span class="label label-success">AKTIF</span>' : 
+                    '<span class="label label-danger">NONAKTIF</span>';
+                
+                document.getElementById('config-sound').innerHTML = 
+                    data.config.sound === true || data.config.sound === "true" || data.config.sound === "1" ? 
+                    '<span class="label label-success">AKTIF</span>' : 
+                    '<span class="label label-danger">NONAKTIF</span>';
+                
+                document.getElementById('config-volume').textContent = 
+                    data.config.volume ? data.config.volume + "%" : "-";
+                
+                document.getElementById('config-ayat').innerHTML = 
+                    data.config.ayat === true || data.config.ayat === "true" || data.config.ayat === "1" ? 
+                    '<span class="label label-success">AKTIF</span>' : 
+                    '<span class="label label-danger">NONAKTIF</span>';
+                
+                document.getElementById('config-reminder').textContent = 
+                    data.config.reminder === "0" || data.config.reminder === 0 ? "NONAKTIF" : (data.config.reminder + " menit");
+                
+                document.getElementById('config-debug').innerHTML = 
+                    data.config.debug === true || data.config.debug === "true" || data.config.debug === "1" ? 
+                    '<span class="label label-warning">AKTIF</span>' : 
+                    '<span class="label label-default">NONAKTIF</span>';
+            } else {
+                debugLog("Config tidak ditemukan");
+            }
+            
+            // ===== LOKASI (dalam Konfigurasi Fitur) =====
+            if (data.location) {
+                debugLog("Location ditemukan");
+                document.getElementById('location-city').textContent = data.location.city || "-";
+                document.getElementById('location-province').textContent = data.location.province || "-";
+                document.getElementById('location-timezone').textContent = data.location.timezone || "-";
+                // Tanggal
+                if (document.getElementById('current-date')) {
+                    document.getElementById('current-date').textContent = data.location.date || "-";
+                }
+            }
+            // ===== INFORMASI TANGGAL =====
+            if (data.system && data.system.date) {
+                debugLog("System date ditemukan");
+                
+                // Hari (Jumat, Sabtu, dll)
+                if (data.system.date.day_name) {
+                    document.getElementById('current-day').textContent = data.system.date.day_name;
+                } else {
+                    // Fallback: hitung dari sistem
+                    var days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+                    var dayIndex = new Date().getDay();
+                    document.getElementById('current-day').textContent = days[dayIndex] || "-";
+                }
+                
+                // Tanggal Gregorian lengkap
+                if (data.system.date.gregorian_date) {
+                    document.getElementById('current-gregorian').textContent = data.system.date.gregorian_date;
+                } else {
+                    // Fallback: format dari sistem
+                    var months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+                                  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+                    var now = new Date();
+                    var day = now.getDate();
+                    var month = months[now.getMonth()];
+                    var year = now.getFullYear();
+                    document.getElementById('current-gregorian').textContent = day + " " + month + " " + year;
+                }
+                
+                // Tanggal Hijriyah
+                if (data.system.date.hijri_date) {
+                    document.getElementById('current-hijri').textContent = data.system.date.hijri_date;
+                } else {
+                    document.getElementById('current-hijri').textContent = "-";
+                }
+            } else {
+                // Fallback jika data.date tidak ada
+                var days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+                var dayIndex = new Date().getDay();
+                document.getElementById('current-day').textContent = days[dayIndex] || "-";
+                
+                var months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+                              'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+                var now = new Date();
+                var day = now.getDate();
+                var month = months[now.getMonth()];
+                var year = now.getFullYear();
+                document.getElementById('current-gregorian').textContent = day + " " + month + " " + year;
+                
+                document.getElementById('current-hijri').textContent = "Tidak tersedia";
+            }
+            // ===== JADWAL SHOLAT =====
+            if (data.schedule) {
+                debugLog("Schedule ditemukan");
+                
+                 // Sumber Jadwal
+                document.getElementById('schedule-source').textContent = data.schedule.source || "-";
+                
+                // Terakhir Jadwal Diperbarui
+                document.getElementById('schedule-last-updated').textContent = data.schedule.last_updated || "-";
+                
+                // Waktu Sholat
+                var prayerFields = [
+                    {id: 'imsyak-time', field: 'imsyak'},
+                    {id: 'subuh-time', field: 'subuh'},
+                    {id: 'dzuhur-time', field: 'dzuhur'},
+                    {id: 'ashar-time', field: 'ashar'},
+                    {id: 'maghrib-time', field: 'maghrib'},
+                    {id: 'isya-time', field: 'isya'}
+                ];
+                
+                prayerFields.forEach(function(item) {
+                    var time = data.schedule[item.field];
+                    if (time && time !== "-") {
+                        document.getElementById(item.id).textContent = time;
+                    } else {
+                        document.getElementById(item.id).textContent = "-";
+                    }
+                });
+            }
+            
+            // ===== SHOLAT BERIKUTNYA =====
+            if (data.next_prayer) {
+                debugLog("Next prayer ditemukan");
+                document.getElementById('next-prayer-name').textContent = data.next_prayer.name || "-";
+                document.getElementById('next-prayer-time').textContent = data.next_prayer.time || "-";
+            }
+            
+            // ===== INFORMASI SISTEM =====
+            if (data.system) {
+                debugLog("System ditemukan");
+                
+                // Simpan uptime sistem untuk perhitungan real-time
+                if (data.system.uptime) {
+                    window.systemUptimeSeconds = parseInt(data.system.uptime) || 0;
+                    window.systemStartTime = Date.now() - (window.systemUptimeSeconds * 1000);
+                }
+                
+                // Update uptime sistem pertama kali
+                document.getElementById('system-uptime').textContent = formatUptime(data.system.uptime, data.system.uptime_human);
+                
+                // ===== MEMORI SISTEM =====
+                if (data.system.memory) {
+                    // Sync cache dengan data terbaru dari loadStatus
+                    memoryDataCache = data.system.memory;
+                    memoryLastUpdate = Date.now();
+                    debugLog("Memory cache synced from loadStatus");
+                    
+                    // Update tampilan memory juga
+                    updateMemoryDisplay(data.system.memory);
+                }
+                
+                // Log Jsholat
+                if (data.system.jsholat_log) {
+                    document.getElementById('log-jsholat-file').textContent = 
+                        "service.log";
+                    document.getElementById('log-jsholat-size').textContent = data.system.jsholat_log.size || "0";
+                    document.getElementById('log-jsholat-lines').textContent = data.system.jsholat_log.lines || "0";
+                }
+                
+                // Log Bot
+                if (data.system.bot_log) {
+                    document.getElementById('log-bot-file').textContent = "bot.log";
+                    document.getElementById('log-bot-size').textContent = data.system.bot_log.size || "0";
+                    document.getElementById('log-bot-lines').textContent = data.system.bot_log.lines || "0";
+                } else {
+                    // Fallback ke bot.log jika tidak ada di system
+                    document.getElementById('log-bot-file').textContent = "bot.log";
+                }
+            }
+            
+            // ===== UPDATE TIME =====
+            if (data.status && data.status.last_update) {
+                document.getElementById('last-update').textContent = data.status.last_update;
+            }
+            
+            debugLog("Load status selesai");
+            
+            // Update semua data waktu pertama kali
+            updateAllTimeData();
+            
+        })
+        .catch(error => {
+            console.error('Error loading status:', error);
+            debugLog("Error: " + error.message);
+            
+            // Tampilkan error di UI
+            document.getElementById('service-status').innerHTML = 
+                '<span class="label label-danger">Gagal memuat data</span>';
+            document.getElementById('service-name').textContent = "Error: " + error.message;
+            
+            // Set semua field ke error state
+            var errorElements = [
+                'service-name-bot', 'bot-status', 'service-pid', 'service-uptime', 'service-start-time',
+                'service-enabled', 'bot-pid', 'bot-uptime', 'bot-start-time',
+                'bot-telegram-enabled', 'bot-configured', 'bot-memory',
+                'config-telegram', 'config-sound', 'config-volume',
+                'config-ayat', 'config-reminder', 'config-debug',
+                'location-city', 'location-province', 'location-timezone', 'current-date',
+                'current-time', 'system-uptime', 'imsyak-time', 'subuh-time',
+                'dzuhur-time', 'ashar-time', 'maghrib-time', 'isya-time',
+                'next-prayer-name', 'next-prayer-time', 'next-prayer-countdown',
+                'log-jsholat-size', 'log-jsholat-lines', 'log-bot-size',
+                'log-bot-lines', 'last-update',
+                'memory-human-readable', 'memory-used', 'memory-total', 'memory-percent',
+                'memory-update-timer'
+            ];
+            
+            errorElements.forEach(function(id) {
+                var element = document.getElementById(id);
+                if (element) element.textContent = "-";
+            });
+            
+            // Reset progress bar
+            var progressBar = document.getElementById('memory-progress-bar');
+            if (progressBar) {
+                progressBar.style.width = "0%";
+                progressBar.className = "progress-bar";
+            }
+            
+            // Reset timer display
+            var timerElement = document.getElementById('memory-update-timer');
+            if (timerElement) {
+                timerElement.style.color = "";
+                timerElement.style.fontWeight = "";
+            }
+            
+            // Reset cache memory
+            memoryDataCache = null;
+            memoryLastUpdate = 0;
+            memoryLastUpdateTime = Date.now();
+            
+            // Tetap mulai timer real-time meski error
+            updateAllTimeData();
+        });
+}
+
+// ==============================
+// INISIALISASI SAAT HALAMAN DIMUAT
+// ==============================
+document.addEventListener('DOMContentLoaded', function() {
+    debugLog("DOM Content Loaded - Memory system initialized");
+    
+    // 1. Load semua data pertama kali
+    loadStatus();
+    
+    // 2. Mulai interval untuk SEMUA data (30 detik)
+    setInterval(loadStatus, 30000);
+    
+    // 3. Mulai interval KHUSUS memory (5 detik)
+    // Tunggu 2 detik pertama biar tidak bentrok dengan loadStatus awal
+    setTimeout(function() {
+        memoryUpdateInterval = setInterval(updateMemoryOnly, 5000);
+        debugLog("Memory interval started (5 seconds)");
+    }, 2000);
+    
+    // 4. Real-time updates untuk waktu (1 detik) - TETAP ADA
+    setInterval(updateAllTimeData, 1000);
+});
+
+// ==============================
+// OPTIMASI: PAUSE/RESUME BERDASARKAN VISIBILITY
+// ==============================
+document.addEventListener('visibilitychange', function() {
+    if (memoryUpdateInterval) {
+        if (document.hidden) {
+            // Halaman tidak terlihat, pause interval
+            clearInterval(memoryUpdateInterval);
+            memoryUpdateInterval = null;
+            debugLog("Memory interval paused (tab hidden)");
+        } else {
+            // Halaman terlihat lagi, resume interval
+            // Update segera, lalu mulai interval
+            updateMemoryOnly();
+            memoryUpdateInterval = setInterval(updateMemoryOnly, 5000);
+            debugLog("Memory interval resumed (tab visible)");
+        }
+    }
+});
+
+</script>
+
+<style>
+.label {
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    display: inline-block;
+    margin: 2px;
+}
+.label-success { background-color: #5cb85c; color: white; }
+.label-danger { background-color: #d9534f; color: white; }
+.label-warning { background-color: #f0ad4e; color: white; }
+.label-info { background-color: #5bc0de; color: white; }
+.label-default { background-color: #777; color: white; }
+.cbi-button-refresh { background-color: #5bc0de; color: white; }
+.cbi-button-apply { background-color: #5cb85c; color: white; }
+.cbi-button-action { background-color: #f0ad4e; color: white; }
+
+.cbi-value {
+    margin-bottom: 10px;
+    padding: 8px 0;
+}
+.cbi-value-title {
+    width: 180px;
+    float: left;
+    padding-top: 5px;
+    text-align: right;
+    font-weight: bold;
+}
+.cbi-value-field {
+    margin-left: 200px;
+    min-height: 25px;
+    padding-top: 5px;
+}
+
+table.table {
+    border-collapse: collapse;
+    width: 100%;
+}
+table.table th {
+    background-color: #f5f5f5;
+    padding: 8px;
+    text-align: left;
+    border-bottom: 2px solid #ddd;
+}
+table.table td {
+    padding: 8px;
+    border-bottom: 1px solid #ddd;
+}
+table.table tr:hover {
+    background-color: #f9f9f9;
+}
+
+#debug-console {
+    font-family: monospace;
+    font-size: 12px;
+}
+
+/* Progress bar styles */
+.progress {
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,.1);
+}
+.progress-bar {
+    background-color: #337ab7;
+    transition: width 0.5s ease;
+}
+.progress-bar-success { background-color: #5cb85c; }
+.progress-bar-warning { background-color: #f0ad4e; }
+.progress-bar-danger { background-color: #d9534f; }
+
+/* Style untuk countdown */
+#next-prayer-countdown.label {
+    padding: 2px 6px;
+    margin-left: 5px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .cbi-value-title {
+        width: 120px;
+        text-align: left;
+    }
+    .cbi-value-field {
+        margin-left: 130px;
+    }
+}
+</style>
+
+<%+footer%>

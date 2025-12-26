@@ -6,9 +6,10 @@ m = Map("jsholat", "Pengaturan Jadwal Sholat")
 m.title = translate("Pengaturan Jadwal Shalat")
 m.description = translate("Untuk mengatur jadwal sholat dan mengatur suara adzan.<br><br>"..
 "1. Pengaturan Jadwal: Untuk mengatur jadwal sholat berdasarkan nama kota/wilayah beserta durasi setiap jadwal diperbarui.<br>" ..
-"2. Lihat Jadwal: Untuk melihat jadwal sholat saat ini.<br>"..
-"3. Pengaturan Suara: Untuk mengatur penyimpanan jadwal, mengatur suara adzan.<br>"..
-"4. Pengaturan Service: Untuk mengatur jalannya aplikasi pembaruan jadwal, pemutar suara waktu adzan, serta manajemen bot Telegram.<br>"..
+"2. Status Detail: Untuk melihat detail status aplikasi.<br>"..
+"3. Lihat Jadwal: Untuk melihat jadwal sholat saat ini.<br>"..
+"4. Pengaturan Suara: Untuk mengatur penyimpanan jadwal, mengatur suara adzan.<br>"..
+"5. Pengaturan Service: Untuk mengatur jalannya aplikasi pembaruan jadwal, pemutar suara waktu adzan, serta manajemen bot Telegram.<br>"..
 [[<br/><br/><a href="https://github.com/ajisetiawan716" target="_blank">Powered by ajisetiawan716</a>]])
 
 -- Load data kota dari JSON

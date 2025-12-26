@@ -96,7 +96,7 @@ start_service() {
 }
 
 stop_service() {
-    log "🔌 Menghentikan service"
+    log "⛔ Menghentikan service"
     crontab -l | grep -v "/usr/bin/jadwal-update.sh" | crontab -
     /etc/init.d/cron restart
 }

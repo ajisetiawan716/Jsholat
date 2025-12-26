@@ -227,6 +227,7 @@
   "DI Yogyakarta": [
     {"value": "bantul", "label": "Bantul", "timezone": "WIB"},
     {"value": "gunungkidul", "label": "Gunung Kidul", "timezone": "WIB"},
+    {"value": "wates", "label": "Wates, Kab. Kulon Progo", "timezone": "WIB"},
     {"value": "kulonprogo", "label": "Kulon Progo", "timezone": "WIB"},
     {"value": "sleman", "label": "Sleman", "timezone": "WIB"},
     {"value": "yogyakarta", "label": "Yogyakarta", "timezone": "WIB"}
@@ -264,7 +265,7 @@
     {"value": "sikka", "label": "Sikka", "timezone": "WITA"},
     {"value": "sumbatengah", "label": "Sumba Tengah", "timezone": "WITA"},
     {"value": "sumbatimur", "label": "Sumba Timur", "timezone": "WITA"},
-    {"value": "timortengahselatan", "label": "Timor Tengah Selatan", "timezone": "WITA"},
+    {"value": "kabtimortengahselatan", "label": "Timor Tengah Selatan", "timezone": "WITA"},
     {"value": "timortengahutara", "label": "Timor Tengah Utara", "timezone": "WITA"}
   ],
   "Kalimantan Barat": [
@@ -281,6 +282,7 @@
     {"value": "sintang", "label": "Sintang", "timezone": "WIB"}
   ],
   "Kalimantan Tengah": [
+    {"value": "buntok", "label": "Buntok, Kab. Barito Selatan", "timezone": "WIB"},
     {"value": "baritoselatan", "label": "Barito Selatan", "timezone": "WIB"},
     {"value": "baritoutara", "label": "Barito Utara", "timezone": "WIB"},
     {"value": "gunungmas", "label": "Gunung Mas", "timezone": "WIB"},
@@ -421,6 +423,7 @@
   ],
   "Papua": [
     {"value": "asmat", "label": "Asmat", "timezone": "WIT"},
+    {"value": "biak", "label": "Biak", "timezone": "WIT"},
     {"value": "biak-numfor", "label": "Biak Numfor", "timezone": "WIT"},
     {"value": "boven-digoel", "label": "Boven Digoel", "timezone": "WIT"},
     {"value": "deiyai", "label": "Deiyai", "timezone": "WIT"},
