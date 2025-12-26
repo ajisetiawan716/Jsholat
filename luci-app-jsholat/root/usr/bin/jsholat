@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =============================================
-# JSHOLAT SERVICE SCRIPT v1.7.5 (FIXED)
+# JSHOLAT SERVICE SCRIPT v1.7.8 
 # Penjadwal dan Pemutar Adzan Otomatis
 # (C) 2025 Jsholat - @ajisetiawan716
 # Original script by Mikodemos
@@ -13,6 +13,57 @@ LOG_DIR="/var/log/jsholat"
 LOG_FILE="$LOG_DIR/service.log"
 MAX_LOG_SIZE=1048576  # 1MB
 DEBUG_MODE=$(uci -q get jsholat.service.debug_mode || echo "0")
+
+# Fungsi untuk info Hijriyah
+HIJRI_CACHE_FILE="/tmp/jsholat_cache/hijri_date_cache.json"
+HIJRI_CACHE_EXPIRE=3600 # Cache berlaku selama 1 jam (3600 detik)
+
+# Fungsi untuk mendapatkan tanggal Hijriyah dengan cache
+# Fungsi untuk mendapatkan tanggal Hijriyah dengan cache
+get_hijri_date() {
+    local gregorian_date=$(date +"%Y-%m-%d")
+    local now=$(date +%s)
+    
+    # Baca nilai adjustment dari config UCI, default -1
+    local hijri_adj=$(uci -q get jsholat.schedule.hijri_adjust || echo "-1")
+    
+    # Cek cache terlebih dahulu
+    if [ -f "$HIJRI_CACHE_FILE" ]; then
+        local cache_time=$(jq -r '.cache_time' "$HIJRI_CACHE_FILE" 2>/dev/null)
+        local cached_date=$(jq -r '.hijri_date' "$HIJRI_CACHE_FILE" 2>/dev/null)
+        
+        if [ -n "$cache_time" ] && [ -n "$cached_date" ] && 
+           [ $((now - cache_time)) -lt $HIJRI_CACHE_EXPIRE ]; then
+            echo "$cached_date"
+            return 0
+        fi
+    fi
+    
+    # Jika cache tidak ada atau sudah expired, ambil dari API
+    local api_url="https://api.myquran.com/v2/cal/hijr/$gregorian_date?adj=$hijri_adj"
+    local response=$(curl -s --max-time 5 "$api_url") # Timeout 5 detik
+    local status=$(echo "$response" | jq -r '.status' 2>/dev/null)
+    
+    if [ "$status" = "true" ]; then
+        local hijri_date=$(echo "$response" | jq -r '.data.date[1]' 2>/dev/null)
+        
+        # Simpan ke cache
+        mkdir -p "/tmp/jsholat_cache"
+        echo "{\"cache_time\":$now,\"hijri_date\":\"$hijri_date\"}" > "$HIJRI_CACHE_FILE"
+        echo "$hijri_date"
+        return 0
+    else
+        log "ERROR" "❌ Gagal mendapatkan tanggal Hijriyah dari API"
+        # Coba gunakan cache yang expired jika ada
+        if [ -n "$cached_date" ]; then
+            echo "$cached_date"
+            return 1
+        else
+            echo ""
+            return 1
+        fi
+    fi
+}
 
 # File untuk menyimpan status reminder
 REMINDER_STATUS_FILE="/var/lib/jsholat/reminder_status"
@@ -83,6 +134,838 @@ reset_reminder_status() {
         
         log "INFO" "🔄 Status reminder direset untuk hari baru: $TODAY"
     fi
+}
+
+# Fungsi alternatif dengan presisi lebih tinggi
+get_system_memory_info() {
+    if [ -f "/proc/meminfo" ]; then
+        local total_kb=$(grep -E '^MemTotal:' /proc/meminfo 2>/dev/null | awk '{print $2}')
+        local available_kb=$(grep -E '^MemAvailable:' /proc/meminfo 2>/dev/null | awk '{print $2}')
+        
+        if [ -n "$total_kb" ] && [ -n "$available_kb" ]; then
+            local used_kb=$((total_kb - available_kb))
+            local used_percent=0
+            [ "$total_kb" -gt 0 ] && used_percent=$(( (used_kb * 100) / total_kb ))
+            
+            # Format used dalam MB (selalu)
+            local used_mb_int=$((used_kb / 1024))
+            local used_kb_remainder=$((used_kb % 1024))
+            # Hitung fraksi MB (2 digit desimal)
+            local used_mb_frac=$(( (used_kb_remainder * 100) / 1024 ))
+            # Pastikan selalu 2 digit
+            [ ${#used_mb_frac} -eq 1 ] && used_mb_frac="0${used_mb_frac}"
+            
+            # Format total: GB jika >= 1GB, MB jika < 1GB
+            if [ $total_kb -ge 1048576 ]; then # >= 1GB
+                local total_gb_int=$((total_kb / 1048576))
+                local total_remainder_kb=$((total_kb % 1048576))
+                local total_mb_remainder=$((total_remainder_kb / 1024))
+                # Hitung fraksi GB (2 digit desimal)
+                local total_gb_frac=$(( (total_mb_remainder * 100) / 1024 ))
+                [ ${#total_gb_frac} -eq 1 ] && total_gb_frac="0${total_gb_frac}"
+                
+                echo "${used_mb_int}.${used_mb_frac} MB / ${total_gb_int}.${total_gb_frac} GB (${used_percent}%)"
+            else
+                local total_mb_int=$((total_kb / 1024))
+                local total_kb_remainder=$((total_kb % 1024))
+                local total_mb_frac=$(( (total_kb_remainder * 100) / 1024 ))
+                [ ${#total_mb_frac} -eq 1 ] && total_mb_frac="0${total_mb_frac}"
+                
+                echo "${used_mb_int}.${used_mb_frac} MB / ${total_mb_int}.${total_mb_frac} MB (${used_percent}%)"
+            fi
+        else
+            echo "Information not available"
+        fi
+    else
+        echo "Information not available"
+    fi
+}
+
+# FUNGSI BARU: TAMPILKAN STATUS SERVICE DENGAN UPTIME
+show_status() {
+    echo "============================================="
+    echo "          STATUS SERVICE JSHOLAT"
+    echo "============================================="
+    
+    # Cek apakah service berjalan
+    local pid=$(pgrep -f "/usr/bin/jsholat run")
+    if [ -n "$pid" ]; then
+        echo "✅ Service: BERJALAN (PID: $pid)"
+        
+        # Cek apakah proses benar-benar berjalan
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "   Proses: /usr/bin/jsholat run"
+            
+            # HITUNG UPTIME PROSES
+            if [ -d "/proc/$pid" ]; then
+                # Cara 1: Menggunakan /proc filesystem
+                local start_time=$(stat -c %Y "/proc/$pid" 2>/dev/null)
+                if [ -n "$start_time" ]; then
+                    local now=$(date +%s)
+                    local uptime_seconds=$((now - start_time))
+                    
+                    # Konversi ke format yang mudah dibaca
+                    local days=$((uptime_seconds / 86400))
+                    local hours=$(( (uptime_seconds % 86400) / 3600 ))
+                    local minutes=$(( (uptime_seconds % 3600) / 60 ))
+                    local seconds=$((uptime_seconds % 60))
+                    
+                    if [ $days -gt 0 ]; then
+                        echo "   Uptime: ${days} hari ${hours} jam ${minutes} menit"
+                    elif [ $hours -gt 0 ]; then
+                        echo "   Uptime: ${hours} jam ${minutes} menit"
+                    elif [ $minutes -gt 0 ]; then
+                        echo "   Uptime: ${minutes} menit ${seconds} detik"
+                    else
+                        echo "   Uptime: ${seconds} detik"
+                    fi
+                    
+                    # Hitung waktu mulai
+                    local start_date=$(date -d "@$start_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || \
+                                       date "+%Y-%m-%d %H:%M:%S" -d "@$start_time" 2>/dev/null || \
+                                       echo "Tidak diketahui")
+                    echo "   Mulai:  $start_date"
+                fi
+            else
+                # Cara 2: Menggunakan ps (jika /proc tidak tersedia)
+                local ps_output=$(ps -o etime= -p "$pid" 2>/dev/null || \
+                                  ps -o etime= "$pid" 2>/dev/null || \
+                                  echo "00:00")
+                echo "   Uptime: $ps_output"
+            fi
+            
+            # Cek penggunaan memory (jika tersedia)
+            if [ -f "/proc/$pid/status" ]; then
+                local memory_kb=$(grep VmRSS "/proc/$pid/status" 2>/dev/null | awk '{print $2}')
+                if [ -n "$memory_kb" ]; then
+                    local memory_mb=$((memory_kb / 1024))
+                    echo "   Memory: ${memory_mb} MB (${memory_kb} KB)"
+                fi
+            fi
+            
+        else
+            echo "   ⚠️  Proses PID $pid ditemukan tetapi tidak merespon"
+        fi
+    else
+        echo "❌ Service: TIDAK BERJALAN"
+        
+        # Cek apakah pernah berjalan dengan melihat log terakhir
+        if [ -f "/var/log/jsholat/service.log" ]; then
+            local last_start=$(grep "SERVICE JSHOLAT DIMULAI" "/var/log/jsholat/service.log" 2>/dev/null | tail -1)
+            if [ -n "$last_start" ]; then
+                echo "   Terakhir berjalan: $(echo "$last_start" | cut -d' ' -f1-3)"
+            fi
+        fi
+    fi
+    
+    # Cek konfigurasi service
+    local service_enabled=$(uci -q get jsholat.service.service || echo "1")
+    echo "⚙️  Status Konfigurasi: $([ "$service_enabled" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
+    
+    # Cek status reminder
+    if [ -f "/var/lib/jsholat/last_reset_date" ]; then
+        echo "📅 Reset Terakhir: $(cat /var/lib/jsholat/last_reset_date)"
+    fi
+    
+    # Tampilkan file log
+    if [ -f "/var/log/jsholat/service.log" ]; then
+        local log_size=$(du -h "/var/log/jsholat/service.log" 2>/dev/null | awk '{print $1}')
+        local log_lines=$(wc -l < "/var/log/jsholat/service.log" 2>/dev/null || echo "0")
+        echo "📊 Log File: /var/log/jsholat/service.log"
+        echo "   Ukuran: ${log_size:-Tidak diketahui}, Baris: $log_lines"
+        
+        # Tampilkan 5 baris terakhir log
+        echo "   --- 5 Baris Terakhir Log ---"
+        tail -5 "/var/log/jsholat/service.log" 2>/dev/null | while read -r line; do
+            echo "   $line"
+        done
+    else
+        echo "📊 Log File: Tidak ditemukan"
+    fi
+    
+    # Tampilkan konfigurasi fitur
+    echo ""
+    echo "============================================="
+    echo "🔧 KONFIGURASI FITUR:"
+    
+    local telegram_enabled=$(uci -q get jsholat.service.telegram_enabled || echo "1")
+    local sound_enabled=$(uci -q get jsholat.sound.sound_enabled || echo "1")
+    local ayat_enabled=$(uci -q get jsholat.service.ayat_enabled || echo "1")
+    local reminder_before=$(uci -q get jsholat.sound.reminder_before || echo "5")
+    local debug_mode=$(uci -q get jsholat.service.debug_mode || echo "0")
+    local volume_level=$(uci -q get jsholat.sound.volume_level || echo "80")
+    
+    echo "   • Telegram Notifikasi: $([ "$telegram_enabled" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
+    echo "   • Pemutar Suara: $([ "$sound_enabled" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
+    echo "   • Volume: ${volume_level}%"
+    echo "   • Ayat Acak: $([ "$ayat_enabled" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
+    echo "   • Reminder Sholat: $([ "$reminder_before" = "0" ] && echo "NONAKTIF" || echo "AKTIF (${reminder_before} menit)")"
+    echo "   • Debug Mode: $([ "$debug_mode" = "1" ] && echo "AKTIF" || echo "NONAKTIF")"
+    
+    # Tampilkan jadwal hari ini
+    local TODAY=$(date +"%d-%m-%Y")
+    local JADWAL=$(uci get jsholat.schedule.file_jadwal 2>/dev/null)
+    local LOKASI=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Tidak Diketahui")
+    local TIMEZONE=$(uci -q get jsholat.schedule.timezone_value || echo "")
+    local PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null || echo "Tidak Diketahui")
+    
+    echo ""
+    echo "============================================="
+    echo "🕌 JADWAL SHOLAT HARI INI ($TODAY):"
+    echo "   Lokasi: $LOKASI, $PROVINCE"
+    
+    if [ -f "$JADWAL" ] && [ -r "$JADWAL" ]; then
+        local JADWAL_LINE=$(grep "^$TODAY" "$JADWAL" 2>/dev/null | tr -d '\r')
+        if [ -n "$JADWAL_LINE" ]; then
+            IMSYAK=$(echo "$JADWAL_LINE" | awk '{print $2}' | tr -d '\r')
+            SHUBUH=$(echo "$JADWAL_LINE" | awk '{print $3}' | tr -d '\r')
+            DZUHUR=$(echo "$JADWAL_LINE" | awk '{print $4}' | tr -d '\r')
+            ASHAR=$(echo "$JADWAL_LINE" | awk '{print $5}' | tr -d '\r')
+            MAGHRIB=$(echo "$JADWAL_LINE" | awk '{print $6}' | tr -d '\r')
+            ISYA=$(echo "$JADWAL_LINE" | awk '{print $7}' | tr -d '\r')
+            
+            echo "   • Imsyak:   $IMSYAK $TIMEZONE"
+            echo "   • Subuh:    $SHUBUH $TIMEZONE"
+            echo "   • Dzuhur:   $DZUHUR $TIMEZONE"
+            echo "   • Ashar:    $ASHAR $TIMEZONE"
+            echo "   • Maghrib:  $MAGHRIB $TIMEZONE"
+            echo "   • Isya:     $ISYA $TIMEZONE"
+            
+            # Waktu sekarang dan status sholat
+            local NOW=$(date +"%H:%M")
+            echo ""
+			echo "============================================="
+            echo "⏰ WAKTU SEKARANG: $NOW $TIMEZONE"
+            
+            # Fungsi untuk menampilkan status waktu sholat
+            show_prayer_status() {
+                local name="$1"
+                local time="$2"
+                local current_time="$3"
+                
+                # Konversi waktu ke menit
+                local prayer_hours=${time%:*}
+                local prayer_minutes=${time#*:}
+                prayer_hours=${prayer_hours#0}
+                prayer_minutes=${prayer_minutes#0}
+                local prayer_total_minutes=$((prayer_hours * 60 + prayer_minutes))
+                
+                local current_hours=${current_time%:*}
+                local current_minutes=${current_time#*:}
+                current_hours=${current_hours#0}
+                current_minutes=${current_minutes#0}
+                local current_total_minutes=$((current_hours * 60 + current_minutes))
+                
+                local diff=$((prayer_total_minutes - current_total_minutes))
+                
+                if [ $diff -eq 0 ]; then
+                    echo "   🕌 $name ($time): SAAT INI!"
+                elif [ $diff -gt 0 ]; then
+                    if [ $diff -le 5 ]; then
+                        echo "   🔔 $name ($time): Dalam $diff menit"
+                    elif [ $diff -le 30 ]; then
+                        echo "   ⏳ $name ($time): ${diff} menit lagi"
+                    else
+                        local hours_remaining=$((diff / 60))
+                        local minutes_remaining=$((diff % 60))
+                        if [ $hours_remaining -gt 0 ]; then
+                            echo "   ○ $name ($time): ${hours_remaining} jam ${minutes_remaining} menit lagi"
+                        else
+                            echo "   ○ $name ($time): ${minutes_remaining} menit lagi"
+                        fi
+                    fi
+                else
+                    echo "   ✓ $name ($time): Sudah lewat"
+                fi
+            }
+            
+            echo "   ─────────────────────────"
+            echo "   STATUS WAKTU SHOLAT:"
+            show_prayer_status "Imsyak" "$IMSYAK" "$NOW"
+            show_prayer_status "Subuh" "$SHUBUH" "$NOW"
+            show_prayer_status "Dzuhur" "$DZUHUR" "$NOW"
+            show_prayer_status "Ashar" "$ASHAR" "$NOW"
+            show_prayer_status "Maghrib" "$MAGHRIB" "$NOW"
+            show_prayer_status "Isya" "$ISYA" "$NOW"
+            
+        else
+            echo "   ❌ Jadwal untuk hari ini tidak ditemukan"
+        fi
+    else
+        echo "   ❌ File jadwal tidak ditemukan atau tidak dapat dibaca"
+    fi
+    
+    # Tampilkan informasi sistem
+    echo ""
+    echo "============================================="
+    echo "💻 INFORMASI SISTEM:"
+    echo "   Waktu Sistem: $(date '+%Y-%m-%d %H:%M:%S')"
+    
+    # FORMAT UPTIME YANG KONSISTEN DENGAN /proc/uptime
+    if [ -f "/proc/uptime" ]; then
+        local uptime_seconds=$(awk '{print int($1)}' /proc/uptime 2>/dev/null)
+        if [ -n "$uptime_seconds" ] && [ "$uptime_seconds" -gt 0 ]; then
+            local days=$((uptime_seconds / 86400))
+            local hours=$(( (uptime_seconds % 86400) / 3600 ))
+            local minutes=$(( (uptime_seconds % 3600) / 60 ))
+            
+            local uptime_str=""
+            if [ $days -gt 0 ]; then
+                uptime_str="${days} hari"
+                if [ $hours -gt 0 ]; then
+                    uptime_str="${uptime_str} ${hours} jam"
+                fi
+                if [ $minutes -gt 0 ]; then
+                    uptime_str="${uptime_str} ${minutes} menit"
+                fi
+            elif [ $hours -gt 0 ]; then
+                uptime_str="${hours} jam"
+                if [ $minutes -gt 0 ]; then
+                    uptime_str="${uptime_str} ${minutes} menit"
+                fi
+            elif [ $minutes -gt 0 ]; then
+                uptime_str="${minutes} menit"
+            else
+                uptime_str="Kurang dari 1 menit"
+            fi
+            
+            echo "   Uptime Sistem: $uptime_str"
+        fi
+    else
+        # Fallback ke uptime command
+        local uptime_output=$(uptime 2>/dev/null | sed 's/.*up //' | sed 's/,.*load.*//')
+        if [ -n "$uptime_output" ]; then
+            echo "   Uptime Sistem: $uptime_output"
+        fi
+    fi
+    
+    # Load Average
+    local load_avg=$(uptime 2>/dev/null | grep -o 'load average: .*' || echo "load average: Tidak tersedia")
+    echo "   Load Average: $load_avg"
+    
+    # Informasi memori sistem
+    if [ -f "/proc/meminfo" ]; then
+        local total_mem=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+        local free_mem=$(grep MemFree /proc/meminfo | awk '{print $2}')
+        local available_mem=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+        
+        if [ -n "$total_mem" ] && [ -n "$available_mem" ]; then
+            local total_mb=$((total_mem / 1024))
+            local available_mb=$((available_mem / 1024))
+            local used_mb=$((total_mb - available_mb))
+            local usage_percent=$((used_mb * 100 / total_mb))
+            
+            echo "   Memory: ${used_mb}MB/${total_mb}MB digunakan (${usage_percent}%)"
+        fi
+    fi
+    
+    echo "============================================="
+    
+    # Return code untuk init script
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        return 0  # Service berjalan
+    else
+        return 1  # Service tidak berjalan
+    fi
+}
+
+# Fungsi untuk mendapatkan status jsholat-bot berdasarkan file PID
+get_jsholat_bot_status() {
+    local pid_file="/var/run/jsholat-bot.pid"
+    
+    # Cek file PID terlebih dahulu
+    local bot_pid=""
+    if [ -f "$pid_file" ] && [ -r "$pid_file" ]; then
+        bot_pid=$(cat "$pid_file" 2>/dev/null)
+        
+        # Validasi PID dari file
+        if [ -n "$bot_pid" ] && kill -0 "$bot_pid" 2>/dev/null; then
+            echo "running:$bot_pid"
+            return 0
+        else
+            # File PID ada tapi proses sudah mati, hapus file
+            rm -f "$pid_file" 2>/dev/null
+        fi
+    fi
+    
+    # Fallback: Cari PID dari proses
+    bot_pid=$(pgrep -f "/usr/bin/jsholat-bot" | head -1)
+    
+    if [ -n "$bot_pid" ] && kill -0 "$bot_pid" 2>/dev/null; then
+        # Simpan PID ke file untuk penggunaan berikutnya
+        echo "$bot_pid" > "$pid_file" 2>/dev/null
+        echo "running:$bot_pid"
+    else
+        echo "stopped"
+    fi
+    
+    return 0
+}
+
+# TAMBAHKAN FUNGSI INFO (UNTUK LUCIDAN OUTPUT JSON)
+info_service() {
+    # Dapatkan status service terlebih dahulu
+    local pid
+    pid=$(pgrep -f "/usr/bin/jsholat run")
+    local service_enabled
+    service_enabled=$(uci -q get jsholat.service.service || echo "1")
+    local service_running="0"
+    
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        service_running="1"
+    fi
+    
+    # Hitung uptime jika service berjalan
+    local uptime_seconds="0"
+    local start_time_str=""
+    if [ "$service_running" = "1" ] && [ -d "/proc/$pid" ]; then
+        local start_time
+        start_time=$(stat -c %Y "/proc/$pid" 2>/dev/null)
+        if [ -n "$start_time" ]; then
+            local now
+            now=$(date +%s)
+            uptime_seconds=$((now - start_time))
+            start_time_str=$(date -d "@$start_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "Unknown")
+        fi
+    fi
+    
+    # Dapatkan konfigurasi
+    local telegram_enabled
+    telegram_enabled=$(uci -q get jsholat.service.telegram_enabled || echo "1")
+    local sound_enabled
+    sound_enabled=$(uci -q get jsholat.sound.sound_enabled || echo "1")
+    local ayat_enabled
+    ayat_enabled=$(uci -q get jsholat.service.ayat_enabled || echo "1")
+    local reminder_before
+    reminder_before=$(uci -q get jsholat.sound.reminder_before || echo "5")
+    local volume_level
+    volume_level=$(uci -q get jsholat.sound.volume_level || echo "80")
+    local debug_mode
+    debug_mode=$(uci -q get jsholat.service.debug_mode || echo "0")
+    
+    # TAMBAHKAN: Dapatkan informasi sumber jadwal
+    local schedule_source
+    schedule_source=$(uci -q get jsholat.schedule.source || echo "unknown")
+    local schedule_file
+    schedule_file=$(uci -q get jsholat.schedule.file_jadwal || echo "")
+    
+    # Konversi sumber
+    local source_alias=""
+    case "$schedule_source" in
+        "jadwalsholat") source_alias="JadwalSholat.org" ;;
+        "aladhan") source_alias="AlAdhan API" ;;
+        "myquran") source_alias="MyQuran API" ;;
+        "apiajimedia") source_alias="AjiMedia API" ;;
+    esac
+    
+    # Dapatkan info last update jadwal
+    local last_updated="Tidak diketahui"
+    local last_updated_file="/usr/share/jsholat/last_updated.txt"
+    
+    if [ -f "$last_updated_file" ] && [ -r "$last_updated_file" ]; then
+        if command -v jq >/dev/null 2>&1; then
+            local extracted_date=$(jq -r '.last_updated // ""' "$last_updated_file" 2>/dev/null)
+            
+            if [ -n "$extracted_date" ] && [ "$extracted_date" != "null" ] && [ "$extracted_date" != "" ]; then
+                last_updated="$extracted_date"
+            fi
+        else
+            local extracted_date=$(grep -o '"last_updated"[[:space:]]*:[[:space:]]*"[^"]*"' "$last_updated_file" 2>/dev/null | head -1)
+            
+            if [ -n "$extracted_date" ]; then
+                last_updated=$(echo "$extracted_date" | sed 's/.*"last_updated"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+            else
+                local first_line=$(head -1 "$last_updated_file" 2>/dev/null)
+                if echo "$first_line" | grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}'; then
+                    last_updated="$first_line"
+                fi
+            fi
+        fi
+    fi
+            
+    # Format tanggal dan waktu untuk jadwal
+    local TODAY
+    TODAY=$(date +"%d-%m-%Y")
+    
+    # TAMBAHKAN: Dapatkan tanggal Hijriyah dan nama hari
+    local HIJRI_DATE=""
+    local DAY_NAME=""
+    
+    # Dapatkan tanggal Hijriyah
+    HIJRI_DATE=$(get_hijri_date 2>/dev/null || echo "")
+    
+    # Dapatkan nama hari dalam bahasa Indonesia
+    local day_number=$(date +%u)
+    case $day_number in
+        1) DAY_NAME="Senin" ;;
+        2) DAY_NAME="Selasa" ;;
+        3) DAY_NAME="Rabu" ;;
+        4) DAY_NAME="Kamis" ;;
+        5) DAY_NAME="Jumat" ;;
+        6) DAY_NAME="Sabtu" ;;
+        7) DAY_NAME="Ahad" ;;
+        *) DAY_NAME="Tidak Diketahui" ;;
+    esac
+    
+    # Dapatkan nama bulan dalam bahasa Indonesia
+    local month_number=$(date +%m)
+    local month_name=""
+    case $month_number in
+        01) month_name="Januari" ;;
+        02) month_name="Februari" ;;
+        03) month_name="Maret" ;;
+        04) month_name="April" ;;
+        05) month_name="Mei" ;;
+        06) month_name="Juni" ;;
+        07) month_name="Juli" ;;
+        08) month_name="Agustus" ;;
+        09) month_name="September" ;;
+        10) month_name="Oktober" ;;
+        11) month_name="November" ;;
+        12) month_name="Desember" ;;
+        *) month_name="Tidak Diketahui" ;;
+    esac
+    
+    # Format tanggal lengkap Gregorian
+    local day_number_date=$(date +%d)
+    local year_gregorian=$(date +%Y)
+    local FULL_GREGORIAN_DATE="${day_number_date} ${month_name} ${year_gregorian}"
+    
+    local JADWAL
+    JADWAL=$(uci get jsholat.schedule.file_jadwal 2>/dev/null)
+    local CITY
+    CITY=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Unknown")
+    local PROVINCE
+    PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null || echo "Unknown")
+    
+    # Inisialisasi variabel jadwal
+    local IMSYAK="" SHUBUH="" DZUHUR="" ASHAR="" MAGHRIB="" ISYA=""
+    
+    # Cek jadwal hari ini
+    if [ -f "$JADWAL" ] && [ -r "$JADWAL" ]; then
+        local JADWAL_LINE
+        JADWAL_LINE=$(grep "^$TODAY" "$JADWAL" 2>/dev/null | tr -d '\r')
+        if [ -n "$JADWAL_LINE" ]; then
+            IMSYAK=$(echo "$JADWAL_LINE" | awk '{print $2}' | tr -d '\r')
+            SHUBUH=$(echo "$JADWAL_LINE" | awk '{print $3}' | tr -d '\r')
+            DZUHUR=$(echo "$JADWAL_LINE" | awk '{print $4}' | tr -d '\r')
+            ASHAR=$(echo "$JADWAL_LINE" | awk '{print $5}' | tr -d '\r')
+            MAGHRIB=$(echo "$JADWAL_LINE" | awk '{print $6}' | tr -d '\r')
+            ISYA=$(echo "$JADWAL_LINE" | awk '{print $7}' | tr -d '\r')
+        fi
+    fi
+    
+    # Tentukan waktu sholat berikutnya yang benar
+    local next_prayer=""
+    local next_prayer_time=""
+    local minutes_to_next="0"
+    
+    # Hanya cek jika ada jadwal
+    if [ -n "$IMSYAK" ] && [ "$IMSYAK" != "-" ]; then
+        local current_time
+        current_time=$(date +"%H:%M")
+        local current_seconds
+        current_seconds=$(time_to_seconds "$current_time")
+        
+        # Cari waktu sholat berikutnya - TANPA ARRAY (untuk kompatibilitas shell)
+        local prayer_found="0"
+        
+        # Cek Imsyak
+        if [ -n "$IMSYAK" ] && [ "$prayer_found" = "0" ]; then
+            local prayer_seconds
+            prayer_seconds=$(time_to_seconds "$IMSYAK")
+            if [ "$prayer_seconds" -gt "$current_seconds" ]; then
+                next_prayer="Imsyak"
+                next_prayer_time="$IMSYAK"
+                minutes_to_next=$(( (prayer_seconds - current_seconds) / 60 ))
+                prayer_found="1"
+            fi
+        fi
+        
+        # Cek Subuh
+        if [ -n "$SHUBUH" ] && [ "$prayer_found" = "0" ]; then
+            local prayer_seconds
+            prayer_seconds=$(time_to_seconds "$SHUBUH")
+            if [ "$prayer_seconds" -gt "$current_seconds" ]; then
+                next_prayer="Subuh"
+                next_prayer_time="$SHUBUH"
+                minutes_to_next=$(( (prayer_seconds - current_seconds) / 60 ))
+                prayer_found="1"
+            fi
+        fi
+        
+        # Cek Dzuhur
+        if [ -n "$DZUHUR" ] && [ "$prayer_found" = "0" ]; then
+            local prayer_seconds
+            prayer_seconds=$(time_to_seconds "$DZUHUR")
+            if [ "$prayer_seconds" -gt "$current_seconds" ]; then
+                next_prayer="Dzuhur"
+                next_prayer_time="$DZUHUR"
+                minutes_to_next=$(( (prayer_seconds - current_seconds) / 60 ))
+                prayer_found="1"
+            fi
+        fi
+        
+        # Cek Ashar
+        if [ -n "$ASHAR" ] && [ "$prayer_found" = "0" ]; then
+            local prayer_seconds
+            prayer_seconds=$(time_to_seconds "$ASHAR")
+            if [ "$prayer_seconds" -gt "$current_seconds" ]; then
+                next_prayer="Ashar"
+                next_prayer_time="$ASHAR"
+                minutes_to_next=$(( (prayer_seconds - current_seconds) / 60 ))
+                prayer_found="1"
+            fi
+        fi
+        
+        # Cek Maghrib
+        if [ -n "$MAGHRIB" ] && [ "$prayer_found" = "0" ]; then
+            local prayer_seconds
+            prayer_seconds=$(time_to_seconds "$MAGHRIB")
+            if [ "$prayer_seconds" -gt "$current_seconds" ]; then
+                next_prayer="Maghrib"
+                next_prayer_time="$MAGHRIB"
+                minutes_to_next=$(( (prayer_seconds - current_seconds) / 60 ))
+                prayer_found="1"
+            fi
+        fi
+        
+        # Cek Isya
+        if [ -n "$ISYA" ] && [ "$prayer_found" = "0" ]; then
+            local prayer_seconds
+            prayer_seconds=$(time_to_seconds "$ISYA")
+            if [ "$prayer_seconds" -gt "$current_seconds" ]; then
+                next_prayer="Isya"
+                next_prayer_time="$ISYA"
+                minutes_to_next=$(( (prayer_seconds - current_seconds) / 60 ))
+                prayer_found="1"
+            fi
+        fi
+        
+        # Jika tidak ada waktu sholat yang lebih besar dari sekarang, ambil sholat pertama besok (Imsyak)
+        if [ "$prayer_found" = "0" ]; then
+            next_prayer="Imsyak (besok)"
+            next_prayer_time="$IMSYAK"
+            # Hitung selisih sampai Imsyak besok
+            local midnight_seconds=$((24 * 3600))
+            local seconds_to_midnight=$((midnight_seconds - current_seconds))
+            local imsak_seconds=$(time_to_seconds "$IMSYAK")
+            minutes_to_next=$(( (seconds_to_midnight + imsak_seconds) / 60 ))
+        fi
+    fi
+    
+    # Dapatkan info jsholat-bot berdasarkan file PID
+    local bot_info_raw
+    bot_info_raw=$(get_jsholat_bot_status)
+
+    # Parse status bot secara manual
+    local bot_status="stopped"
+    local bot_pid=""
+    local bot_running="0"
+
+    case "$bot_info_raw" in
+        running:*)
+            bot_status="running"
+            bot_pid="${bot_info_raw#running:}"
+            bot_running="1"
+            ;;
+        *)
+            bot_status="$bot_info_raw"
+            ;;
+    esac
+    
+    # Dapatkan konfigurasi telegram (untuk display purposes only)
+    local bot_enabled=$(uci -q get jsholat.service.telegram_enabled || echo "1")
+    local bot_token=$(uci -q get jsholat.service.telegram_bot_token || echo "")
+    local bot_chat_id=$(uci -q get jsholat.service.telegram_chat_id || echo "")
+    
+    # Dapatkan info bot lainnya
+    local bot_uptime="0"
+    local bot_start_time="Unknown"
+    local bot_memory="0"
+    local bot_log_file="/var/log/jsholat/bot.log"
+    
+    if [ "$bot_running" = "1" ] && [ -n "$bot_pid" ]; then
+        # Hitung uptime dari /proc
+        if [ -d "/proc/$bot_pid" ]; then
+            local start_time
+            start_time=$(stat -c %Y "/proc/$bot_pid" 2>/dev/null)
+            if [ -n "$start_time" ]; then
+                local now
+                now=$(date +%s)
+                bot_uptime=$((now - start_time))
+                bot_start_time=$(date -d "@$start_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "Unknown")
+            fi
+            
+            # Dapatkan penggunaan memory
+            if [ -f "/proc/$bot_pid/status" ]; then
+                local memory_kb
+                memory_kb=$(grep VmRSS "/proc/$bot_pid/status" 2>/dev/null | awk '{print $2}')
+                if [ -n "$memory_kb" ]; then
+                    bot_memory=$((memory_kb / 1024))
+                fi
+            fi
+        fi
+    fi
+    
+    # Cek apakah bot configured (punya token dan chat ID)
+    local bot_configured="0"
+    if [ -n "$bot_token" ] && [ -n "$bot_chat_id" ]; then
+        bot_configured="1"
+    fi
+    
+    # Cek log file bot
+    local bot_log_size="0"
+    local bot_log_lines="0"
+    
+    if [ -f "$bot_log_file" ]; then
+        bot_log_size=$(du -h "$bot_log_file" 2>/dev/null | awk '{print $1}' || echo "0")
+        bot_log_lines=$(wc -l < "$bot_log_file" 2>/dev/null || echo "0")
+    fi
+    
+    # Dapatkan variabel lain yang dibutuhkan
+    local TIMEZONE
+    TIMEZONE=$(uci -q get jsholat.schedule.timezone_value || echo "")
+    local NOW
+    NOW=$(date +"%H:%M")
+    local system_uptime="0"
+    
+    if [ -f "/proc/uptime" ]; then
+        system_uptime=$(awk '{print int($1)}' /proc/uptime 2>/dev/null || echo "0")
+    fi
+    
+    # Dapatkan log info jsholat
+    local log_size="0"
+    local log_lines="0"
+    if [ -f "/var/log/jsholat/service.log" ]; then
+        log_size=$(du -h "/var/log/jsholat/service.log" 2>/dev/null | awk '{print $1}' || echo "0")
+        log_lines=$(wc -l < "/var/log/jsholat/service.log" 2>/dev/null || echo "0")
+    fi
+    
+    # Dapatkan informasi memori sistem
+    local memory_human=$(get_system_memory_info 2>/dev/null)
+    # Escape karakter khusus untuk JSON
+    memory_human=$(echo "$memory_human" | sed 's/"/\\"/g; s/\\/\\\\/g')
+    
+    # Dapatkan informasi memori terstruktur untuk detail
+    local memory_total_kb=0
+    local memory_used_kb=0
+    local memory_available_kb=0
+    local memory_used_percent=0
+    
+    if [ -f "/proc/meminfo" ]; then
+        memory_total_kb=$(grep -E '^MemTotal:' /proc/meminfo 2>/dev/null | awk '{print $2}')
+        memory_available_kb=$(grep -E '^MemAvailable:' /proc/meminfo 2>/dev/null | awk '{print $2}')
+        
+        if [ -n "$memory_total_kb" ] && [ -n "$memory_available_kb" ]; then
+            memory_used_kb=$((memory_total_kb - memory_available_kb))
+            if [ "$memory_total_kb" -gt 0 ]; then
+                memory_used_percent=$(( (memory_used_kb * 100) / memory_total_kb ))
+            fi
+        fi
+    fi
+    
+    # Escape karakter khusus dalam string untuk JSON
+    escaped_city=$(echo "$CITY" | sed 's/"/\\"/g; s/\\/\\\\/g')
+    escaped_province=$(echo "$PROVINCE" | sed 's/"/\\"/g; s/\\/\\\\/g')
+    escaped_next_prayer=$(echo "$next_prayer" | sed 's/"/\\"/g; s/\\/\\\\/g')
+    escaped_hijri_date=$(echo "$HIJRI_DATE" | sed 's/"/\\"/g; s/\\/\\\\/g')
+    escaped_day_name=$(echo "$DAY_NAME" | sed 's/"/\\"/g; s/\\/\\\\/g')
+    escaped_full_gregorian=$(echo "$FULL_GREGORIAN_DATE" | sed 's/"/\\"/g; s/\\/\\\\/g')
+    
+    # Buat output JSON secara manual dengan tambahan informasi hijriyah
+    cat <<EOF
+{
+    "services": {
+        "jsholat": {
+            "name": "jsholat",
+            "enabled": "$service_enabled",
+            "running": "$service_running",
+            "pid": "${pid:-0}",
+            "uptime": "$uptime_seconds",
+            "start_time": "$start_time_str",
+            "description": "Jadwal Sholat dan Pemutar Adzan Otomatis"
+        },
+        "jsholat-bot": {
+            "name": "jsholat-bot",
+            "running": "$bot_running",
+            "pid": "$bot_pid",
+            "uptime": "$bot_uptime",
+            "start_time": "$bot_start_time",
+            "memory_mb": "$bot_memory",
+            "log_file": "$bot_log_file",
+            "description": "Bot Telegram Notifikasi",
+            "telegram_notifications": "$bot_enabled",
+            "configured": "$bot_configured"
+        }
+    },
+    "config": {
+        "telegram_enabled": "$bot_enabled",
+        "telegram_configured": "$bot_configured",
+        "sound": "$sound_enabled",
+        "volume": "$volume_level",
+        "ayat": "$ayat_enabled",
+        "reminder": "$reminder_before",
+        "debug": "$debug_mode"
+    },
+    "location": {
+        "city": "$escaped_city",
+        "province": "$escaped_province",
+        "date": "$TODAY",
+        "timezone": "$TIMEZONE"
+    },
+    "schedule": {
+        "today": "$TODAY",
+        "imsyak": "$IMSYAK",
+        "subuh": "$SHUBUH",
+        "dzuhur": "$DZUHUR",
+        "ashar": "$ASHAR",
+        "maghrib": "$MAGHRIB",
+        "isya": "$ISYA",
+        "schedule_source": "$schedule_source",
+        "source": "$source_alias",
+        "file": "$schedule_file",
+        "last_updated": "$last_updated"
+    },
+    "next_prayer": {
+        "name": "$escaped_next_prayer",
+        "time": "$next_prayer_time",
+        "minutes_left": "$minutes_to_next"
+    },
+    "system": {
+        "current_time": "$NOW",
+        "uptime": "$system_uptime",
+        "date": {
+            "day_name": "$escaped_day_name",
+            "gregorian_date": "$escaped_full_gregorian",
+            "hijri_date": "$escaped_hijri_date",
+        }, 
+        "memory": {
+            "total_kb": "$memory_total_kb",
+            "total_mb": "$((memory_total_kb / 1024))",
+            "used_kb": "$memory_used_kb",
+            "used_mb": "$((memory_used_kb / 1024))",
+            "available_kb": "$memory_available_kb",
+            "available_mb": "$((memory_available_kb / 1024))",
+            "used_percent": "$memory_used_percent",
+            "human_readable": "$memory_human"
+        },
+        "jsholat_log": {
+            "file": "/var/log/jsholat/service.log",
+            "size": "$log_size",
+            "lines": "$log_lines"
+        },
+        "bot_log": {
+            "file": "$bot_log_file",
+            "size": "$bot_log_size",
+            "lines": "$bot_log_lines"
+        }
+    },
+    "status": {
+        "last_update": "$(date '+%Y-%m-%d %H:%M:%S')"
+    }
+}
+EOF
 }
 
 # Fungsi konversi waktu ke detik yang lebih aman
@@ -341,7 +1224,8 @@ play_adzan() {
 ⏰ *$salat_name*: $prayer_time$timezone_display
 📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
   
-Selamat menunaikan sholat *$salat_name*."
+Selamat menunaikan sholat *$salat_name*.
+*Semoga Allah menerima ibadah kita* 🤲"
         fi
     else
 	log "INFO" "🔕 Notifikasi waktu sholat dinonaktifkan"
@@ -479,11 +1363,25 @@ reminder_before_prayer() {
             [ -n "$timezone" ] && timezone_display=" $timezone"
 
             # Kirim reminder terlebih dahulu
-            send_telegram "🔔 *PENGINGAT SHOLAT*
+            local reminder_message=""
+            if [ "$salat_name" = "Imsyak" ]; then
+                reminder_message="🔔 *PENGINGAT SHOLAT*
   
 Waktu *$salat_name* akan tiba dalam *$reminder_mins menit*!  
 🕒 Pukul: $prayer_time$timezone_display
 📍 Untuk Wilayah: *$LOKASI* dan sekitarnya."
+            else
+                reminder_message="🔔 *PENGINGAT SHOLAT*
+  
+Waktu *$salat_name* akan tiba dalam *$reminder_mins menit*!  
+🕒 Pukul: $prayer_time$timezone_display
+📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
+
+*Siapkan diri untuk sholat*
+*Jangan lupa wudhu* 💧"
+            fi
+
+            send_telegram "$reminder_message"
 
             # Kirim ayat acak terpisah jika fitur aktif
             if [ "$ayat_enabled" = "1" ]; then
@@ -733,8 +1631,21 @@ EOF
     "run")
         run_service
         ;;
+    "status")  # TAMBAHKAN COMMAND STATUS
+        show_status
+        ;;
+    "info")  # TAMBAHKAN COMMAND STATUS
+        info_service
+        ;;
     *)
-        echo "Usage: $0 {install|uninstall|run}"
+        echo "Usage: $0 {install|uninstall|run|info|status}"
+        echo ""
+        echo "Commands:"
+        echo "  install   - Install service jsholat"
+        echo "  uninstall - Hapus service jsholat"
+        echo "  run       - Jalankan service secara langsung"
+        echo "  status    - Tampilkan status service"
+        echo "  info      - Tampilkan info service"
         exit 1
         ;;
 esac

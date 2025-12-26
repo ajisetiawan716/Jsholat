@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # File: /usr/bin/jsholat-bot
-# Versi: 2.5
+# Versi: 2.6
 # Jsholat Bot Manager Script
 # (C) 2025 Jsholat - @ajisetiawan716
 
@@ -14,6 +14,7 @@ echo "Bot starting with state file: $STATE_FILE" >&2
 
 # Inisiasi log
 LOG_FILE="/var/log/jsholat/bot.log"
+MAX_LOG_SIZE=1048576  # 1MB
 log() {
     local log_message="$1"
 
@@ -26,6 +27,13 @@ log() {
     # Potong pesan yang terlalu panjang (lebih dari 100 karakter)
     if [ ${#log_message} -gt 100 ]; then
         log_message="${log_message:0:100}..."
+    fi
+	
+	# Rotasi log jika melebihi ukuran maksimal
+    if [ -f "$LOG_FILE" ] && [ $(wc -c < "$LOG_FILE") -gt $MAX_LOG_SIZE ]; then
+        mv "$LOG_FILE" "$LOG_FILE.old"
+        touch "$LOG_FILE"
+        chmod 644 "$LOG_FILE"
     fi
 
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] - $log_message" >> "$LOG_FILE"
@@ -42,6 +50,7 @@ load_uci_config() {
     SCHEDULE_SOURCE=$(uci -q get jsholat.schedule.source || echo "jadwalsholat")
     SCHEDULE_INTERVAL=$(uci -q get jsholat.schedule.interval || echo "monthly_special")
     SCHEDULE_FILE_JADWAL=$(uci -q get jsholat.schedule.file_jadwal || echo "/usr/share/jsholat/jadwal.txt")
+    SCHEDULE_HIJRI_ADJUST=$(uci -q get jsholat.schedule.hijri_adjust || echo "-1")  # Default -1
     
     # Section: sound
     SOUND_VOLUME_CONTROL=$(uci -q get jsholat.sound.volume_control || echo "hardware")
@@ -65,11 +74,112 @@ load_uci_config() {
 # Panggil fungsi untuk load config
 load_uci_config
 
+# Fungsi untuk mendapatkan status bot (untuk init script)
+get_bot_status() {
+    local pid_file="/var/run/jsholat-bot.pid"
+    
+    if [ -f "$pid_file" ]; then
+        local pid=$(cat "$pid_file" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            # Get uptime dan waktu start
+            local uptime_str=""
+            local start_time_str="Unknown"
+            local memory_usage="Unknown"
+            local memory_percent="0"
+            
+            if [ -d "/proc/$pid" ]; then
+                local start_time=$(stat -c %Y /proc/$pid 2>/dev/null || echo 0)
+                local now=$(date +%s)
+                local uptime=$((now - start_time))
+                
+                # Hitung uptime
+                local days=$((uptime / 86400))
+                local hours=$(( (uptime % 86400) / 3600 ))
+                local minutes=$(( (uptime % 3600) / 60 ))
+                local seconds=$((uptime % 60))
+                
+                uptime_str="${days}h ${hours}j ${minutes}m ${seconds}d"
+                
+                # Format waktu start
+                if [ "$start_time" -gt 0 ]; then
+                    start_time_str=$(date -d "@$start_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || \
+                                   date -r "$start_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || \
+                                   echo "Unknown")
+                fi
+                
+                # Ambil informasi memori dari /proc/$pid/status
+                if [ -f "/proc/$pid/status" ]; then
+                    # Ambil RSS (Resident Set Size) dalam KB
+                    local rss_kb=$(grep -E '^VmRSS:' /proc/$pid/status | awk '{print $2}')
+                    if [ -n "$rss_kb" ]; then
+                        # Konversi ke MB
+                        local rss_mb=$((rss_kb / 1024))
+                        memory_usage="${rss_mb} MB"
+                        
+                        # Hitung persentase memori jika total memori tersedia
+                        if [ -f "/proc/meminfo" ]; then
+                            local total_mem_kb=$(grep -E '^MemTotal:' /proc/meminfo | awk '{print $2}')
+                            if [ -n "$total_mem_kb" ] && [ "$total_mem_kb" -gt 0 ]; then
+                                memory_percent=$(( (rss_kb * 100) / total_mem_kb ))
+                            fi
+                        fi
+                    fi
+                fi
+            fi
+            
+            # Return JSON format for easy parsing
+            echo '{
+                "status": "running",
+                "pid": "'"$pid"'",
+                "uptime": "'"$uptime_str"'",
+                "start_time": "'"$start_time_str"'",
+                "memory_usage": "'"$memory_usage"'",
+                "memory_percent": "'"$memory_percent"'",
+                "location": "'"${SCHEDULE_CITY_LABEL}, ${SCHEDULE_PROVINCE}"'",
+                "timezone": "'"${SCHEDULE_TIMEZONE}"'",
+                "source": "'"${SCHEDULE_SOURCE}"'",
+                "service": "'"${SERVICE_ENABLED}"'",
+                "hijri_adjust": "'"${SCHEDULE_HIJRI_ADJUST}"'",
+                "sound": "'"${SOUND_ENABLED}"'",
+                "telegram": "'"${SERVICE_TELEGRAM_ENABLED}"'",
+                "reminder": "'"${SOUND_REMINDER_BEFORE}"'"
+            }'
+            return 0
+        else
+            rm -f "$pid_file"
+            echo '{"status": "stopped"}'
+            return 1
+        fi
+    else
+        echo '{"status": "stopped"}'
+        return 1
+    fi
+}
+
 # Validasi token (setelah load config)
 [ -z "$TELEGRAM_TOKEN" ] && {
     log "ERROR: ❌ Token bot Telegram tidak ditemukan!"
     exit 1
 }
+
+# PID file untuk monitoring
+PID_FILE="/var/run/jsholat-bot.pid"
+
+# Fungsi untuk menulis PID
+write_pid() {
+    echo $$ > "$PID_FILE"
+}
+
+# Fungsi untuk menghapus PID
+cleanup_pid() {
+    rm -f "$PID_FILE"
+}
+
+# Trap untuk cleanup saat exit
+trap cleanup_pid EXIT
+
+# Tulis PID saat ini
+write_pid
 
 # Trap errors
 #trap 'log "ERROR: Script terminated unexpectedly"; exit 1' ERR INT TERM
@@ -114,10 +224,24 @@ mkdir -p "$LOCATION_SEARCH_FLAG_DIR"
 HIJRI_CACHE_FILE="/tmp/jsholat_cache/hijri_date_cache.json"
 HIJRI_CACHE_EXPIRE=3600 # Cache berlaku selama 1 jam (3600 detik)
 
+# Fungsi untuk menulis last update ID ke file state
+write_last_update_id() {
+    local update_id="$1"
+    echo "$update_id" > "$STATE_FILE"
+    log "Last update ID saved: $update_id"
+}
+
 # Fungsi untuk mendapatkan tanggal Hijriyah dengan cache
 get_hijri_date() {
     local gregorian_date=$(date +"%Y-%m-%d")
     local now=$(date +%s)
+    
+    # Set default jika belum ada di config
+    if [ -z "$SCHEDULE_HIJRI_ADJUST" ] || [ "$SCHEDULE_HIJRI_ADJUST" = "" ]; then
+        SCHEDULE_HIJRI_ADJUST="-1"
+        uci set jsholat.schedule.hijri_adjust="-1"
+        uci commit jsholat
+    fi
     
     # Cek cache terlebih dahulu
     if [ -f "$HIJRI_CACHE_FILE" ]; then
@@ -132,7 +256,8 @@ get_hijri_date() {
     fi
     
     # Jika cache tidak ada atau sudah expired, ambil dari API
-    local api_url="https://api.myquran.com/v2/cal/hijr/$gregorian_date?adj=-1"
+    local adj_value="${SCHEDULE_HIJRI_ADJUST:--1}"  # Gunakan nilai dari config
+    local api_url="https://api.myquran.com/v2/cal/hijr/$gregorian_date?adj=$adj_value"
     local response=$(curl -s --max-time 5 "$api_url") # Timeout 5 detik
     local status=$(echo "$response" | jq -r '.status' 2>/dev/null)
     
@@ -308,6 +433,68 @@ Ditemukan $(wc -l < "$LOCATION_SEARCH_CACHE") hasil"
     fi
 }
 
+# Fungsi untuk membersihkan city_value SAJA (untuk jadwalsholat.org)
+clean_city_value() {
+    local city_value="$1"
+    local source="$2"
+    
+    if [ "$source" != "jadwalsholat" ]; then
+        echo "$city_value"
+        return 0
+    fi
+    
+    local original_value="$city_value"
+    
+    # Step 1: Normalisasi string
+    # - Ubah ke lowercase
+    # - Hapus titik, spasi ganda, trim
+    # - Ubah spasi ke strip
+    city_value=$(echo "$city_value" | \
+        tr '[:upper:]' '[:lower:]' | \
+        tr -d '.' | \
+        sed 's/[[:space:]]\+/ /g; s/^[[:space:]]*//; s/[[:space:]]*$//' | \
+        sed 's/[[:space:]]/-/g')
+    
+    # Step 2: Hapus prefix (case insensitive dengan berbagai format)
+    city_value=$(echo "$city_value" | sed -E '
+        # Hapus kabupaten dengan berbagai variasi
+        s/^kabupaten-//
+        s/^kab-//
+        s/^kabupaten//
+        s/^kab//
+        
+        # Hapus kota dengan berbagai variasi
+        s/^kota-//
+        s/^kota//
+        
+        # Hapus singkatan
+        s/^k-//
+    ')
+    
+    # Step 3: Gabungkan arah mata angin
+    city_value=$(echo "$city_value" | sed -E '
+        s/-(barat|utara|timur|selatan|tengah)$/\1/i
+        s/-(timur)[-_]?(laut)$/timur\2/i
+        s/-(barat)[-_]?(daya|laut)$/barat\2/i
+        s/-(selatan)[-_]?(timur)$/selatan\2/i
+    ')
+    
+    # Step 4: Hapus angka dan karakter khusus
+    city_value=$(echo "$city_value" | sed -E '
+        s/-[0-9]+$//
+        s/[^a-z0-9]//g  # Hapus semua karakter non-alphanumeric
+    ')
+    
+    # Log perubahan
+    if [ "$original_value" != "$city_value" ]; then
+        log "Membersihkan city_value: '$original_value' -> '$city_value'"
+    else
+        log "Tidak ada perubahan untuk city_value: '$original_value'"
+    fi
+    
+    echo "$city_value"
+}
+
 # Fungsi untuk menyimpan lokasi yang dipilih
 set_location() {
     local chat_id="$1"
@@ -329,18 +516,26 @@ set_location() {
 
     local province=$(echo "$location_info" | jq -r '.province')
     local city_label=$(echo "$location_info" | jq -r '.label')
+    local original_city_value="$city_value"
+    
+    # Bersihkan city_value jika sumber jadwal adalah jadwalsholat
+    local cleaned_city_value="$city_value"
+    if [ "$SCHEDULE_SOURCE" = "jadwalsholat" ]; then
+        cleaned_city_value=$(clean_city_value "$city_value" "$SCHEDULE_SOURCE")
+        log "Membersihkan city_value: '$original_city_value' -> '$cleaned_city_value'"
+    fi
 
     # Simpan ke config
     uci set jsholat.schedule.city_label="$city_label"
     uci set jsholat.schedule.province="$province"
-    uci set jsholat.schedule.city_value="$city_value"
+    uci set jsholat.schedule.city_value="$cleaned_city_value"
     uci set jsholat.schedule.timezone_value="$timezone"
     uci commit jsholat
 	
     # Update variabel config
     SCHEDULE_CITY_LABEL="$city_label"
     SCHEDULE_PROVINCE="$province"
-    SCHEDULE_CITY_VALUE="$city_value"
+    SCHEDULE_CITY_VALUE="$cleaned_city_value"
     SCHEDULE_TIMEZONE="$timezone"
 	
     log "Lokasi disimpan: $city_label, $province ($timezone)"
@@ -382,6 +577,87 @@ set_location() {
     fi
 
     rm -f "$tmp_file"
+}
+
+# Fungsi untuk menampilkan menu adjustment Hijriyah
+show_hijri_adjust_menu() {
+    local chat_id="$1"
+    local message_id="$2"
+    
+    # Reload config untuk memastikan nilai terbaru
+    load_uci_config
+    
+    local current_adj="$SCHEDULE_HIJRI_ADJUST"
+    
+    # Validasi nilai
+    if [[ ! "$current_adj" =~ ^[-+][0-9]$|^[0-9]$ ]]; then
+        log "Nilai current_adj tidak valid, reset ke -1: $current_adj"
+        current_adj="-1"
+        uci set jsholat.schedule.hijri_adjust="-1"
+        uci commit jsholat
+        SCHEDULE_HIJRI_ADJUST="-1"
+    fi
+    
+    local keyboard='[[
+        {"text": "-2 '$( [ "$current_adj" = "-2" ] && echo "✅" )'", "callback_data": "set_hijri_adj_-2"},
+        {"text": "-1 '$( [ "$current_adj" = "-1" ] && echo "✅" )'", "callback_data": "set_hijri_adj_-1"},
+        {"text": "0 '$( [ "$current_adj" = "0" ] && echo "✅" )'", "callback_data": "set_hijri_adj_0"}
+    ],[
+        {"text": "+1 '$( [ "$current_adj" = "1" ] && echo "✅" )'", "callback_data": "set_hijri_adj_1"},
+        {"text": "+2 '$( [ "$current_adj" = "2" ] && echo "✅" )'", "callback_data": "set_hijri_adj_2"}
+    ],[
+        {"text": "❌ Batal", "callback_data": "cancel_update"}
+    ]]'
+    
+    local message=$(printf '📅 *Pengaturan Adjust Hijriyah*
+
+*Nilai saat ini:* %s
+
+📝 *Penjelasan:*
+• -2/-1 : Koreksi mundur 1-2 hari
+• 0 : Tanpa koreksi
+• +1/+2 : Koreksi maju 1-2 hari
+
+Contoh: Jika tanggal Hijriyah tampil lebih awal/lambat 1 hari, pilih -1 atau +1 sesuai kebutuhan.' "$current_adj")
+    
+    if [ -z "$message_id" ]; then
+        send_inline_keyboard "$chat_id" "$message" "$keyboard"
+    else
+        edit_inline_keyboard "$chat_id" "$message_id" "$message" "$keyboard"
+    fi
+}
+
+# Fungsi untuk menyimpan adjustment Hijriyah
+set_hijri_adjust() {
+    local chat_id="$1"
+    local message_id="$2"
+    local adj_value="$3"
+    
+    # Validasi nilai
+    case "$adj_value" in
+        "-2"|"-1"|"0"|"1"|"2")
+            # Nilai valid
+            ;;
+        *)
+            log "ERROR: Nilai adjustment tidak valid: $adj_value"
+            send_message "$chat_id" "❌ Nilai adjustment tidak valid. Hanya -2, -1, 0, +1, +2 yang diperbolehkan."
+            return 1
+            ;;
+    esac
+    
+    uci set jsholat.schedule.hijri_adjust="$adj_value"
+    uci commit jsholat
+    
+    # Update variabel config
+    SCHEDULE_HIJRI_ADJUST="$adj_value"
+    
+    # Hapus cache
+    rm -f "$HIJRI_CACHE_FILE"
+    
+    # Kirim konfirmasi
+    remove_keyboard "$chat_id" "$message_id" "✅ Adjustment Hijriyah berhasil diatur ke $adj_value"
+    
+    log "Adjustment Hijriyah diatur ke $adj_value untuk chat_id=$chat_id"
 }
 
 # Fungsi untuk mengirim pesan
@@ -766,6 +1042,8 @@ show_control_menu() {
         {"text": "⚙️ Pengaturan", "callback_data": "settings"}
     ],[
         {"text": "🔊 Volume", "callback_data": "volume_menu"},
+        {"text": "🤖 Status Bot", "callback_data": "bot_status"}
+    ],[
         {"text": "✔️ Selesai", "callback_data": "done"}
     ]]'
     
@@ -842,7 +1120,9 @@ set_jadwal_source() {
         "apiajimedia") source_name="AjiMedia API" ;;
     esac
     
-    remove_keyboard "$chat_id" "$message_id" "✅ Sumber jadwal sholat diubah ke *$source_name*"
+    remove_keyboard "$chat_id" "$message_id" "✅ Sumber jadwal sholat diubah ke *$source_name*
+    
+    Silahkan lakukan /update jadwal."
     log " ✅ Sumber jadwal sholat diubah ke $source_name"
 }
 
@@ -1100,7 +1380,7 @@ show_daily_schedule() {
     if [ -n "$hijri_date" ]; then
         hijri_display="📅 *Hijriyah*: $hijri_date"
         if [ $hijri_status -ne 0 ]; then
-            hijri_display+="_(informasi tanggal mungkin tidak terupdate)_"
+            hijri_display+=" _(informasi tanggal mungkin tidak terupdate)_"
         fi
     else
         hijri_display="📅 *Hijriyah*: (tidak tersedia)"
@@ -1213,7 +1493,9 @@ send_help_message() {
     send_message "$chat_id" "📚 *Daftar Perintah*:
 /jadwal - Lihat jadwal sholat hari ini
 /jdwlbulan - Lihat jadwal sholat bulan ini
+/statusbot - Lihat status detail bot
 /setjadwal - Ubah sumber jadwal sholat
+/sethijri - Atur koreksi tanggal Hijriyah (-2,-1,0,+1,+2)
 /lokasi - Lihat wilayah jadwal saat ini
 /setlokasi - Ubah lokasi untuk jadwal sholat
 /setvolume - Atur volume suara adzan (0-100)
@@ -1224,6 +1506,196 @@ send_help_message() {
 /help - Tampilkan bantuan ini"
 }
 
+# Fungsi untuk mendapatkan informasi memori sistem dengan format yang mudah dibaca
+get_system_memory_info() {
+    if [ -f "/proc/meminfo" ]; then
+        local total_kb=$(grep -E '^MemTotal:' /proc/meminfo | awk '{print $2}')
+        local available_kb=$(grep -E '^MemAvailable:' /proc/meminfo | awk '{print $2}')
+        
+        if [ -n "$total_kb" ] && [ -n "$available_kb" ]; then
+            # Hitung memori terpakai
+            local used_kb=$((total_kb - available_kb))
+            
+            # Fungsi untuk format human readable (tanpa bc)
+            format_bytes_simple() {
+                local bytes_kb=$1
+                if [ $bytes_kb -ge 1048576 ]; then # 1024*1024 = 1GB in KB
+                    local gb_int=$((bytes_kb / 1048576))
+                    local gb_frac=$(( (bytes_kb % 1048576) / 10485 )) # approx 0.xx
+                    echo "${gb_int}.${gb_frac} GB"
+                elif [ $bytes_kb -ge 1024 ]; then # 1MB in KB
+                    local mb_int=$((bytes_kb / 1024))
+                    local mb_frac=$(( (bytes_kb % 1024) / 10 )) # approx 0.xx
+                    echo "${mb_int}.${mb_frac} MB"
+                else
+                    echo "${bytes_kb} KB"
+                fi
+            }
+            
+            # Format total dan used dalam GB/MB
+            local total_human=""
+            local used_human=""
+            
+            if [ $total_kb -ge 1048576 ]; then # > 1GB
+                total_human="$((total_kb / 1048576)).$(( (total_kb % 1048576) / 10485 )) GB"
+                used_human="$((used_kb / 1048576)).$(( (used_kb % 1048576) / 10485 )) GB"
+            elif [ $total_kb -ge 1024 ]; then # > 1MB
+                total_human="$((total_kb / 1024)).$(( (total_kb % 1024) / 10 )) MB"
+                used_human="$((used_kb / 1024)).$(( (used_kb % 1024) / 10 )) MB"
+            else
+                total_human="${total_kb} KB"
+                used_human="${used_kb} KB"
+            fi
+            
+            # Hitung persentase
+            local used_percent=0
+            if [ "$total_kb" -gt 0 ]; then
+                used_percent=$(( (used_kb * 100) / total_kb ))
+            fi
+            
+            echo "💽 *Memori Sistem*: ${used_human} / ${total_human} (${used_percent}%)"
+        else
+            echo "💽 *Memori Sistem*: Informasi tidak tersedia"
+        fi
+    else
+        echo "💽 *Memori Sistem*: Informasi tidak tersedia"
+    fi
+}
+
+# Fungsi untuk menampilkan status detail bot di Telegram
+show_bot_status() {
+    local chat_id="$1"
+    local message_id="$2"
+    
+    # Dapatkan status dari fungsi get_bot_status
+    local status_json=$(get_bot_status)
+    local status=$(echo "$status_json" | jq -r '.status // empty' 2>/dev/null)
+    
+    # Jika tidak ada jq, gunakan parsing sederhana
+    if [ -z "$status" ]; then
+        status=$(echo "$status_json" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+    fi
+    
+    if [ "$status" = "running" ]; then
+        # Extract data dari JSON dengan default values
+        local pid=$(echo "$status_json" | jq -r '.pid // ""' 2>/dev/null || echo "")
+        local uptime=$(echo "$status_json" | jq -r '.uptime // ""' 2>/dev/null || echo "")
+        local start_time=$(echo "$status_json" | jq -r '.start_time // ""' 2>/dev/null || echo "")
+        local memory_usage=$(echo "$status_json" | jq -r '.memory_usage // ""' 2>/dev/null || echo "")
+        local memory_percent=$(echo "$status_json" | jq -r '.memory_percent // ""' 2>/dev/null || echo "")
+        local location=$(echo "$status_json" | jq -r '.location // ""' 2>/dev/null || echo "")
+        local timezone=$(echo "$status_json" | jq -r '.timezone // ""' 2>/dev/null || echo "")
+        local source=$(echo "$status_json" | jq -r '.source // ""' 2>/dev/null || echo "")
+        local hijri_adjust=$(echo "$status_json" | jq -r '.hijri_adjust // ""' 2>/dev/null || echo "")
+        
+        # Jika gagal parse dengan jq, coba manual parsing
+        if [ -z "$hijri_adjust" ]; then
+            hijri_adjust=$(echo "$status_json" | grep -o '"hijri_adjust":"[^"]*"' | cut -d'"' -f4)
+        fi
+        
+        # Jika masih kosong, ambil dari variabel config langsung
+        if [ -z "$hijri_adjust" ]; then
+            hijri_adjust="$SCHEDULE_HIJRI_ADJUST"
+        fi
+        
+        # Debug logging
+        log "DEBUG: hijri_adjust dari JSON: '$hijri_adjust', dari config: '$SCHEDULE_HIJRI_ADJUST'"
+        
+        # Konversi sumber
+        local source_name=""
+        case "$source" in
+            "jadwalsholat") source_name="JadwalSholat.org" ;;
+            "aladhan") source_name="AlAdhan API" ;;
+            "myquran") source_name="MyQuran API" ;;
+            "apiajimedia") source_name="AjiMedia API" ;;
+            *) source_name="$source" ;;
+        esac
+        
+        # Status service
+        local service_status=$([ "$SERVICE_ENABLED" = "1" ] && echo "🟢 AKTIF" || echo "🔴 NONAKTIF")
+        local sound_status=$([ "$SOUND_ENABLED" = "1" ] && echo "🟢 AKTIF" || echo "🔴 NONAKTIF")
+        local telegram_status=$([ "$SERVICE_TELEGRAM_ENABLED" = "1" ] && echo "🟢 AKTIF" || echo "🔴 NONAKTIF")
+        local reminder_status="🔴 NONAKTIF"
+        if [ "$SOUND_REMINDER_BEFORE" != "0" ]; then
+            reminder_status="🟢 AKTIF (${SOUND_REMINDER_BEFORE}m)"
+        fi
+        
+        # Format info memori bot
+        local memory_info="💾 *Memori Bot*: ${memory_usage}"
+        if [ -n "$memory_percent" ] && [ "$memory_percent" != "0" ]; then
+            memory_info+=" (${memory_percent}%)"
+        fi
+        
+        # Dapatkan info memori sistem
+        local system_memory_info=$(get_system_memory_info)
+        
+        # Log info
+        local log_info=""
+        if [ -f "$LOG_FILE" ]; then
+            local log_lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0")
+            local log_size=$(du -h "$LOG_FILE" 2>/dev/null | cut -f1 || echo "0B")
+            log_info="📊 *Log File*: ${log_lines} baris (${log_size})"
+        fi
+        
+        # Waktu server
+        local server_time=$(date +"%Y-%m-%d %H:%M:%S %Z")
+        
+        # Format pesan
+        local status_message=$(printf '🤖 *STATUS BOT JSHOLAT*
+
+🟢 *STATUS*: BERJALAN
+┌──────────────────────
+│⏱  *Uptime*: %s
+│🔢  *PID*: %s
+│⏰  *Start Time*: %s
+│%s
+│%s
+└──────────────────────
+
+📍 *LOKASI & SUMBER*
+┌──────────────────────
+│🏙️  *Wilayah*: %s
+│🌐  *Zona Waktu*: %s
+│📡  *Sumber Jadwal*: %s
+│📅  *Adjust Hijriyah*: %s
+└──────────────────────
+
+⚙️ *PENGATURAN*
+┌──────────────────────
+│🛠️  *Service*: %s
+│🔊  *Suara Adzan*: %s
+│🤖  *Notifikasi Telegram*: %s
+│🔔  *Pengingat Sholat*: %s
+└──────────────────────
+
+%s
+🕒 *Waktu Server*: %s
+🆔 *Last Update ID*: %s' \
+"$uptime" "$pid" "$start_time" "$memory_info" "$system_memory_info" \
+"$location" "$timezone" "$source_name" "$hijri_adjust" \
+"$service_status" "$sound_status" "$telegram_status" "$reminder_status" \
+"$log_info" "$server_time" "$LAST_UPDATE_ID")
+        
+    else
+        # Bot stopped
+        local status_message="🔴 *STATUS BOT JSHOLAT*
+
+❌ *STATUS*: BERHENTI
+
+ℹ️ Bot saat ini tidak berjalan.
+Gunakan /control untuk mengaktifkannya kembali.
+
+🕒 *Waktu Server*: $(date +"%Y-%m-%d %H:%M:%S %Z")"
+    fi
+    
+    # Kirim atau edit pesan
+    if [ -z "$message_id" ]; then
+        send_message "$chat_id" "$status_message"
+    else
+        remove_keyboard "$chat_id" "$message_id" "$status_message"
+    fi
+}
+
 # Fungsi proses pesan
 process_message() {
     local chat_id="$1"
@@ -1231,8 +1703,8 @@ process_message() {
     
     # Cek authorization
     if ! check_authorization "$chat_id"; then
-        send_message "$chat_id" "This is a private bot. If you want to implement one for you, check this out https://www.ajisetiawan.my.id/projects/jsholat"
-        log "Percobaan akses dari chat ID tidak terdaftar: $chat_id"
+        send_message "$chat_id" "⛔ This is a private bot. If you want to implement one for you, check this out https://www.ajisetiawan.com/projects/jsholat"
+        log "⛔ Percobaan akses dari chat ID tidak terdaftar: $chat_id"
         return
     fi
 
@@ -1246,7 +1718,9 @@ process_message() {
 
 /jadwal - Lihat jadwal sholat hari ini
 /jdwlbulan - Lihat jadwal sholat bulan ini
+/statusbot - Lihat status detail bot
 /setjadwal - Ubah sumber jadwal sholat
+/sethijri - Atur koreksi tanggal Hijriyah (-2,-1,0,+1,+2)
 /lokasi - Lihat wilayah jadwal saat ini
 /setlokasi - Ubah lokasi untuk jadwal sholat
 /setvolume - Atur volume suara adzan (0-100)
@@ -1272,7 +1746,10 @@ process_message() {
             ;;
         "/setvolume")
             show_volume_menu "$chat_id"
-            ;;    
+            ;;
+		"/statusbot")
+        show_bot_status "$chat_id"
+        ;;	
         "/status")
             local city_label="$SCHEDULE_CITY_LABEL"
             local provinsi="$SCHEDULE_PROVINCE"
@@ -1283,6 +1760,8 @@ process_message() {
             local source="$SCHEDULE_SOURCE"
             local interval="$SCHEDULE_INTERVAL"
 			local reminder_status="$SOUND_REMINDER_BEFORE"
+            local hijri_adj="$SCHEDULE_HIJRI_ADJUST"  
+			
 
             # Convert status to human-readable format
             service_status=$([ "$service_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
@@ -1320,6 +1799,7 @@ process_message() {
 🕒 *Zona Waktu*: $timezone
 🔄 *Pembaruan Jadwal*: $interval
 🌐 *Sumber Jadwal*: $source
+📅 *Adjust Hijriyah*: $hijri_adj
 🛠 *Status Service*: $service_status
 🔊 *Suara Adzan*: $sound_status
 📱 *Notifikasi Telegram*: $telegram_status
@@ -1349,6 +1829,9 @@ process_message() {
         "/help")
             send_help_message "$chat_id"
             ;;
+        "/sethijri")
+            show_hijri_adjust_menu "$chat_id"
+            ;;    
         *)
             if [ -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag" ]; then
                 rm -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag"
@@ -1398,6 +1881,9 @@ process_callback() {
         "done")
             remove_keyboard "$chat_id" "$message_id" "🛠 Kontrol service selesai"
             ;;
+		"bot_status")
+        show_bot_status "$chat_id" "$message_id"
+        ;;	
         "status")
             local current_status="$SERVICE_ENABLED"
             local status_text=$([ "$current_status" = "1" ] && echo "AKTIF" || echo "NONAKTIF")
@@ -1532,6 +2018,14 @@ process_callback() {
 			local duration=$(echo "$data" | cut -d'_' -f3)
 			set_reminder_duration "$chat_id" "$message_id" "$duration"
 			;;
+		"hijri_menu")
+            show_hijri_adjust_menu "$chat_id" "$message_id"
+            ;;
+        set_hijri_adj_*)
+            # Parse nilai dengan benar
+            local adj_value=$(echo "$data" | sed 's/set_hijri_adj_//')
+            set_hijri_adjust "$chat_id" "$message_id" "$adj_value"
+            ;;
     esac
 }
 
@@ -1595,6 +2089,7 @@ while true; do
             fi
             
             LAST_UPDATE_ID=$update_id
+			write_last_update_id "$LAST_UPDATE_ID"  # Simpan ke file
         fi
     done
 

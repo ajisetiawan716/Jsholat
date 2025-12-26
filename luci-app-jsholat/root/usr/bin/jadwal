@@ -3,9 +3,40 @@
 # (C) 2025 Jsholat - @ajisetiawan716
 # Supports: Aladhan API, JadwalSholat.Org, myQuran API, AjiMedia API
 
-# ===== CONFIGURATION =====
-# Prioritaskan argumen command line jika ada, jika tidak gunakan konfig UCI
-API_SOURCE="${1:-$(uci get jsholat.schedule.source 2>/dev/null || echo "aladhan")}"
+# ===== FUNGSI PENGECEKAN PERINTAH =====
+check_command_usage() {
+    # Cek apakah script dipanggil dengan perintah "jadwal run"
+    local command="$1"
+    
+    if [ "$command" != "run" ]; then
+        echo "Script ini dirancang untuk dijalankan melalui web interface LuCI atau bot Telegram"
+        echo "Gunakan antarmuka web atau bot untuk melakukan pembaruan jadwal sholat."
+        #echo ""
+        #echo "Jika Anda ingin menjalankan secara manual, gunakan perintah:"
+        #echo "  jadwal run [api_source]"
+        #echo ""
+        #echo "Sumber API yang didukung (opsional):"
+        #echo "  aladhan          - Aladhan API (default)"
+        #echo "  jadwalsholat     - JadwalSholat.Org"
+        #echo "  myquran          - myQuran API (Bimas Islam Kemenag)"
+        #echo "  apiajimedia      - API AjiMedia"
+        #echo ""
+        #echo "Contoh penggunaan manual:"
+        #echo "  jadwal run                     # Menggunakan sumber API default (aladhan)"
+        #echo "  jadwal run jadwalsholat       # Menggunakan JadwalSholat.Org"
+        #echo "  jadwal run myquran            # Menggunakan myQuran API"
+        #echo "  jadwal run apiajimedia        # Menggunakan API AjiMedia"
+        #echo ""
+        exit 1
+    fi
+}
+
+# ===== KONFIGURASI UTAMA =====
+# Panggil fungsi pengecekan perintah
+check_command_usage "${1:-}"
+
+# Ambil argumen kedua sebagai sumber API jika ada
+API_SOURCE="${2:-$(uci get jsholat.schedule.source 2>/dev/null || echo "aladhan")}"
 LAST_UPDATED_FILE="/usr/share/jsholat/last_updated.txt"
 
 # ===== FUNGSI VALIDASI =====
@@ -18,12 +49,14 @@ validate_source() {
       ;;
   esac
 }
-    # Validasi dependensi
-    if ! command -v jq >/dev/null 2>&1; then
-        echo "Error: 'jq' tidak ditemukan. Silakan install jq terlebih dahulu."
-        logger "jadwal: Gagal - jq tidak ditemukan"
-        exit 1
-    fi
+
+# Validasi dependensi
+if ! command -v jq >/dev/null 2>&1; then
+    echo "Error: 'jq' tidak ditemukan. Silakan install jq terlebih dahulu."
+    logger "jadwal: Gagal - jq tidak ditemukan"
+    exit 1
+fi
+
 # ===== FUNCTIONS =====
 cek_internet() {
     # Try ping first
@@ -50,37 +83,178 @@ capitalize() {
     }' OFS='+' 
 }
 
-
+#MyQuran
 get_city_id() {
     local search_term="$1"
     local province="$2"
     
-    # Normalize format (fixed version)
+    # Normalize format
     normalized_term=$(echo "$search_term" | sed '
         s/Kabupaten /KAB. /g;
         s/Kab./KAB. /g;
         s/Kota /KOTA /g;
         s/^KAB /KAB. /g;
+        s/^Kota /KOTA /g;
     ' | awk '{print toupper($0)}')
     
-    # Alternative formats
-    for format in "$normalized_term" \
-                 "$(echo "$normalized_term" | sed 's/KAB. //')" \
-                 "$(echo "$normalized_term" | sed 's/\.//g')"; do
+    # Fungsi untuk mencoba pencarian dengan pattern tertentu (SILENT)
+    try_search() {
+        local pattern="$1"
+        local encoded_pattern
         
-        encoded_format=$(echo "$format" | sed 's/ /%20/g')
-        response=$(curl -s "https://api.myquran.com/v2/sholat/kota/cari/$encoded_format")
+        if [ -z "$pattern" ] || [ "$pattern" = " " ]; then
+            return 1
+        fi
         
-        if echo "$response" | grep -q '"status":true'; then
-            city_id=$(echo "$response" | sed -n 's/.*"id":"\([0-9]*\)".*/\1/p' | head -n 1)
-            if [ -n "$city_id" ]; then
+        encoded_pattern=$(echo "$pattern" | sed 's/ /%20/g')
+        response=$(curl -s --max-time 10 "https://api.myquran.com/v2/sholat/kota/cari/$encoded_pattern")
+        
+        if echo "$response" | jq -e '.status == true' >/dev/null 2>&1; then
+            city_id=$(echo "$response" | jq -r '.data[0].id // empty')
+            if [ -n "$city_id" ] && [ "$city_id" != "null" ]; then
                 echo "$city_id"
                 return 0
             fi
         fi
-    done
+        return 1
+    }
+    
+    # STRATEGI 1: Coba dengan format asli (full name)
+    if city_id=$(try_search "$normalized_term"); then
+        echo "$city_id"
+        return 0
+    fi
+    
+    # STRATEGY 2: Hapus prefix KAB./KOTA jika ada
+    without_prefix=$(echo "$normalized_term" | sed 's/^KAB\. //;s/^KOTA //')
+    if [ "$without_prefix" != "$normalized_term" ]; then
+        if city_id=$(try_search "$without_prefix"); then
+            echo "$city_id"
+            return 0
+        fi
+    fi
+    
+    # STRATEGY 3: Hapus arah mata angin (universal fallback)
+    directions_removed=$(echo "$normalized_term" | sed '
+        s/\s*BARAT\s*//gi;
+        s/\s*TIMUR\s*//gi;
+        s/\s*SELATAN\s*//gi;
+        s/\s*UTARA\s*//gi;
+        s/\s*PUSAT\s*//gi;
+        s/\s*TENGAH\s*//gi;
+        s/\s*KOTA\s*//gi;
+        s/\s*KAB\s*//gi;
+        s/\s*KAB\.\s*//gi;
+        s/\s+$//;
+        s/^\s+//;
+    ')
+    
+    # Hapus spasi ganda
+    directions_removed=$(echo "$directions_removed" | sed 's/\s\+/ /g')
+    
+    if [ -n "$directions_removed" ] && [ "$directions_removed" != "$normalized_term" ]; then
+        if city_id=$(try_search "$directions_removed"); then
+            echo "$city_id"
+            return 0
+        fi
+    fi
+    
+    # STRATEGY 4: Coba nama provinsi (fallback terakhir)
+    if [ -n "$province" ]; then
+        province_upper=$(echo "$province" | awk '{print toupper($0)}')
+        if city_id=$(try_search "$province_upper"); then
+            echo "$city_id"
+            return 0
+        fi
+    fi
+    
+    # STRATEGY 5: Jika masih gagal, coba ambil kata pertama saja
+    first_word=$(echo "$normalized_term" | awk '{print $1}')
+    if [ -n "$first_word" ] && [ ${#first_word} -gt 3 ]; then
+        if city_id=$(try_search "$first_word"); then
+            echo "$city_id"
+            return 0
+        fi
+    fi
     
     echo "ERROR"
+    return 1
+}
+
+#AjiMediaApi
+# Fungsi untuk mendapatkan data kota tanpa output debug
+get_city_data() {
+    local city_name="$1"
+    local province="$2"
+    
+    # Normalize province name for API
+    local province_api=$(echo "$province" | awk '{print tolower($0)}' | sed 's/ /+/g')
+    
+    local KOTA_API_URL="https://api.ajimedia.my.id/api/kota?provinsi=$province_api"
+    local kota_response=$(curl -s -k -X GET --connect-timeout 10 "$KOTA_API_URL")
+    
+    if [ -z "$kota_response" ]; then
+        return 1
+    fi
+    
+    # Cek jika response error
+    if echo "$kota_response" | grep -q '"status":"error"'; then
+        return 1
+    fi
+    
+    # Normalize city name
+    local city_lower=$(echo "$city_name" | awk '{print tolower($0)}')
+    
+    # 1. Cari exact match
+    local matched_city=$(echo "$kota_response" | jq -r --arg name "$city_lower" '.data[] | select(.name == $name)')
+    if [ -n "$matched_city" ]; then
+        echo "$matched_city"
+        return 0
+    fi
+    
+    # 2. Cari dengan prefix
+    for prefix in "kota " "kab. "; do
+        local prefixed_name="$prefix$city_lower"
+        matched_city=$(echo "$kota_response" | jq -r --arg name "$prefixed_name" '.data[] | select(.name == $name)')
+        if [ -n "$matched_city" ]; then
+            echo "$matched_city"
+            return 0
+        fi
+    done
+    
+    # 3. Hapus arah mata angin
+    local city_no_directions=$(echo "$city_lower" | sed '
+        s/\s*barat//g; s/\s*timur//g; s/\s*selatan//g;
+        s/\s*utara//g; s/\s*pusat//g; s/\s*tengah//g;
+        s/\s+$//; s/^\s+//;
+    ')
+    
+    if [ "$city_no_directions" != "$city_lower" ]; then
+        # Coba exact match tanpa arah
+        matched_city=$(echo "$kota_response" | jq -r --arg name "$city_no_directions" '.data[] | select(.name == $name)')
+        if [ -n "$matched_city" ]; then
+            echo "$matched_city"
+            return 0
+        fi
+        
+        # Coba dengan prefix
+        for prefix in "kota " "kab. "; do
+            local prefixed_name="$prefix$city_no_directions"
+            matched_city=$(echo "$kota_response" | jq -r --arg name "$prefixed_name" '.data[] | select(.name == $name)')
+            if [ -n "$matched_city" ]; then
+                echo "$matched_city"
+                return 0
+            fi
+        done
+    fi
+    
+    # 4. Fallback ke kota pertama
+    matched_city=$(echo "$kota_response" | jq -r '.data[0] // empty')
+    if [ -n "$matched_city" ]; then
+        echo "$matched_city"
+        return 0
+    fi
+    
     return 1
 }
 
@@ -168,7 +342,7 @@ update_aladhan() {
 
 update_jadwalsholatorg() {
     # Baca konfigurasi dari UCI
-    CITY=$(uci get jsholat.schedule.city_value | awk '{print tolower($0)}' | sed 's/-//g')
+    CITY=$(uci get jsholat.schedule.city_value 2>/dev/null | awk '{print tolower($0)}' | sed 's/-//g')
     CITY_LABEL=$(uci get jsholat.schedule.city_label 2>/dev/null)
     PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null)
     COUNTRY=$(uci get jsholat.schedule.country 2>/dev/null)
@@ -179,11 +353,78 @@ update_jadwalsholatorg() {
 
     logger "jadwal: Memulai pembaruan jadwal sholat pada $CURRENT_TIME (JadwalSholat.Org)"
     echo "Membaca data jadwal sholat bulan $MONTH tahun $YEAR untuk $CITY_LABEL, $PROVINCE, $COUNTRY..."
-    sleep 3
+    sleep 2
 
-    # URL API
-	API_URL="https://raw.githubusercontent.com/ajisetiawan716/jadwalsholatorg/master/adzan/$CITY/$YEAR/$MONTH.json"
-    echo "Sedang membaca data dari server jadwal shalat"
+    # Fungsi untuk mencoba URL dengan kota tertentu (SILENT version)
+    try_download_jadwal() {
+        local city_param="$1"
+        local city_name="$2"
+        
+        # Format URL - hilangkan spasi pada nama kota
+        local formatted_city=$(echo "$city_param" | sed 's/ //g')
+        
+        local API_URL="https://raw.githubusercontent.com/ajisetiawan716/jadwalsholatorg/master/adzan/$formatted_city/$YEAR/$MONTH.json"
+        
+        # Output debug ke stderr
+        echo "Mencoba dengan kota: $city_name (URL: $API_URL)" >&2
+        
+        # Ambil data jadwal sholat
+        local response=$(curl -s -k -X GET --max-time 15 "$API_URL")
+        
+        # Cek apakah curl berhasil dan data valid
+        if [ $? -eq 0 ] && [ -n "$response" ] && ! echo "$response" | grep -q "404: Not Found"; then
+            echo "$response"
+            return 0
+        fi
+        
+        return 1
+    }
+
+    # Coba dengan CITY terlebih dahulu
+    echo "Mencoba dengan city_value: '$CITY'..."
+    response=$(try_download_jadwal "$CITY" "$CITY_LABEL")
+    
+    # Jika gagal, coba dengan CITY_LABEL (hilangkan spasi dan ubah ke lowercase)
+    if [ $? -ne 0 ] || [ -z "$response" ]; then
+        echo "Percobaan pertama gagal, mencoba dengan city_label..." >&2
+        
+        # Format CITY_LABEL untuk URL: lowercase dan hilangkan spasi
+        CITY_FALLBACK=$(echo "$CITY_LABEL" | awk '{print tolower($0)}' | sed 's/ //g')
+        
+        echo "Mencoba dengan city_label (formatted): '$CITY_FALLBACK'..." >&2
+        response=$(try_download_jadwal "$CITY_FALLBACK" "$CITY_LABEL")
+        
+        if [ $? -ne 0 ] || [ -z "$response" ]; then
+            echo "Error: Gagal mengambil data dari server dengan kedua percobaan" >&2
+            echo "Kota yang dicoba:" >&2
+            echo "  1. city_value: '$CITY'" >&2
+            echo "  2. city_label: '$CITY_FALLBACK' (dari '$CITY_LABEL')" >&2
+            logger "jadwal: Gagal mengambil data dari server JadwalSholat.Org"
+            exit 1
+        fi
+    fi
+
+    # Cek apakah response adalah error 404
+    if echo "$response" | grep -q "404: Not Found"; then
+        echo "Error: File JSON tidak ditemukan (404)" >&2
+        logger "jadwal: File JSON tidak ditemukan (404)"
+        exit 1
+    fi
+
+    # Cek apakah response kosong atau tidak valid
+    if [ -z "$response" ]; then
+        echo "Error: Data JSON tidak ditemukan atau kosong" >&2
+        logger "jadwal: Data JSON tidak ditemukan atau kosong"
+        exit 1
+    fi
+
+    # Validasi bahwa response adalah JSON valid
+    if ! echo "$response" | jq -e '.' >/dev/null 2>&1; then
+        echo "Error: Data yang diterima bukan JSON valid" >&2
+        echo "Response sample: $(echo "$response" | head -c 100)" >&2
+        logger "jadwal: Data bukan JSON valid"
+        exit 1
+    fi
 
     # Hapus file jadwal lama jika ada
     if [ -f "$JADWAL_FILE" ]; then
@@ -191,30 +432,8 @@ update_jadwalsholatorg() {
         rm "$JADWAL_FILE"
     fi
 
-    # Ambil data jadwal sholat
-    response=$(curl -s -k -X GET "$API_URL")
-
-    # Cek apakah curl berhasil
-    if [ $? -ne 0 ]; then
-        echo "Error: Gagal mengambil data dari server"
-        logger "jadwal: Gagal mengambil data dari server"
-        exit 1
-    fi
-
-    # Cek apakah response adalah error 404
-    if echo "$response" | grep -q "404: Not Found"; then
-        echo "Error: File JSON tidak ditemukan (404)"
-        logger "jadwal: File JSON tidak ditemukan (404)"
-        exit 1
-    fi
-
-    # Cek apakah response kosong atau tidak valid
-    if [ -z "$response" ]; then
-        echo "Error: Data JSON tidak ditemukan atau kosong"
-        logger "jadwal: Data JSON tidak ditemukan atau kosong"
-        exit 1
-    fi
-
+    echo "Memproses data jadwal..."
+    
     # Parse data JSON menggunakan jq dan simpan semua data ke file
     echo "$response" | jq -r '.[] | "\(.tanggal) \(.imsyak) \(.shubuh) \(.dzuhur) \(.ashr) \(.magrib) \(.isya)"' | while read -r line; do
         # Pisahkan tanggal dan waktu sholat
@@ -227,21 +446,26 @@ update_jadwalsholatorg() {
         isya=$(echo "$line" | awk '{print $7}')
 
         # Ubah format tanggal dari YYYY-MM-DD menjadi DD-MM-YYYY
-        date_formatted=$(date -d "$tanggal" +"%d-%m-%Y")
+        date_formatted=$(date -d "$tanggal" +"%d-%m-%Y" 2>/dev/null || echo "$tanggal")
 
         # Simpan ke file
         echo "$date_formatted $imsyak $shubuh $dzuhur $ashr $magrib $isya" >> "$JADWAL_FILE" 2>/dev/null
     done
 
     # Cek apakah parsing berhasil
-    if [ $? -ne 0 ]; then
-        echo "Error: Gagal parsing data JSON"
+    if [ $? -ne 0 ] || [ ! -s "$JADWAL_FILE" ]; then
+        echo "Error: Gagal parsing data JSON atau file jadwal kosong" >&2
         logger "jadwal: Gagal parsing data JSON"
         exit 1
     fi
 
     echo "Sedang menyimpan semua data jadwal sholat..."
-    sleep 3
+    sleep 2
+    
+    # Buat directory jika belum ada
+    LAST_UPDATED_DIR=$(dirname "$LAST_UPDATED_FILE")
+    mkdir -p "$LAST_UPDATED_DIR" 2>/dev/null
+    
     echo '{"status":"success","last_updated":"'"$CURRENT_TIME"'","data_source":"Jadwalsholat.org","location":{"city":"'"$CITY_LABEL"'","city_value":"'"$CITY"'","province":"'"$PROVINCE"'","country":"'"$COUNTRY"'"}}' > "$LAST_UPDATED_FILE"
     
     echo "Jadwal sholat berhasil diperbarui pada $CURRENT_TIME (JadwalSholat.Org)."
@@ -333,92 +557,62 @@ update_myquran() {
     echo "Jadwal sholat berhasil diperbarui pada $CURRENT_TIME (myQuran API)."
     logger "jadwal: Jadwal sholat berhasil diperbarui menggunakan API myQuran"
 }
+
 update_apiajimedia() {
     # Baca konfigurasi dari UCI
-PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null | awk '{print tolower($0)}' | sed 's/ /+/g')
-CITY_LABEL=$(uci get jsholat.schedule.city_label 2>/dev/null)
-CITY_VALUE=$(uci get jsholat.schedule.city_value 2>/dev/null)
-COUNTRY=$(uci get jsholat.schedule.country 2>/dev/null)
-YEAR=$(date +"%Y")
-MONTH=$(date +"%m")
-JADWAL_FILE=$(uci get jsholat.schedule.file_jadwal)
-LAST_UPDATED_FILE="/usr/share/jsholat/last_updated.txt"
-CURRENT_TIME=$(date +"%d-%m-%Y %H:%M:%S")
-
-# Fungsi untuk mencocokkan kota
-match_city() {
-    local city_name="$1"
-    local province="$2"
-    
-    local KOTA_API_URL="https://api.ajimedia.my.id/api/kota?provinsi=$province"
-    local kota_response=$(curl -s -k -X GET --connect-timeout 10 "$KOTA_API_URL")
-    
-    if [ -z "$kota_response" ]; then
-        echo "Error: Gagal mengambil data kota dari API"
-        return 1
-    fi
-    
-    # Cari berdasarkan ID (jika input berupa ID)
-    if [[ "$city_name" =~ ^[0-9a-f]{32}$ ]]; then
-        local matched_city=$(echo "$kota_response" | jq -r --arg id "$city_name" '.data[] | select(.id == $id)')
-        if [ -n "$matched_city" ]; then
-            echo "$matched_city"
-            return 0
-        fi
-    fi
-    
-    # Cari sebagai nama kota (dengan berbagai variasi)
-    for prefix in "" "kab." "kota"; do
-        local full_name
-        if [ -n "$prefix" ]; then
-            full_name="$prefix $city_name"
-        else
-            full_name="$city_name"
-        fi
-        
-        local matched_city=$(echo "$kota_response" | jq -r --arg name "$full_name" '.data[] | select(.name == $name)')
-        
-        if [ -n "$matched_city" ]; then
-            echo "$matched_city"
-            return 0
-        fi
-    done
-    
-    echo "Error: Kota '$city_name' tidak ditemukan di provinsi '$province'"
-    daftar_kota_yang_tersedia() {
-    local daftar=$(echo "$kota_response" | jq -r '[.data[].name] | join(", ")')
-    echo "Daftar kota yang tersedia: $daftar"
-}
-
-printf "%b\n" "$(daftar_kota_yang_tersedia)"
-
-    return 1
-}
+    PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null)
+    CITY_LABEL=$(uci get jsholat.schedule.city_label 2>/dev/null)
+    CITY_VALUE=$(uci get jsholat.schedule.city_value 2>/dev/null)
+    COUNTRY=$(uci get jsholat.schedule.country 2>/dev/null)
+    YEAR=$(date +"%Y")
+    MONTH=$(date +"%m")
+    JADWAL_FILE=$(uci get jsholat.schedule.file_jadwal)
+    LAST_UPDATED_FILE="/usr/share/jsholat/last_updated.txt"
+    CURRENT_TIME=$(date +"%d-%m-%Y %H:%M:%S")
 
     logger "jadwal: Memulai pembaruan jadwal sholat pada $CURRENT_TIME (API AjiMedia)"
-    echo "Membaca data jadwal sholat bulan $MONTH tahun $YEAR untuk $CITY_LABEL, $(uci get jsholat.schedule.province 2>/dev/null), $COUNTRY..."
+    echo "Membaca data jadwal sholat bulan $MONTH tahun $YEAR untuk $CITY_LABEL, $PROVINCE, $COUNTRY..."
     
-    # Dapatkan data kota yang cocok
-    MATCHED_CITY=$(match_city "$CITY_VALUE" "$PROVINCE")
-    if [ $? -ne 0 ]; then
-        echo "$MATCHED_CITY"
-        logger "jadwal: $MATCHED_CITY"
+    # Dapatkan data kota
+    echo "Mencari kota '$CITY_VALUE' di provinsi '$PROVINCE'..."
+    MATCHED_CITY=$(get_city_data "$CITY_VALUE" "$PROVINCE")
+    
+    if [ $? -ne 0 ] || [ -z "$MATCHED_CITY" ]; then
+        echo "Mencoba alternatif dengan: '$CITY_LABEL'..."
+        MATCHED_CITY=$(get_city_data "$CITY_LABEL" "$PROVINCE")
+        
+        if [ $? -ne 0 ] || [ -z "$MATCHED_CITY" ]; then
+            echo "Error: Tidak dapat menemukan kota di API AjiMedia"
+            exit 1
+        fi
+    fi
+    
+    # Pastikan MATCHED_CITY adalah JSON valid
+    if ! echo "$MATCHED_CITY" | jq -e '.' >/dev/null 2>&1; then
+        echo "Error: Format data kota tidak valid"
         exit 1
     fi
     
-    # Ekstrak nama kota yang cocok
     API_CITY_NAME=$(echo "$MATCHED_CITY" | jq -r '.name')
+    API_CITY_ID=$(echo "$MATCHED_CITY" | jq -r '.id')
     
-    # Update city_value jika berupa ID
-    if [[ "$CITY_VALUE" =~ ^[0-9a-f]{32}$ ]]; then
+    echo "Kota ditemukan: $API_CITY_NAME (ID: $API_CITY_ID)"
+    
+    # Update city_value jika berbeda
+    if [ "$CITY_VALUE" != "$API_CITY_NAME" ] && [[ ! "$CITY_VALUE" =~ ^[0-9a-f]{32}$ ]]; then
+        echo "Memperbarui city_value dari '$CITY_VALUE' menjadi '$API_CITY_NAME'"
         uci set jsholat.schedule.city_value="$API_CITY_NAME"
         uci commit jsholat
+        CITY_VALUE="$API_CITY_NAME"
     fi
     
-    sleep 3
+    sleep 2
     
     # URL API jadwal sholat dengan parameter
-    API_URL="https://api.ajimedia.my.id/api/cari?provinsi=$(echo "$PROVINCE" | tr '[:upper:]' '[:lower:]')&kota=$(echo "$API_CITY_NAME" | sed 's/ /+/g')&bulan=$MONTH&tahun=$YEAR"
+    local province_api=$(echo "$PROVINCE" | awk '{print tolower($0)}' | sed 's/ /+/g')
+    local city_api=$(echo "$API_CITY_NAME" | awk '{print tolower($0)}' | sed 's/ /+/g')
+    
+    API_URL="https://api.ajimedia.my.id/api/cari?provinsi=$province_api&kota=$city_api&bulan=$MONTH&tahun=$YEAR"
     echo "Sedang membaca data dari server API AjiMedia..."
     
     # Hapus file jadwal lama jika ada
@@ -428,7 +622,7 @@ printf "%b\n" "$(daftar_kota_yang_tersedia)"
     fi
     
     # Ambil data jadwal sholat dengan timeout
-    response=$(curl -s -k -X GET --connect-timeout 10 "$API_URL")
+    response=$(curl -s -k -X GET --connect-timeout 15 "$API_URL")
     
     # Cek apakah curl berhasil
     if [ $? -ne 0 ]; then
@@ -446,13 +640,14 @@ printf "%b\n" "$(daftar_kota_yang_tersedia)"
     
     # Cek apakah response mengandung error
     if echo "$response" | grep -q '"status":"error"'; then
-        error_msg=$(echo "$response" | jq -r '.message')
+        error_msg=$(echo "$response" | jq -r '.message // "Unknown error"')
         echo "Error: $error_msg"
         logger "jadwal: Error dari API - $error_msg"
         exit 1
     fi
     
-    # Parse data JSON menggunakan jq dengan mengambil data berdasarkan array
+    # Parse data JSON menggunakan jq
+    echo "Memproses data jadwal..."
     echo "$response" | jq -r '.data[] | "\(.key) \(.imsak) \(.subuh) \(.dzuhur) \(.ashar) \(.maghrib) \(.isya)"' | while read -r line; do
         # Pisahkan tanggal dan waktu sholat
         tanggal=$(echo "$line" | awk '{print $1}')
@@ -462,24 +657,30 @@ printf "%b\n" "$(daftar_kota_yang_tersedia)"
         ashar=$(echo "$line" | awk '{print $5}')
         magrib=$(echo "$line" | awk '{print $6}')
         isya=$(echo "$line" | awk '{print $7}')
-    
+        
         # Ubah format tanggal dari YYYY-MM-DD (dari 'key') menjadi DD-MM-YYYY
-        date_formatted=$(date -d "$tanggal" +"%d-%m-%Y")
-    
-        # Simpan ke file dengan format asli
+        if [[ "$tanggal" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            date_formatted=$(date -d "$tanggal" +"%d-%m-%Y" 2>/dev/null || echo "$tanggal")
+        else
+            date_formatted="$tanggal"
+        fi
+        
+        # Simpan ke file
         echo "$date_formatted $imsak $subuh $dzuhur $ashar $magrib $isya" >> "$JADWAL_FILE" 2>/dev/null
     done
     
     # Cek apakah parsing berhasil
-    if [ $? -ne 0 ]; then
-        echo "Error: Gagal parsing data JSON"
+    if [ $? -ne 0 ] || [ ! -s "$JADWAL_FILE" ]; then
+        echo "Error: Gagal parsing data JSON atau file jadwal kosong"
         logger "jadwal: Gagal parsing data JSON"
         exit 1
     fi
     
     echo "Sedang menyimpan semua data jadwal sholat..."
-    sleep 3
-    echo '{"status":"success","last_updated":"'"$CURRENT_TIME"'","data_source":"API AjiMedia","location":{"city":"'"$CITY_LABEL"'","city_value":"'"$CITY_VALUE"'","province":"'"$(uci get jsholat.schedule.province 2>/dev/null)"'","country":"'"$COUNTRY"'"}}' > "$LAST_UPDATED_FILE"
+    sleep 2
+    
+    # Buat file last updated
+    echo '{"status":"success","last_updated":"'"$CURRENT_TIME"'","data_source":"API AjiMedia","location":{"city":"'"$CITY_LABEL"'","city_value":"'"$CITY_VALUE"'","province":"'"$PROVINCE"'","country":"'"$COUNTRY"'"}}' > "$LAST_UPDATED_FILE"
     
     echo "Jadwal sholat berhasil diperbarui pada $CURRENT_TIME (API AjiMedia)."
     logger "jadwal: Jadwal sholat berhasil diperbarui pada $CURRENT_TIME (API AjiMedia)"

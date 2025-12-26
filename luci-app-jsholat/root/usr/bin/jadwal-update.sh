@@ -176,7 +176,7 @@ run_update() {
     log "Memulai update dari sumber: $source"
 
     # Eksekusi dengan timestamp dan tangkap output
-    output=$(jadwal 2>&1)
+    output=$(jadwal run 2>&1)
     exit_code=$?
 
     # 1. Tampilkan output ke console TANPA timestamp
@@ -292,12 +292,25 @@ run_update_with_retry() {
 
 restart_service() {
     log "Memulai restart service jsholat..."
-    if /etc/init.d/jsholat restart 2>&1 | add_timestamp; then
-        log "Service berhasil di-restart"
-        return 0
+    
+    if [ "$DEBUG_MODE" = "1" ]; then
+        # Debug mode: tampilkan output
+        if /etc/init.d/jsholat restart 2>&1 | add_timestamp; then
+            log "Service berhasil di-restart"
+            return 0
+        else
+            log "ERROR: Gagal restart service"
+            return 1
+        fi
     else
-        log "ERROR: Gagal restart service"
-        return 1
+        # Normal mode: sembunyikan output
+        if /etc/init.d/jsholat restart >/dev/null 2>&1; then
+            log "Service berhasil di-restart"
+            return 0
+        else
+            log "ERROR: Gagal restart service"
+            return 1
+        fi
     fi
 }
 
