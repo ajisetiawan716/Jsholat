@@ -1,6 +1,6 @@
 # **Jsholat / luci-app-jsholat**
 
-`Jsholat` atau `luci-app-jsholat` adalah aplikasi **OpenWrt** yang menyediakan fitur jadwal sholat dengan notifikasi suara adzan. Aplikasi ini dapat menggunakan `madplay` atau `mpg123` untuk memainkan file MP3 adzan dan mempunyai fitur untuk memperbarui jadwal sholat.
+`Jsholat` atau `luci-app-jsholat` adalah aplikasi **OpenWrt** yang menyediakan fitur jadwal sholat dengan notifikasi suara adzan. Aplikasi ini dapat menggunakan `madplay` atau `mpg123` untuk memainkan file MP3 adzan, mempunyai fitur untuk memperbarui jadwal sholat, dan dilengkapi dengan bot Telegram.
 
 ---
 
@@ -68,7 +68,7 @@ wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/re
 
 #### **d. Verifikasi Instalasi**
 
-- Buka LuCI (mis. `http://192.168.1.1`), pastikan menu **Services → Jsholat** muncul.
+- Buka LuCI (mis. `http://192.168.1.1`), pastikan menu **Services → Jadwal Sholat** muncul.
 - Cek status service:
   ```bash
   /etc/init.d/jsholat status
@@ -84,6 +84,9 @@ wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/re
   ```
 	/jadwal - Lihat jadwal sholat hari ini
 	/jdwlbulan - Lihat jadwal sholat bulan ini
+	/statusbot - Lihat status detail bot
+	/setjadwal - Ubah sumber jadwal sholat
+	/sethijri - Atur koreksi tanggal Hijriyah (-2,-1,0,+1,+2)
 	/setjadwal - Ubah sumber jadwal sholat
 	/lokasi - Lihat wilayah jadwal saat ini
 	/setlokasi - Ubah lokasi untuk jadwal sholat
@@ -128,6 +131,9 @@ wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/re
 ### **3. Memainkan Suara Adzan**
 
 - Adzan otomatis diputar saat waktunya. Pastikan file MP3 ada di **`/root/jsholat`**.
+   ```bash
+   ls -l /root/jsholat
+   ```
 
 ---
 
@@ -137,7 +143,7 @@ wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/re
 /usr/bin/
 ├── jsholat          # Script utama pemutar adzan
 ├── jsholat-bot      # Script bot Telegram Jsholat
-├── jadwal           # Update jadwal sholat (harian)
+├── jadwal           # Update jadwal sholat (script utama)
 ├── jadwal-monthly   # Update jadwal sholat bulanan (Python)
 └── jadwal-update.sh # Update jadwal dgn pengecekan
 
@@ -159,7 +165,6 @@ wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/re
 /usr/share/jsholat/  # (Jika ada) file pendukung bersama
 ```
 
-> Catatan: gunakan `/usr/share/jsholat/` untuk aset “share”, bukan di dalam `/usr/lib/lua/luci/`.
 
 ---
 
@@ -178,7 +183,7 @@ wget --no-check-certificate -q "https://github.com/ajisetiawan716/Jsholat/raw/re
 
 ## **Catatan**
 
-- Pastikan perangkat tersambung internet saat `jadwal-update.sh`.
+- Pastikan perangkat tersambung internet saat melakukan update jadwal.
 - Jika adzan tidak terdengar, cek ALSA dan pastikan `madplay`/`mpg123` terinstal.
 
 ---
