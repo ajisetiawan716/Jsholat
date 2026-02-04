@@ -411,6 +411,8 @@ install_support_files(){
   sanitize_data644 /root/jsholat/adzan.mp3
   sanitize_data644 /root/jsholat/adzan_subuh.mp3
   sanitize_data644 /root/jsholat/tarhim.mp3
+  sanitize_data644 /usr/share/jsholat/sounds/in_reminder.mp3
+  sanitize_data644 /usr/share/jsholat/sounds/out_reminder.mp3
   ok "file pendukung lengkap"
 }
 
