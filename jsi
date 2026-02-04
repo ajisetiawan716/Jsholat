@@ -402,6 +402,8 @@ install_support_files(){
   download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/adzan.mp3"       "/root/jsholat/adzan.mp3"       || true
   download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/adzan_subuh.mp3" "/root/jsholat/adzan_subuh.mp3" || true
   download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/tarhim.mp3"      "/root/jsholat/tarhim.mp3" || true
+  download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/in_reminder.mp3"      "/usr/share/jsholat/sounds/in_reminder.mp3" || true
+  download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/out_reminder.mp3"      "/usr/share/jsholat/sounds/out_reminder.mp3" || true
   if [ ! -s /root/jsholat/tarhim.mp3 ]; then
     warn "tarhim.mp3 tidak ditemukan, fallback tahrim.mp3"
     download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/tahrim.mp3" "/root/jsholat/tarhim.mp3" || true
