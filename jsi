@@ -398,7 +398,12 @@ ensure_pillow(){
 
 # ===== File pendukung (MP3) =====
 install_support_files(){
+  # Buat direktori utama
   mkdir -p /root/jsholat
+  
+  # Buat direktori sounds untuk file reminder
+  mkdir -p /usr/share/jsholat/sounds
+
   download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/adzan.mp3"       "/root/jsholat/adzan.mp3"       || true
   download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/adzan_subuh.mp3" "/root/jsholat/adzan_subuh.mp3" || true
   download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/tarhim.mp3"      "/root/jsholat/tarhim.mp3" || true
@@ -408,11 +413,22 @@ install_support_files(){
     warn "tarhim.mp3 tidak ditemukan, fallback tahrim.mp3"
     download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/tahrim.mp3" "/root/jsholat/tarhim.mp3" || true
   fi
-  sanitize_data644 /root/jsholat/adzan.mp3
-  sanitize_data644 /root/jsholat/adzan_subuh.mp3
-  sanitize_data644 /root/jsholat/tarhim.mp3
-  sanitize_data644 /usr/share/jsholat/sounds/in_reminder.mp3
-  sanitize_data644 /usr/share/jsholat/sounds/out_reminder.mp3
+ 
+  # Sanitasi hanya file yang berhasil diunduh
+  [ -f /root/jsholat/adzan.mp3 ] && sanitize_data644 /root/jsholat/adzan.mp3
+  [ -f /root/jsholat/adzan_subuh.mp3 ] && sanitize_data644 /root/jsholat/adzan_subuh.mp3
+  [ -f /root/jsholat/tarhim.mp3 ] && sanitize_data644 /root/jsholat/tarhim.mp3
+  [ -f /usr/share/jsholat/sounds/in_reminder.mp3 ] && sanitize_data644 /usr/share/jsholat/sounds/in_reminder.mp3
+  [ -f /usr/share/jsholat/sounds/out_reminder.mp3 ] && sanitize_data644 /usr/share/jsholat/sounds/out_reminder.mp3
+  
+  # Verifikasi file yang ada
+  info "Verifikasi file yang berhasil diunduh:"
+  [ -f /root/jsholat/adzan.mp3 ] && echo "  ✅ /root/jsholat/adzan.mp3"
+  [ -f /root/jsholat/adzan_subuh.mp3 ] && echo "  ✅ /root/jsholat/adzan_subuh.mp3"
+  [ -f /root/jsholat/tarhim.mp3 ] && echo "  ✅ /root/jsholat/tarhim.mp3"
+  [ -f /usr/share/jsholat/sounds/in_reminder.mp3 ] && echo "  ✅ /usr/share/jsholat/sounds/in_reminder.mp3"
+  [ -f /usr/share/jsholat/sounds/out_reminder.mp3 ] && echo "  ✅ /usr/share/jsholat/sounds/out_reminder.mp3"
+  
   ok "file pendukung lengkap"
 }
 
