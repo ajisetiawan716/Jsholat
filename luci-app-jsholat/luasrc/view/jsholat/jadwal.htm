@@ -1,6 +1,4 @@
 <%+header%>
-<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
-
 <style>
 /* ===== VARIABEL & RESET ===== */
 :root {
@@ -24,7 +22,6 @@
   --icon-color: #3498db;
 }
 
-/* ===== DARK MODE OVERRIDES ===== */
 @media (prefers-color-scheme: dark),
        body.dark {
   :root {
@@ -48,13 +45,34 @@
   }
 }
 
-/* ===== BASE STYLES (FORCE CONTRAST) ===== */
+/* Dark mode support */
+@media (prefers-color-scheme: dark), body.dark {
+    .action-buttons button {
+        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    }
+    
+    #printBtn {
+        background-color: #2d6a4f;
+    }
+    
+    #printBtn:hover:not(:disabled) {
+        background-color: #1e4d3a;
+    }
+    
+    #downloadBtn {
+        background-color: #0b4f6c;
+    }
+    
+    #downloadBtn:hover:not(:disabled) {
+        background-color: #083c52;
+    }
+}
+
 body .jadwal-container {
   background-color: var(--bg-color, #fff) !important;
   color: var(--text-color, #333) !important;
 }
 
-/* ===== TABLE STYLES ===== */
 body .jadwal-table {
   width: 100%;
   border-collapse: collapse;
@@ -92,13 +110,11 @@ body .jadwal-table tr.today {
   font-weight: bold;
 }
 
-/* ===== CELL TEXT (IMPORTANT FIX) ===== */
 body .jadwal-table td {
   color: var(--text-color, #333) !important;
   background-color: inherit !important;
 }
 
-/* ===== COUNTDOWN STYLES ===== */
 body .countdown-container {
   text-align: center;
   margin: 20px 0;
@@ -132,7 +148,24 @@ body #prayerMessage {
   border-radius: 5px;
 }
 
-/* ===== UTILITY STYLES ===== */
+body .prayer-alert {
+  font-size: 1.3em;
+  font-weight: bold;
+  background-color: var(--message-bg-color, #d4edda) !important;
+  color: var(--message-color, #333) !important;
+  padding: 15px 20px;
+  margin-top: 15px;
+  display: none;
+  border-radius: 8px;
+  border-left: 5px solid var(--countdown-color, #155724);
+  animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 body .last-updated-container {
   margin: 15px 0;
   padding: 10px;
@@ -154,21 +187,164 @@ body .icon-clock {
 body .error-message {
   color: var(--error-color, #e74c3c) !important;
   margin-bottom: 20px;
+  padding: 15px;
+  background-color: rgba(231, 76, 60, 0.1);
+  border-radius: 5px;
+  border-left: 5px solid var(--error-color, #e74c3c);
 }
 
-/* ===== PRINT STYLES ===== */
+.action-buttons {
+    position: absolute;
+    top: 120px;
+    right: 20px;
+    margin: 0;
+    text-align: right;
+    display: flex;
+    gap: 8px;
+    z-index: 1000;
+}
+
+.action-buttons button {
+    padding: 8px 14px;
+    margin: 0;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    letter-spacing: 0.3px;
+}
+
+.action-buttons button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.action-buttons button:active {
+    transform: translateY(0);
+}
+
+.action-buttons button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+#printBtn {
+    background-color: #4CAF50;
+    color: white;
+}
+
+#printBtn:hover:not(:disabled) {
+    background-color: #45a049;
+}
+
+#downloadBtn {
+    background-color: #2196F3;
+    color: white;
+}
+
+#downloadBtn:hover:not(:disabled) {
+    background-color: #0b7dda;
+}
+
+/* Emoji/Icon styling */
+.btn-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+
+/* Responsive untuk mobile */
+@media (max-width: 768px) {
+    .action-buttons {
+        position: static;
+        justify-content: center;
+        margin-bottom: 20px;
+        top: auto;
+        right: auto;
+    }
+    
+    .action-buttons button {
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .action-buttons {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .action-buttons button {
+        width: 100%;
+        max-width: 200px;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark), body.dark {
+    .action-buttons button {
+        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    }
+    
+    #printBtn {
+        background-color: #2d6a4f;
+    }
+    
+    #printBtn:hover:not(:disabled) {
+        background-color: #1e4d3a;
+    }
+    
+    #downloadBtn {
+        background-color: #0b4f6c;
+    }
+    
+    #downloadBtn:hover:not(:disabled) {
+        background-color: #083c52;
+    }
+}
+
+/* Animasi loading */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.icon-loading {
+    display: inline-block;
+    animation: spin 1s infinite linear;
+}
+
+/* Pastikan container relatif untuk absolute positioning */
+.jadwal-container {
+    position: relative;
+    min-height: 100px;
+}
+
+/* Untuk print, sembunyikan tombol */
+@media print {
+    .action-buttons {
+        display: none !important;
+    }
+}
+
 @media print {
     body {
         visibility: visible !important;
         background: white !important;
     }
     
-    /* Sembunyikan elemen yang tidak perlu dicetak */
     .action-buttons, .countdown-container {
         display: none !important;
     }
     
-    /* Tampilkan elemen yang perlu dicetak */
     h2, .jadwal-table, .last-updated-container {
         visibility: visible !important;
         display: block !important;
@@ -176,7 +352,6 @@ body .error-message {
         width: 100% !important;
     }
     
-    /* Styling khusus untuk cetakan */
     h2 {
         text-align: center;
         margin-bottom: 15px;
@@ -213,78 +388,298 @@ body .error-message {
     }
 }
 
-/* ===== RESPONSIVE FALLBACK ===== */
 @media (max-width: 768px) {
   body .jadwal-table {
-    font-size: 0.9em;
+    font-size: 0.85em;
+  }
+  
+  body .jadwal-table th,
+  body .jadwal-table td {
+    padding: 6px;
   }
   
   body #countdown {
     font-size: 1.8em;
+    padding: 8px 16px;
   }
+  
+  body #prayerMessage {
+    font-size: 1em;
+  }
+  
+  .action-buttons button {
+    padding: 10px 16px;
+    font-size: 13px;
+    margin: 5px;
+  }
+}
+
+@media (max-width: 480px) {
+  body .jadwal-table {
+    font-size: 0.75em;
+  }
+  
+  body .jadwal-table th,
+  body .jadwal-table td {
+    padding: 4px;
+  }
+  
+  .action-buttons button {
+    padding: 8px 12px;
+    font-size: 12px;
+    margin: 4px;
+    width: calc(100% - 20px);
+    max-width: 250px;
+  }
+}
+
+.icon-loading:before {
+  content: "⏳";
+  display: inline-block;
+  animation: spin 1s infinite linear;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ===== CAPTURE MODE FOR HTML2CANVAS ===== */
+.capture-mode,
+.capture-mode .jadwal-container,
+.capture-mode .jadwal-table,
+.capture-mode .jadwal-table thead,
+.capture-mode .jadwal-table tbody,
+.capture-mode .jadwal-table tr,
+.capture-mode .jadwal-table th,
+.capture-mode .jadwal-table td {
+    /* Force solid colors - no variables */
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border-color: #dddddd !important;
+    font-family: Arial, sans-serif !important;
+}
+
+.capture-mode .jadwal-table th {
+    background-color: #f2f2f2 !important;
+    font-weight: bold !important;
+}
+
+.capture-mode .jadwal-table tr.today,
+.capture-mode .jadwal-table tr.today td {
+    background-color: #d4edda !important;
+    font-weight: bold !important;
+}
+
+.capture-mode .last-updated-container {
+    background-color: #f8f9fa !important;
+    color: #2c3e50 !important;
+    border: 1px solid #e9ecef !important;
+    padding: 10px !important;
+    margin-top: 15px !important;
+    border-radius: 4px !important;
+}
+
+/* Sembunyikan elemen yang tidak perlu saat capture */
+.capture-mode .action-buttons,
+.capture-mode .countdown-container,
+.capture-mode #prayerMessage,
+.capture-mode #prayerAlert {
+    display: none !important;
 }
 </style>
 
-<h2>Jadwal Sholat <%= cityName %> : <%= monthName %> <%= year %></h2>
+<%
+-- ============================================================================
+-- BAGIAN SERVER-SIDE (LUA) - DENGAN VALIDASI LENGKAP
+-- URUTAN HARI: SENIN = HARI PERTAMA
+-- ============================================================================
 
-<div class="action-buttons" style="margin-bottom: 20px; text-align: center;">
-    <button id="printBtn" style="padding: 8px 15px; margin: 0 5px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
-        <i class="icon icon-print"></i> Cetak PDF
+-- URUTAN HARI: Senin = 1, Selasa = 2, Rabu = 3, Kamis = 4, Jumat = 5, Sabtu = 6, Minggu = 7
+local days = {"Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"}
+
+-- Fungsi untuk mendapatkan nama hari dengan Senin sebagai hari pertama
+local function get_day_name(date_str)
+    if not date_str or date_str == "" then return "" end
+    
+    -- Parse DD-MM-YYYY
+    local d, m, y = date_str:match("(%d+)-(%d+)-(%d+)")
+    if d and m and y then
+        local timestamp = os.time({
+            year = tonumber(y),
+            month = tonumber(m),
+            day = tonumber(d)
+        })
+        local wday = tonumber(os.date("%w", timestamp)) -- 0 = Minggu, 1 = Senin, ..., 6 = Sabtu
+        
+        -- Konversi ke urutan Senin pertama:
+        if wday == 0 then
+            return "Minggu"
+        elseif wday == 1 then
+            return "Senin"
+        elseif wday == 2 then
+            return "Selasa"
+        elseif wday == 3 then
+            return "Rabu"
+        elseif wday == 4 then
+            return "Kamis"
+        elseif wday == 5 then
+            return "Jumat"
+        elseif wday == 6 then
+            return "Sabtu"
+        end
+    end
+    return ""
+end
+
+-- VALIDASI SEMUA VARIABEL YANG DITERIMA DARI CONTROLLER
+local safe_cityName = (cityName and cityName ~= "") and cityName or "Kota"
+local safe_monthName = (monthName and monthName ~= "") and monthName or ""
+local safe_year = (year and year ~= "") and year or ""
+local safe_today = (today and today ~= "") and today or os.date("%d-%m-%Y")
+local safe_today_iso = (today_iso and today_iso ~= "") and today_iso or os.date("%Y-%m-%d")
+local safe_lastUpdated = (lastUpdated and lastUpdated ~= "") and lastUpdated or "Informasi pembaruan tidak tersedia"
+local safe_nextPrayerName = (nextPrayerName and nextPrayerName ~= "") and nextPrayerName or ""
+
+-- Validasi data jadwal
+local has_valid_data = false
+local display_error = nil
+
+if error_message and error_message ~= "" then
+    display_error = error_message
+else
+    -- Validasi jadwal_json
+    local valid_json_count = 0
+    if jadwal_json and type(jadwal_json) == "table" then
+        for i, entry in ipairs(jadwal_json) do
+            if entry and type(entry) == "table" and entry.gregorian_date then
+                valid_json_count = valid_json_count + 1
+            else
+                jadwal_json[i] = nil
+            end
+        end
+        -- Reindex array
+        local temp = {}
+        for _, entry in ipairs(jadwal_json) do
+            if entry then table.insert(temp, entry) end
+        end
+        jadwal_json = temp
+    end
+    
+    -- Validasi jadwal (legacy)
+    local valid_legacy_count = 0
+    if jadwal and type(jadwal) == "table" then
+        for i, line in ipairs(jadwal) do
+            if line and type(line) == "string" and line:match("%S") then
+                valid_legacy_count = valid_legacy_count + 1
+            else
+                jadwal[i] = nil
+            end
+        end
+        -- Reindex array
+        local temp = {}
+        for _, line in ipairs(jadwal) do
+            if line then table.insert(temp, line) end
+        end
+        jadwal = temp
+    end
+    
+    if valid_json_count == 0 and valid_legacy_count == 0 then
+        display_error = "Tidak ada data jadwal sholat yang tersedia."
+    else
+        has_valid_data = true
+    end
+end
+
+-- Dapatkan tanggal hari ini untuk perbandingan
+local today_display = os.date("%d-%m-%Y")
+%>
+
+<h2>Jadwal Sholat <%= safe_cityName %> : <%= safe_monthName %> <%= safe_year %></h2>
+
+<div class="action-buttons">
+    <button id="printBtn" type="button">
+        <span class="btn-icon">🖨️</span> Cetak
     </button>
-    <button id="downloadBtn" style="padding: 8px 15px; margin: 0 5px; background-color: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">
-        <i class="icon icon-download"></i> Download Gambar
+    <button id="downloadBtn" type="button">
+        <span class="btn-icon">📸</span> Download Gambar
     </button>
 </div>
 
 <div class="countdown-container">
-    <div id="countdown">00:00:00</div>
-    <span id="prayerMessage">Menuju Waktu</span>
+    <div id="countdown">--:--:--</div>
+    <span id="prayerMessage">Menghitung waktu...</span>
+    <div id="prayerAlert" class="prayer-alert"></div>
 </div>
 
-<!-- Elemen untuk menampilkan pesan waktu sholat -->
-<!-- <div id="prayerAlert" class="prayer-alert">
-    Saatnya waktu sholat <%= nextPrayerName %>
-</div> -->
-
-<!-- Tampilkan pesan error jika ada -->
-<% if error_message then %>
-    <div style="color: var(--error-color, red); margin-bottom: 20px;">
-        <strong>Error:</strong> <%= error_message %>
+<% if display_error then %>
+    <div class="error-message">
+        <strong>Error:</strong> <%= display_error %>
     </div>
-<% elseif #jadwal == 0 then %>
-    <div style="color: var(--error-color, red); margin-bottom: 20px;">
-        <strong>Error:</strong> Tidak ada data jadwal sholat yang tersedia.
-    </div>
-<% else %>
+<% elseif has_valid_data then %>
     <table class="jadwal-table">
-        <tr>
-            <th style="width: 15%;">Hari</th>
-            <th style="width: 15%;">Tanggal</th>
-            <th style="width: 12%;">Imsyak</th>
-            <th style="width: 12%;">Subuh</th>
-            <th style="width: 12%;">Dzuhur</th>
-            <th style="width: 12%;">Ashar</th>
-            <th style="width: 12%;">Maghrib</th>
-            <th style="width: 12%;">Isya</th>
-        </tr>
-        <% for _, line in ipairs(jadwal) do %>
-            <% local date, imsyak, subuh, dzuhur, ashar, maghrib, isya = line:match("(.+)%s+(.+)%s+(.+)%s+(.+)%s+(.+)%s+(.+)%s+(.+)") %>
-            <% 
-                local function getDayName(dateStr)
-                    local days = {"Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"}
-                    local day, month, year = dateStr:match("(%d+)-(%d+)-(%d+)")
-                    local dateTable = os.date("*t", os.time({year=year, month=month, day=day}))
-                    
-                    -- Geser indeks hari agar Senin menjadi hari pertama
-                    local wday = dateTable.wday - 0
-                    if wday == 0 then
-                        wday = 7
-                    end
-                    return days[wday]
+        <thead>
+            <tr>
+                <th style="width: 15%;">Hari</th>
+                <th style="width: 15%;">Tanggal</th>
+                <th style="width: 12%;">Imsyak</th>
+                <th style="width: 12%;">Subuh</th>
+                <th style="width: 12%;">Dzuhur</th>
+                <th style="width: 12%;">Ashar</th>
+                <th style="width: 12%;">Maghrib</th>
+                <th style="width: 12%;">Isya</th>
+            </tr>
+        </thead>
+        <tbody>
+<%
+    -- PRIORITAS 1: Tampilkan data dari jadwal_json (format JSON)
+    if jadwal_json and type(jadwal_json) == "table" and #jadwal_json > 0 then
+        for _, entry in ipairs(jadwal_json) do
+            -- VALIDASI: Pastikan entry valid
+            if entry and type(entry) == "table" then
+                local display_date = entry.gregorian_date or ""
+                local isToday = (display_date == today_display)
+                
+                -- Dapatkan nama hari dengan fungsi yang sudah diperbaiki
+                local dayName = get_day_name(display_date)
+%>
+            <tr class="<%= isToday and 'today' or '' %>">
+                <td><%= dayName %></td>
+                <td><%= display_date %></td>
+                <td><%= entry.imsyak or "-" %></td>
+                <td><%= entry.subuh or "-" %></td>
+                <td><%= entry.dzuhur or "-" %></td>
+                <td><%= entry.ashar or "-" %></td>
+                <td><%= entry.maghrib or "-" %></td>
+                <td><%= entry.isya or "-" %></td>
+            </tr>
+<%
+            end
+        end
+    
+    -- PRIORITAS 2: Tampilkan data dari jadwal (format teks legacy)
+    elseif jadwal and type(jadwal) == "table" and #jadwal > 0 then
+        for _, line in ipairs(jadwal) do
+            if line and type(line) == "string" then
+                -- Parse line dengan berbagai kemungkinan format
+                local parts = {}
+                for token in line:gmatch("%S+") do
+                    table.insert(parts, token)
                 end
-                local dayName = getDayName(date)
-            %>
-            <tr class="<%= date == today and 'today' or '' %>">
+                
+                if #parts >= 7 then
+                    local date = parts[1] or ""
+                    local imsyak = parts[2] or "-"
+                    local subuh = parts[3] or "-"
+                    local dzuhur = parts[4] or "-"
+                    local ashar = parts[5] or "-"
+                    local maghrib = parts[6] or "-"
+                    local isya = parts[7] or "-"
+                    
+                    local isToday = (date == today_display)
+                    local dayName = get_day_name(date)
+%>
+            <tr class="<%= isToday and 'today' or '' %>">
                 <td><%= dayName %></td>
                 <td><%= date %></td>
                 <td><%= imsyak %></td>
@@ -294,82 +689,329 @@ body .error-message {
                 <td><%= maghrib %></td>
                 <td><%= isya %></td>
             </tr>
-        <% end %>
+<%
+                end
+            end
+        end
+    end
+%>
+        </tbody>
     </table>
 <% end %>
 
-<!-- Tampilkan informasi terakhir diperbarui -->
 <div class="last-updated-container">
-    <% if lastUpdated then %>
-        <div class="last-updated-info">
-            <i class="icon icon-clock"></i>
-            <%= lastUpdated %>
-        </div>
-    <% else %>
-        <div class="last-updated-error">
-            <%:Informasi pembaruan tidak tersedia%>
-        </div>
-    <% end %>
+    <div class="last-updated-info">
+        <i class="icon icon-clock"></i>
+        <%= safe_lastUpdated %>
+    </div>
 </div>
 
 <script>
-    // Data dari controller
-    const jadwal = <%= luci.http.write_json(jadwal) %>; // Seluruh jadwal sholat
-    const nextPrayerTime = <%= nextPrayerTime or "null" %>; // Timestamp waktu sholat berikutnya
-    const nextPrayerName = "<%= nextPrayerName or "" %>"; // Nama waktu sholat berikutnya
-    const today = "<%= today %>"; // Tanggal hari ini dalam format DD-MM-YYYY
+// ============================================================================
+// VARIABEL GLOBAL - DENGAN VALIDASI LENGKAP
+// ============================================================================
+<% 
+-- Encode JSON dengan aman
+local json = require("luci.json") or require("luci.jsonc")
+local function encode_json(data)
+    if not data then return "null" end
+    if json and json.encode then
+        local ok, result = pcall(json.encode, data)
+        if ok then return result end
+    end
+    return "[]"
+end
+%>
+var jadwal = <%= (jadwal and type(jadwal) == "table") and encode_json(jadwal) or "[]" %>;
+var jadwalJson = <%= (jadwal_json and type(jadwal_json) == "table" and #jadwal_json > 0) and encode_json(jadwal_json) or "[]" %>;
+var nextPrayerTime = <%= (nextPrayerTime and type(nextPrayerTime) == "number") and tostring(nextPrayerTime) or "null" %>;
+var nextPrayerName = "<%= (nextPrayerName and nextPrayerName ~= "") and nextPrayerName:gsub('"', '\\"') or "" %>";
+var today = "<%= safe_today %>";
+var todayISO = "<%= safe_today_iso %>";
+var cityName = "<%= safe_cityName:gsub('"', '\\"') %>";
+var monthName = "<%= safe_monthName:gsub('"', '\\"') %>";
+var year = "<%= safe_year %>";
 
-    // Fungsi untuk mengonversi waktu "HH:MM" ke timestamp
-    function getPrayerTimestamp(timeString, isTomorrow = false) {
-        const now = new Date();
-        const [hours, minutes] = timeString.split(":");
-        const prayerTime = new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            now.getDate() + (isTomorrow ? 1 : 0), // Tambah 1 hari jika besok
-            parseInt(hours),
-            parseInt(minutes),
-            0
-        );
-        return Math.floor(prayerTime.getTime() / 1000); // Konversi ke timestamp (detik)
+// ============================================================================
+// FUNGSI EKSTRAK DATA DARI DOM
+// ============================================================================
+
+function extractDataFromDOM() {
+    console.log("Mengekstrak data dari DOM...");
+    
+    var table = document.querySelector('.jadwal-table');
+    if (!table) {
+        console.error("Tabel tidak ditemukan di DOM");
+        return null;
+    }
+    
+    var rows = table.querySelectorAll('tbody tr');
+    if (!rows || rows.length === 0) {
+        console.error("Tidak ada baris di tabel");
+        return null;
+    }
+    
+    console.log("Ditemukan", rows.length, "baris di tabel");
+    
+    var data = [];
+    rows.forEach(function(row, index) {
+        var cells = row.querySelectorAll('td');
+        if (cells.length >= 8) {
+            var entry = {
+                day_name: cells[0]?.textContent.trim() || '',
+                gregorian_date: cells[1]?.textContent.trim() || '',
+                imsyak: cells[2]?.textContent.trim() || '-',
+                subuh: cells[3]?.textContent.trim() || '-',
+                dzuhur: cells[4]?.textContent.trim() || '-',
+                ashar: cells[5]?.textContent.trim() || '-',
+                maghrib: cells[6]?.textContent.trim() || '-',
+                isya: cells[7]?.textContent.trim() || '-'
+            };
+            data.push(entry);
+        } else {
+            console.warn("Baris", index, "tidak memiliki cukup sel:", cells.length);
+        }
+    });
+    
+    console.log("Berhasil mengekstrak", data.length, "entri jadwal");
+    return data;
+}
+
+// ============================================================================
+// FUNGSI UTILITAS - URUTAN HARI: SENIN = HARI PERTAMA
+// ============================================================================
+
+function getDayFromDate(dateStr) {
+    if (!dateStr || typeof dateStr !== "string") return "";
+    
+    // URUTAN: Senin = 0, Selasa = 1, Rabu = 2, Kamis = 3, Jumat = 4, Sabtu = 5, Minggu = 6
+    var days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
+    
+    // Format DD-MM-YYYY
+    if (dateStr.match(/^\d{2}-\d{2}-\d{4}$/)) {
+        var parts = dateStr.split("-");
+        var day = parseInt(parts[0], 10);
+        var month = parseInt(parts[1], 10) - 1;
+        var year = parseInt(parts[2], 10);
+        
+        var date = new Date(year, month, day);
+        var dayIndex = date.getDay(); // 0=Minggu, 1=Senin, 2=Selasa, 3=Rabu, 4=Kamis, 5=Jumat, 6=Sabtu
+        
+        // Konversi ke urutan Senin pertama
+        if (dayIndex === 0) { // Minggu
+            dayIndex = 6;
+        } else { // Senin-Sabtu
+            dayIndex = dayIndex - 1;
+        }
+        
+        return days[dayIndex] || "";
+    }
+    
+    // Format YYYY-MM-DD
+    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        var parts = dateStr.split("-");
+        var year = parseInt(parts[0], 10);
+        var month = parseInt(parts[1], 10) - 1;
+        var day = parseInt(parts[2], 10);
+        
+        var date = new Date(year, month, day);
+        var dayIndex = date.getDay();
+        
+        if (dayIndex === 0) {
+            dayIndex = 6;
+        } else {
+            dayIndex = dayIndex - 1;
+        }
+        
+        return days[dayIndex] || "";
+    }
+    
+    return "";
+}
+
+function formatTimeFromTimestamp(timestamp) {
+    if (!timestamp) return "--:--";
+    try {
+        var date = new Date(timestamp * 1000);
+        var hours = date.getHours().toString().padStart(2, '0');
+        var minutes = date.getMinutes().toString().padStart(2, '0');
+        return hours + ":" + minutes;
+    } catch (e) {
+        return "--:--";
+    }
+}
+
+// ============================================================================
+// FUNGSI PENCARIAN WAKTU SHOLAT BERIKUTNYA
+// ============================================================================
+
+function getNextPrayerTimeFromJSON() {
+    // Gunakan data dari DOM jika variabel kosong
+    var dataToUse = jadwalJson;
+    if (!dataToUse || dataToUse.length === 0) {
+        var domData = extractDataFromDOM();
+        if (domData && domData.length > 0) {
+            dataToUse = domData;
+        }
+    }
+    
+    if (!dataToUse || !Array.isArray(dataToUse) || dataToUse.length === 0) {
+        return { time: null, name: null };
     }
 
-    // Fungsi untuk mendapatkan waktu sholat berikutnya
-    function getNextPrayerTime() {
-        const now = Math.floor(Date.now() / 1000); // Waktu saat ini dalam detik
-        let nextPrayerTime = null;
-        let nextPrayerName = null;
+    var now = Math.floor(Date.now() / 1000);
+    var nextTime = null;
+    var nextName = null;
+    
+    // Cari entry hari ini
+    var todayEntry = null;
+    for (var i = 0; i < dataToUse.length; i++) {
+        var entry = dataToUse[i];
+        if (entry && entry.gregorian_date === today) {
+            todayEntry = entry;
+            break;
+        }
+    }
+    
+    if (todayEntry) {
+        var prayerTimes = [
+            { name: "Imsyak", time: todayEntry.imsyak },
+            { name: "Subuh", time: todayEntry.subuh },
+            { name: "Dzuhur", time: todayEntry.dzuhur },
+            { name: "Ashar", time: todayEntry.ashar },
+            { name: "Maghrib", time: todayEntry.maghrib },
+            { name: "Isya", time: todayEntry.isya }
+        ];
 
-        // Cari waktu sholat berikutnya di hari ini
-        jadwal.forEach(line => {
-            const [date, imsyak, subuh, dzuhur, ashar, maghrib, isya] = line.split(" ");
-            if (date === today) {
-                const prayerTimes = [
-                    { name: "Imsyak", time: imsyak },
-                    { name: "Subuh", time: subuh },
-                    { name: "Dzuhur", time: dzuhur },
-                    { name: "Ashar", time: ashar },
-                    { name: "Maghrib", time: maghrib },
-                    { name: "Isya", time: isya }
+        var parts = today.split("-");
+        var day = parseInt(parts[0], 10);
+        var month = parseInt(parts[1], 10) - 1;
+        var year = parseInt(parts[2], 10);
+        var todayDate = new Date(year, month, day);
+
+        for (var j = 0; j < prayerTimes.length; j++) {
+            var prayer = prayerTimes[j];
+            if (!prayer.time || prayer.time === "-" || prayer.time === "") continue;
+            
+            var match = prayer.time.match(/^(\d{2}):(\d{2})$/);
+            if (!match) continue;
+            
+            var hours = parseInt(match[1], 10);
+            var minutes = parseInt(match[2], 10);
+            
+            var prayerDate = new Date(todayDate);
+            prayerDate.setHours(hours, minutes, 0, 0);
+            var prayerTime = Math.floor(prayerDate.getTime() / 1000);
+            
+            if (prayerTime > now) {
+                if (nextTime === null || prayerTime < nextTime) {
+                    nextTime = prayerTime;
+                    nextName = prayer.name;
+                }
+            }
+        }
+    }
+
+    // Jika tidak ada waktu sholat hari ini yang tersisa, cari waktu pertama besok
+    if (!nextTime) {
+        var tomorrow = new Date(Date.now() + 86400000);
+        var tomorrowDay = tomorrow.getDate().toString().padStart(2, '0');
+        var tomorrowMonth = (tomorrow.getMonth() + 1).toString().padStart(2, '0');
+        var tomorrowYear = tomorrow.getFullYear();
+        var tomorrowStr = tomorrowDay + "-" + tomorrowMonth + "-" + tomorrowYear;
+        
+        for (var i = 0; i < dataToUse.length; i++) {
+            var entry = dataToUse[i];
+            if (entry && entry.gregorian_date === tomorrowStr) {
+                var prayerTimes = [
+                    { name: "Imsyak", time: entry.imsyak },
+                    { name: "Subuh", time: entry.subuh },
+                    { name: "Dzuhur", time: entry.dzuhur },
+                    { name: "Ashar", time: entry.ashar },
+                    { name: "Maghrib", time: entry.maghrib },
+                    { name: "Isya", time: entry.isya }
                 ];
 
-                prayerTimes.forEach(prayer => {
-                    const prayerTime = getPrayerTimestamp(prayer.time);
-                    if (prayerTime > now && (!nextPrayerTime || prayerTime < nextPrayerTime)) {
-                        nextPrayerTime = prayerTime;
-                        nextPrayerName = prayer.name;
+                for (var j = 0; j < prayerTimes.length; j++) {
+                    var prayer = prayerTimes[j];
+                    if (!prayer.time || prayer.time === "-" || prayer.time === "") continue;
+                    
+                    var match = prayer.time.match(/^(\d{2}):(\d{2})$/);
+                    if (!match) continue;
+                    
+                    var hours = parseInt(match[1], 10);
+                    var minutes = parseInt(match[2], 10);
+                    
+                    var prayerDate = new Date(tomorrow);
+                    prayerDate.setHours(hours, minutes, 0, 0);
+                    var prayerTime = Math.floor(prayerDate.getTime() / 1000);
+                    
+                    if (nextTime === null || prayerTime < nextTime) {
+                        nextTime = prayerTime;
+                        nextName = prayer.name;
                     }
-                });
+                }
+                break;
             }
-        });
+        }
+    }
 
-        // Jika tidak ada waktu sholat yang tersisa di hari ini, cari di hari besok
-        if (!nextPrayerTime) {
-            const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString("en-GB").replace(/\//g, "-"); // Besok
-            jadwal.forEach(line => {
-                const [date, imsyak, subuh, dzuhur, ashar, maghrib, isya] = line.split(" ");
-                if (date === tomorrow) {
-                    const prayerTimes = [
+    return { time: nextTime, name: nextName };
+}
+
+function getNextPrayerTimeLegacy() {
+    // Gunakan data dari DOM jika variabel kosong
+    var dataToUse = jadwal;
+    if (!dataToUse || dataToUse.length === 0) {
+        var domData = extractDataFromDOM();
+        if (domData && domData.length > 0) {
+            // Konversi format DOM ke format legacy
+            dataToUse = [];
+            domData.forEach(function(entry) {
+                var line = entry.gregorian_date + " " + 
+                          entry.imsyak + " " + 
+                          entry.subuh + " " + 
+                          entry.dzuhur + " " + 
+                          entry.ashar + " " + 
+                          entry.maghrib + " " + 
+                          entry.isya;
+                dataToUse.push(line);
+            });
+        }
+    }
+    
+    if (!dataToUse || !Array.isArray(dataToUse) || dataToUse.length === 0) {
+        return { time: null, name: null };
+    }
+
+    var now = Math.floor(Date.now() / 1000);
+    var nextTime = null;
+    var nextName = null;
+
+    for (var i = 0; i < dataToUse.length; i++) {
+        var line = dataToUse[i];
+        if (!line || typeof line !== "string") continue;
+        
+        var parts = line.trim().split(/\s+/);
+        
+        if (parts.length >= 7) {
+            var date = parts[0];
+            var imsyak = parts[1];
+            var subuh = parts[2];
+            var dzuhur = parts[3];
+            var ashar = parts[4];
+            var maghrib = parts[5];
+            var isya = parts[6];
+            
+            if (date === today) {
+                var dateParts = date.split("-");
+                if (dateParts.length === 3) {
+                    var day = parseInt(dateParts[0], 10);
+                    var month = parseInt(dateParts[1], 10) - 1;
+                    var year = parseInt(dateParts[2], 10);
+                    var currentDate = new Date(year, month, day);
+                    
+                    var prayerTimes = [
                         { name: "Imsyak", time: imsyak },
                         { name: "Subuh", time: subuh },
                         { name: "Dzuhur", time: dzuhur },
@@ -378,215 +1020,860 @@ body .error-message {
                         { name: "Isya", time: isya }
                     ];
 
-                    prayerTimes.forEach(prayer => {
-                        const prayerTime = getPrayerTimestamp(prayer.time, true);
-                        if (!nextPrayerTime || prayerTime < nextPrayerTime) {
-                            nextPrayerTime = prayerTime;
-                            nextPrayerName = prayer.name;
+                    for (var j = 0; j < prayerTimes.length; j++) {
+                        var prayer = prayerTimes[j];
+                        if (!prayer.time || prayer.time === "-" || prayer.time === "") continue;
+                        
+                        var match = prayer.time.match(/^(\d{2}):(\d{2})$/);
+                        if (!match) continue;
+                        
+                        var hours = parseInt(match[1], 10);
+                        var minutes = parseInt(match[2], 10);
+                        
+                        var prayerDate = new Date(currentDate);
+                        prayerDate.setHours(hours, minutes, 0, 0);
+                        var prayerTime = Math.floor(prayerDate.getTime() / 1000);
+                        
+                        if (prayerTime > now) {
+                            if (nextTime === null || prayerTime < nextTime) {
+                                nextTime = prayerTime;
+                                nextName = prayer.name;
+                            }
                         }
-                    });
-                }
-            });
-        }
-
-        return { time: nextPrayerTime, name: nextPrayerName };
-    }
-
-    // Fungsi untuk menghitung mundur
-    function startCountdown(targetTime, prayerName) {
-        const countdownElement = document.getElementById("countdown");
-        const prayerMessageElement = document.getElementById("prayerMessage");
-        const prayerAlertElement = document.getElementById("prayerAlert");
-
-        let intervalId;
-
-        function updateCountdown() {
-            const now = Math.floor(Date.now() / 1000); // Waktu lokal pengguna dalam detik
-            const diff = targetTime - now;
-
-            if (diff <= 0) {
-                // Jika hitung mundur selesai, tampilkan pesan selama 3 menit
-                countdownElement.textContent = "00:00:00";
-                prayerMessageElement.textContent = "Saatnya waktu " + prayerName;
-                prayerAlertElement.style.display = "block";
-               prayerAlertElement.textContent = "Saatnya waktu " + prayerName;
-
-                // Setelah 3 menit, hitung ulang waktu sholat berikutnya
-                setTimeout(() => {
-                    const nextPrayerData = getNextPrayerTime();
-                    if (nextPrayerData) {
-                        startCountdown(nextPrayerData.time, nextPrayerData.name); // Mulai hitung mundur berikutnya
                     }
-                    prayerAlertElement.style.display = "none"; // Sembunyikan pesan adzan
-                }, 180000); // 3 menit = 180.000 milidetik
-
-                // Hentikan interval
-                clearInterval(intervalId);
-            } else {
-                // Tampilkan hitung mundur
-                const hours = Math.floor(diff / 3600);
-                const minutes = Math.floor((diff % 3600) / 60);
-                const seconds = diff % 60;
-                countdownElement.textContent = 
-                    String(hours).padStart(2, "0") + ":" +
-                    String(minutes).padStart(2, "0") + ":" +
-                    String(seconds).padStart(2, "0");
-                prayerMessageElement.textContent = "Menuju waktu " + prayerName;
+                }
             }
         }
-
-        // Mulai hitung mundur
-        intervalId = setInterval(updateCountdown, 1000);
-        updateCountdown(); // Jalankan sekali untuk inisialisasi
-
-        // Hentikan interval saat halaman tidak aktif
-        window.onblur = () => clearInterval(intervalId);
-        window.onfocus = () => {
-            intervalId = setInterval(updateCountdown, 1000);
-            updateCountdown();
-        };
     }
 
-    // Mulai hitung mundur jika waktu sholat berikutnya tersedia
-    if (nextPrayerTime) {
-        startCountdown(nextPrayerTime, nextPrayerName);
+    if (!nextTime) {
+        var tomorrow = new Date(Date.now() + 86400000);
+        var tomorrowDay = tomorrow.getDate().toString().padStart(2, '0');
+        var tomorrowMonth = (tomorrow.getMonth() + 1).toString().padStart(2, '0');
+        var tomorrowYear = tomorrow.getFullYear();
+        var tomorrowStr = tomorrowDay + "-" + tomorrowMonth + "-" + tomorrowYear;
+        
+        for (var i = 0; i < dataToUse.length; i++) {
+            var line = dataToUse[i];
+            if (!line || typeof line !== "string") continue;
+            
+            var parts = line.trim().split(/\s+/);
+            
+            if (parts.length >= 7) {
+                var date = parts[0];
+                var imsyak = parts[1];
+                var subuh = parts[2];
+                var dzuhur = parts[3];
+                var ashar = parts[4];
+                var maghrib = parts[5];
+                var isya = parts[6];
+                
+                if (date === tomorrowStr) {
+                    var prayerTimes = [
+                        { name: "Imsyak", time: imsyak },
+                        { name: "Subuh", time: subuh },
+                        { name: "Dzuhur", time: dzuhur },
+                        { name: "Ashar", time: ashar },
+                        { name: "Maghrib", time: maghrib },
+                        { name: "Isya", time: isya }
+                    ];
+
+                    for (var j = 0; j < prayerTimes.length; j++) {
+                        var prayer = prayerTimes[j];
+                        if (!prayer.time || prayer.time === "-" || prayer.time === "") continue;
+                        
+                        var match = prayer.time.match(/^(\d{2}):(\d{2})$/);
+                        if (!match) continue;
+                        
+                        var hours = parseInt(match[1], 10);
+                        var minutes = parseInt(match[2], 10);
+                        
+                        var prayerDate = new Date(tomorrow);
+                        prayerDate.setHours(hours, minutes, 0, 0);
+                        var prayerTime = Math.floor(prayerDate.getTime() / 1000);
+                        
+                        if (nextTime === null || prayerTime < nextTime) {
+                            nextTime = prayerTime;
+                            nextName = prayer.name;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
     }
 
-    // Fungsi untuk mencetak sebagai PDF (Versi Diperbaiki)
-    document.getElementById('printBtn').addEventListener('click', function() {
-        // Buat iframe untuk mencetak
-        const printFrame = document.createElement('iframe');
-        printFrame.style.position = 'absolute';
-        printFrame.style.width = '0px';
-        printFrame.style.height = '0px';
-        printFrame.style.left = '-600px';
-        printFrame.style.top = '-600px';
-        printFrame.style.border = 'none';
+    return { time: nextTime, name: nextName };
+}
+
+function getNextPrayerTime() {
+    if (jadwalJson && Array.isArray(jadwalJson) && jadwalJson.length > 0) {
+        var result = getNextPrayerTimeFromJSON();
+        if (result && result.time) {
+            return result;
+        }
+    }
+    return getNextPrayerTimeLegacy();
+}
+
+// ============================================================================
+// FUNGSI COUNTDOWN
+// ============================================================================
+
+var countdownInterval = null;
+var countdownTimeout = null;
+
+function startCountdown(targetTime, prayerName) {
+    if (!targetTime || !prayerName) {
+        var cd = document.getElementById("countdown");
+        var pm = document.getElementById("prayerMessage");
+        if (cd) cd.textContent = "--:--:--";
+        if (pm) pm.textContent = "Tidak ada jadwal sholat";
+        return;
+    }
+    
+    if (countdownInterval) clearInterval(countdownInterval);
+    if (countdownTimeout) clearTimeout(countdownTimeout);
+
+    var countdownElement = document.getElementById("countdown");
+    var prayerMessageElement = document.getElementById("prayerMessage");
+    var prayerAlertElement = document.getElementById("prayerAlert");
+
+    if (!countdownElement || !prayerMessageElement || !prayerAlertElement) return;
+
+    function updateCountdown() {
+        var now = Math.floor(Date.now() / 1000);
+        var diff = targetTime - now;
+
+        if (diff <= 0) {
+            countdownElement.textContent = "00:00:00";
+            prayerMessageElement.textContent = "Saatnya waktu " + prayerName;
+            
+            prayerAlertElement.style.display = "block";
+            prayerAlertElement.textContent = "Saatnya waktu " + prayerName + " (" + formatTimeFromTimestamp(targetTime) + ")";
+            
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+            
+            countdownTimeout = setTimeout(function() {
+                prayerAlertElement.style.display = "none";
+                
+                var nextPrayerData = getNextPrayerTime();
+                if (nextPrayerData && nextPrayerData.time) {
+                    startCountdown(nextPrayerData.time, nextPrayerData.name);
+                } else {
+                    countdownElement.textContent = "--:--:--";
+                    prayerMessageElement.textContent = "Tidak ada jadwal sholat";
+                }
+            }, 180000);
+            
+        } else {
+            var hours = Math.floor(diff / 3600);
+            var minutes = Math.floor((diff % 3600) / 60);
+            var seconds = diff % 60;
+            
+            countdownElement.textContent = [
+                hours.toString().padStart(2, "0"),
+                minutes.toString().padStart(2, "0"),
+                seconds.toString().padStart(2, "0")
+            ].join(":");
+            
+            prayerMessageElement.textContent = "Menuju waktu " + prayerName + " (" + formatTimeFromTimestamp(targetTime) + ")";
+        }
+    }
+
+    updateCountdown();
+    countdownInterval = setInterval(updateCountdown, 1000);
+}
+
+// ============================================================================
+// FUNGSI CETAK PDF - VERSI LENGKAP DENGAN STYLING
+// ============================================================================
+
+function handlePrint() {
+    try {
+        var titleEl = document.querySelector('h2');
+        var tableEl = document.querySelector('.jadwal-table');
         
-        document.body.appendChild(printFrame);
+        if (!titleEl || !tableEl) {
+            alert("Tidak dapat mencetak: elemen tidak ditemukan.");
+            return;
+        }
         
-        // Ambil konten yang ingin dicetak
-        const content = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Jadwal Sholat <%= cityName %></title>
-                <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                        margin: 20px;
-                        color: black;
-                    }
-                    h2 {
-                        text-align: center;
-                        margin-bottom: 15px;
-                        font-size: 18pt;
-                    }
-                    table {
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin-bottom: 15px;
-                        font-size: 12pt;
-                    }
-                    th, td {
-                        border: 1px solid #ddd;
-                        padding: 8px;
-                        text-align: center;
-                    }
-                    th {
-                        background-color: #f2f2f2;
-                    }
-                    .last-updated {
-                        text-align: center;
-                        font-size: 10pt;
-                        margin-top: 20px;
-                    }
-                </style>
-            </head>
-            <body>
-                <h2>${document.querySelector('h2').textContent}</h2>
-                ${document.querySelector('.jadwal-table').outerHTML}
-                <div class="last-updated">
-                    ${document.querySelector('.last-updated-container').innerHTML}
-                </div>
-            </body>
-            </html>
+        var printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            alert("Popup blocker mungkin memblokir jendela cetak.");
+            return;
+        }
+        
+        var titleText = titleEl.textContent;
+        var updateEl = document.querySelector('.last-updated-container');
+        var tableClone = tableEl.cloneNode(true);
+        
+        // Hapus class yang tidak perlu dari clone
+        var rows = tableClone.querySelectorAll('tr');
+        rows.forEach(function(row) {
+            // Pertahankan class 'today' saja
+            if (!row.classList.contains('today')) {
+                row.removeAttribute('class');
+            }
+        });
+        
+        // Ambil data untuk credit
+        var today_date = new Date().toLocaleString('id-ID', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        var styleContent = `
+            body { 
+                font-family: Arial, sans-serif; 
+                margin: 0.5in; 
+                color: #333; 
+                background: #fff;
+                line-height: 0.5;
+            }
+            h2 { 
+                text-align: center; 
+                margin-bottom: 0.3in; 
+                font-size: 18pt; 
+                color: #000; 
+                font-weight: bold;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            .print-container {
+                max-width: 100%;
+                margin: 0 auto;
+            }
+            table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                margin: 0 auto 0.3in auto;
+                font-size: 10pt; 
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            }
+            th { 
+                background-color: #2c3e50; 
+                color: white;
+                font-weight: bold;
+                padding: 12px 8px;
+                border: 1px solid #1a252f;
+                text-align: center;
+                font-size: 11pt;
+            }
+            td { 
+                padding: 10px 8px;
+                border: 1px solid #bdc3c7; 
+                text-align: center; 
+            }
+            tr:nth-child(even) {
+                background-color: #f9f9f9;
+            }
+            tr:hover {
+                background-color: #f1f1f1;
+            }
+            .today { 
+                background-color: #d4edda !important; 
+                font-weight: bold;
+            }
+            .today td {
+                background-color: #d4edda !important;
+                color: #155724;
+            }
+            .footer {
+                margin-top: 30px;
+                padding: 15px 10px 5px 10px;
+                border-top: 2px solid #2c3e50;
+                text-align: center;
+                font-size: 9pt;
+                color: #666;
+                background: linear-gradient(to bottom, #f8f9fa, #fff);
+                border-radius: 0 0 5px 5px;
+            }
+            .footer .last-updated {
+                font-size: 10pt;
+                color: #2c3e50;
+                margin-bottom: 8px;
+                font-weight: normal;
+            }
+            .footer .credit {
+                font-weight: bold;
+                color: #2980b9;
+                margin: 5px 0;
+                font-size: 10pt;
+                letter-spacing: 0.5px;
+            }
+            .footer .credit a {
+                color: #2980b9;
+                text-decoration: none;
+            }
+            .footer .credit a:hover {
+                text-decoration: underline;
+            }
+            .footer .download-date {
+                font-size: 8pt;
+                color: #95a5a6;
+                margin-top: 5px;
+                font-style: italic;
+            }
+            .watermark {
+                position: fixed;
+                bottom: 10px;
+                right: 10px;
+                opacity: 0.3;
+                font-size: 8pt;
+                color: #7f8c8d;
+                z-index: 1000;
+            }
+            @page {
+                margin: 0.4in;
+                size: A4 portrait;
+            }
+            @media print {
+                body {
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                }
+                .footer {
+                    position: running(footer);
+                }
+            }
         `;
         
-        // Set konten ke iframe
-        printFrame.contentDocument.open();
-        printFrame.contentDocument.write(content);
-        printFrame.contentDocument.close();
+        printWindow.document.write('<!DOCTYPE html><html><head>');
+        printWindow.document.write('<meta charset="UTF-8">');
+        printWindow.document.write('<title>' + titleText + ' - Cetak</title>');
+        printWindow.document.write('<style>' + styleContent + '</style>');
+        printWindow.document.write('</head><body>');
         
-        // Tunggu iframe selesai memuat
-        printFrame.onload = function() {
-            setTimeout(function() {
-                printFrame.contentWindow.focus();
-                printFrame.contentWindow.print();
-                
-                // Hapus iframe setelah selesai
-                setTimeout(function() {
-                    document.body.removeChild(printFrame);
-                }, 1000);
-            }, 500);
-        };
-    });
-
-    // Fungsi untuk download sebagai gambar menggunakan html2canvas
-    document.getElementById('downloadBtn').addEventListener('click', function() {
-        // Pastikan library html2canvas tersedia
-        if (typeof html2canvas !== 'undefined') {
-            // Buat container khusus untuk capture (judul + tabel + info update)
-            const container = document.createElement('div');
-            container.style.padding = '20px';
-            container.style.backgroundColor = 'white';
-            
-            // Clone elemen yang ingin di-capture
-            const titleClone = document.querySelector('h2').cloneNode(true);
-            const tableClone = document.querySelector('.jadwal-table').cloneNode(true);
-            const updateClone = document.querySelector('.last-updated-container').cloneNode(true);
-            
-            // Tambahkan ke container
-            container.appendChild(titleClone);
-            container.appendChild(tableClone);
-            container.appendChild(updateClone);
-            
-            // Sembunyikan sementara dari view
-            container.style.position = 'fixed';
-            container.style.left = '-9999px';
-            document.body.appendChild(container);
-            
-            // Buat opsi untuk html2canvas
-            const options = {
-                scale: 2, // Kualitas lebih tinggi
-                backgroundColor: '#ffffff',
-                logging: false,
-                useCORS: true
-            };
-            
-            // Capture elemen
-            html2canvas(container, options).then(canvas => {
-                // Buat link download
-                const link = document.createElement('a');
-                link.download = 'jadwal-sholat-' + today + '.png';
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-                
-                // Hapus container setelah selesai
-                document.body.removeChild(container);
-            });
-        } else {
-            // Jika html2canvas belum dimuat, muat dulu
-            const script = document.createElement('script');
-            script.src = 'https://html2canvas.hertzen.com/dist/html2canvas.min.js';
-            script.onload = function() {
-                document.getElementById('downloadBtn').click();
-            };
-            document.head.appendChild(script);
-            
-            alert('Sedang mempersiapkan fitur download... Silakan klik tombol lagi.');
+        printWindow.document.write('<div class="print-container">');
+        
+        // Header
+        printWindow.document.write('<h2>' + titleText + '</h2>');
+        
+        // Tabel
+        printWindow.document.write(tableClone.outerHTML);
+        
+        // Footer dengan credit
+        printWindow.document.write('<div class="footer">');
+        
+        if (updateEl) {
+            var updateText = updateEl.textContent || updateEl.innerText || '';
+            updateText = updateText.replace(/<[^>]*>/g, '').trim();
+            printWindow.document.write('<div class="last-updated">' + updateText + '</div>');
         }
-    });
+        
+        printWindow.document.write('<div class="credit">Generated by <strong>Jsholat</strong> - &copy; <a href="https://www.ajisetiawan.com" target="_blank">www.ajisetiawan.com</a></div>');
+        printWindow.document.write('<div class="download-date">Dokumen ini dicetak pada ' + today_date + '</div>');
+        printWindow.document.write('</div>');
+        
+        // Watermark kecil
+        printWindow.document.write('<div class="watermark">Jsholat v1.0</div>');
+        
+        printWindow.document.write('</div>'); // tutup print-container
+        printWindow.document.write('</body></html>');
+        printWindow.document.close();
+        
+        // Tunggu sebentar untuk loading CSS
+        setTimeout(function() {
+            printWindow.focus();
+            printWindow.print();
+            
+            // Opsi: tanyakan apakah ingin menutup jendela setelah print
+            printWindow.onafterprint = function() {
+                if (confirm("Tutup jendela cetak?")) {
+                    printWindow.close();
+                }
+            };
+        }, 800);
+        
+    } catch (error) {
+        console.error("Print error:", error);
+        alert("Gagal mencetak: " + error.message);
+    }
+}
+
+// ============================================================================
+// FUNGSI DOWNLOAD GAMBAR - VERSI CANVAS MANUAL DENGAN CREDIT DI FOOTER
+// ============================================================================
+
+function handleDownload() {
+    var downloadBtn = document.getElementById('downloadBtn');
+    if (!downloadBtn) return;
+    
+    // Cegah multiple click
+    if (downloadBtn.disabled) return;
+    
+    var originalText = downloadBtn.innerHTML;
+    downloadBtn.innerHTML = '<span class="btn-icon">⏳</span> Memproses...';
+    downloadBtn.disabled = true;
+    
+    // Ambil data dari DOM
+    var jadwalData = extractDataFromDOM();
+    
+    if (!jadwalData || jadwalData.length === 0) {
+        alert("Tidak dapat mengekstrak data jadwal");
+        resetButton();
+        return;
+    }
+    
+    // Buat canvas manual dengan resolusi tinggi
+    createHighResCanvas(jadwalData);
+    
+    function createHighResCanvas(data) {
+        try {
+            console.log("Membuat canvas resolusi tinggi dengan", data.length, "baris data");
+            
+            // KONFIGURASI DIMENSI
+            var scale = 3; // Resolusi tinggi (3x)
+            var baseCellWidth = 120;
+            var baseCellHeight = 45;
+            var baseHeaderHeight = 55;
+            var baseTitleHeight = 70;
+            var baseFooterHeight = 80; // Ditambah untuk menampung credit
+            var basePadding = 40;
+            
+            var cols = 8; // Hari, Tanggal, Imsyak, Subuh, Dzuhur, Ashar, Maghrib, Isya
+            var rows = data.length + 1; // +1 untuk header
+            
+            // Hitung dimensi base
+            var baseTableWidth = cols * baseCellWidth;
+            var baseTableHeight = (rows * baseCellHeight) + baseHeaderHeight;
+            
+            // Dimensi canvas dengan scale
+            var canvasWidth = (baseTableWidth + (basePadding * 2)) * scale;
+            var canvasHeight = (baseTitleHeight + baseTableHeight + baseFooterHeight + 30) * scale;
+            
+            // Buat canvas dengan resolusi tinggi
+            var canvas = document.createElement('canvas');
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            
+            var ctx = canvas.getContext('2d');
+            
+            // Scale context untuk memudahkan perhitungan
+            ctx.scale(scale, scale);
+            
+            // Background putih
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvasWidth/scale, canvasHeight/scale);
+            
+            // ========== JUDUL ==========
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 26px Arial';
+            ctx.textAlign = 'center';
+            var title = document.querySelector('h2')?.textContent || 
+                       `Jadwal Sholat ${cityName || ''} ${monthName || ''} ${year || ''}`;
+            ctx.fillText(title, (canvasWidth/scale) / 2, 45);
+            
+            // Garis pembatas di bawah judul
+            ctx.strokeStyle = '#cccccc';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(basePadding, 65);
+            ctx.lineTo((canvasWidth/scale) - basePadding, 65);
+            ctx.stroke();
+            
+            // ========== HEADER TABEL ==========
+            var headers = ['Hari', 'Tanggal', 'Imsyak', 'Subuh', 'Dzuhur', 'Ashar', 'Maghrib', 'Isya'];
+            var startY = 85; // Posisi Y mulai tabel
+            
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#000000';
+            
+            for (var c = 0; c < cols; c++) {
+                var x = basePadding + c * baseCellWidth;
+                var y = startY;
+                
+                // Background header dengan gradient
+                var gradient = ctx.createLinearGradient(x, y, x, y + baseHeaderHeight);
+                gradient.addColorStop(0, '#f8f9fa');
+                gradient.addColorStop(1, '#e9ecef');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(x, y, baseCellWidth, baseHeaderHeight);
+                
+                // Border header
+                ctx.strokeStyle = '#adb5bd';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(x, y, baseCellWidth, baseHeaderHeight);
+                
+                // Text header
+                ctx.fillStyle = '#212529';
+                ctx.font = 'bold 16px Arial';
+                ctx.fillText(headers[c], x + baseCellWidth/2, y + baseHeaderHeight/2 + 6);
+            }
+            
+            // ========== DATA TABEL ==========
+            ctx.font = '15px Arial';
+            ctx.textAlign = 'center';
+            
+            for (var r = 0; r < data.length; r++) {
+                var entry = data[r];
+                var rowY = startY + baseHeaderHeight + r * baseCellHeight;
+                
+                var cells = [
+                    entry.day_name,
+                    entry.gregorian_date,
+                    entry.imsyak,
+                    entry.subuh,
+                    entry.dzuhur,
+                    entry.ashar,
+                    entry.dzuhur, // Catatan: di sini ada duplikasi, sesuaikan dengan kebutuhan
+                    entry.ashar,
+                    entry.maghrib,
+                    entry.isya
+                ];
+                
+                // Perbaiki: cells array harus 8 elemen
+                cells = [
+                    entry.day_name,
+                    entry.gregorian_date,
+                    entry.imsyak,
+                    entry.subuh,
+                    entry.dzuhur,
+                    entry.ashar,
+                    entry.maghrib,
+                    entry.isya
+                ];
+                
+                // Cek apakah baris ini adalah hari ini
+                var isToday = (entry.gregorian_date === today);
+                
+                for (var c = 0; c < cols; c++) {
+                    var x = basePadding + c * baseCellWidth;
+                    
+                    // Background dengan warna bergantian
+                    if (isToday) {
+                        // Hijau untuk hari ini
+                        ctx.fillStyle = '#d4edda';
+                    } else if (r % 2 === 0) {
+                        ctx.fillStyle = '#ffffff'; // Baris genap putih
+                    } else {
+                        ctx.fillStyle = '#f8f9fa'; // Baris ganjil abu-abu muda
+                    }
+                    ctx.fillRect(x, rowY, baseCellWidth, baseCellHeight);
+                    
+                    // Border
+                    ctx.strokeStyle = '#dee2e6';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x, rowY, baseCellWidth, baseCellHeight);
+                    
+                    // Text dengan bold untuk hari ini
+                    if (isToday) {
+                        ctx.font = 'bold 15px Arial';
+                        ctx.fillStyle = '#155724';
+                    } else {
+                        ctx.font = '15px Arial';
+                        ctx.fillStyle = '#212529';
+                    }
+                    
+                    // Potong teks jika terlalu panjang
+                    var text = cells[c] || '-';
+                    if (ctx.measureText(text).width > baseCellWidth - 10) {
+                        text = text.substring(0, 8) + '...';
+                    }
+                    
+                    ctx.fillText(text, x + baseCellWidth/2, rowY + baseCellHeight/2 + 5);
+                }
+            }
+            
+            // ========== FOOTER ==========
+            var footerY = startY + baseHeaderHeight + data.length * baseCellHeight + 30;
+            
+            // Garis pembatas atas footer
+            ctx.strokeStyle = '#cccccc';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(basePadding, footerY - 15);
+            ctx.lineTo((canvasWidth/scale) - basePadding, footerY - 15);
+            ctx.stroke();
+            
+            // Background footer (lebih tinggi untuk menampung 2 baris)
+            ctx.fillStyle = '#f8f9fa';
+            ctx.fillRect(basePadding, footerY - 5, (canvasWidth/scale) - (basePadding * 2), 60);
+            
+            // Border footer
+            ctx.strokeStyle = '#dee2e6';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(basePadding, footerY - 5, (canvasWidth/scale) - (basePadding * 2), 60);
+            
+            // ========== BARIS 1 FOOTER: LAST UPDATED ==========
+            var updateEl = document.querySelector('.last-updated-container');
+            if (updateEl) {
+                var updateText = updateEl.textContent || updateEl.innerText || '';
+                // Bersihkan HTML tags jika ada
+                updateText = updateText.replace(/<[^>]*>/g, '').trim();
+                
+                ctx.fillStyle = '#2c3e50';
+                ctx.font = '13px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(updateText, (canvasWidth/scale) / 2, footerY + 10);
+            }
+            
+            // ========== BARIS 2 FOOTER: CREDIT ==========
+            ctx.fillStyle = '#495057';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Generated by Jsholat - © www.ajisetiawan.com', 
+                        (canvasWidth/scale) / 2, footerY + 35);
+            
+            // ========== WATERMARK / TANGGAL DOWNLOAD ==========
+            ctx.fillStyle = '#adb5bd';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'right';
+            ctx.fillText('Downloaded: ' + new Date().toLocaleString('id-ID'), 
+                        (canvasWidth/scale) - basePadding, footerY + 50);
+            
+            // ========== DOWNLOAD ==========
+            // Konversi ke blob untuk kualitas terbaik
+            canvas.toBlob(function(blob) {
+                var link = document.createElement('a');
+                link.download = 'jadwal-sholat-' + (today || 'download') + '.png';
+                link.href = URL.createObjectURL(blob);
+                link.click();
+                URL.revokeObjectURL(link.href);
+                
+                console.log("Canvas resolusi tinggi dibuat, ukuran:", canvas.width, "x", canvas.height);
+                resetButton();
+            }, 'image/png', 1.0); // Quality 1.0 untuk PNG
+            
+        } catch (e) {
+            console.error('Error creating high-res canvas:', e);
+            
+            // Fallback ke versi sederhana jika error
+            createSimpleCanvas(data);
+        }
+    }
+    
+    function createSimpleCanvas(data) {
+        try {
+            // Versi sederhana dengan resolusi standar
+            var cellWidth = 100;
+            var cellHeight = 40;
+            var headerHeight = 50;
+            var titleHeight = 60;
+            var footerHeight = 70; // Ditambah untuk credit
+            var padding = 20;
+            
+            var cols = 8;
+            var rows = data.length + 1;
+            
+            var canvasWidth = cols * cellWidth + (padding * 2);
+            var canvasHeight = titleHeight + headerHeight + (data.length * cellHeight) + footerHeight + 20;
+            
+            var canvas = document.createElement('canvas');
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            
+            var ctx = canvas.getContext('2d');
+            
+            // Background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+            
+            // Title
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            var title = document.querySelector('h2')?.textContent || 'Jadwal Sholat';
+            ctx.fillText(title, canvasWidth / 2, 35);
+            
+            // Header
+            var headers = ['Hari', 'Tanggal', 'Imsyak', 'Subuh', 'Dzuhur', 'Ashar', 'Maghrib', 'Isya'];
+            var startY = 60;
+            
+            for (var c = 0; c < cols; c++) {
+                var x = padding + c * cellWidth;
+                
+                ctx.fillStyle = '#f2f2f2';
+                ctx.fillRect(x, startY, cellWidth, headerHeight);
+                ctx.strokeStyle = '#dddddd';
+                ctx.strokeRect(x, startY, cellWidth, headerHeight);
+                
+                ctx.fillStyle = '#000000';
+                ctx.font = 'bold 14px Arial';
+                ctx.fillText(headers[c], x + cellWidth/2, startY + headerHeight/2 + 5);
+            }
+            
+            // Data
+            for (var r = 0; r < data.length; r++) {
+                var entry = data[r];
+                var rowY = startY + headerHeight + r * cellHeight;
+                
+                var cells = [
+                    entry.day_name,
+                    entry.gregorian_date,
+                    entry.imsyak,
+                    entry.subuh,
+                    entry.dzuhur,
+                    entry.ashar,
+                    entry.maghrib,
+                    entry.isya
+                ];
+                
+                for (var c = 0; c < cols; c++) {
+                    var x = padding + c * cellWidth;
+                    
+                    if (entry.gregorian_date === today) {
+                        ctx.fillStyle = '#d4edda';
+                    } else if (r % 2 === 0) {
+                        ctx.fillStyle = '#ffffff';
+                    } else {
+                        ctx.fillStyle = '#f9f9f9';
+                    }
+                    ctx.fillRect(x, rowY, cellWidth, cellHeight);
+                    
+                    ctx.strokeStyle = '#dddddd';
+                    ctx.strokeRect(x, rowY, cellWidth, cellHeight);
+                    
+                    ctx.fillStyle = '#000000';
+                    ctx.font = (entry.gregorian_date === today) ? 'bold 12px Arial' : '12px Arial';
+                    ctx.fillText(cells[c] || '-', x + cellWidth/2, rowY + cellHeight/2 + 4);
+                }
+            }
+            
+            // ========== FOOTER ==========
+            var footerY = startY + headerHeight + data.length * cellHeight + 15;
+            
+            // Garis pembatas
+            ctx.strokeStyle = '#cccccc';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(padding, footerY - 5);
+            ctx.lineTo(canvasWidth - padding, footerY - 5);
+            ctx.stroke();
+            
+            // Last Updated
+            var updateEl = document.querySelector('.last-updated-container');
+            if (updateEl) {
+                var updateText = (updateEl.textContent || updateEl.innerText || '').replace(/<[^>]*>/g, '').trim();
+                ctx.fillStyle = '#2c3e50';
+                ctx.font = '11px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(updateText, canvasWidth / 2, footerY + 10);
+            }
+            
+            // Credit
+            ctx.fillStyle = '#495057';
+            ctx.font = 'bold 10px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Generated by Jsholat - © www.ajisetiawan.com', 
+                        canvasWidth / 2, footerY + 30);
+            
+            // Download date
+            ctx.fillStyle = '#6c757d';
+            ctx.font = '9px Arial';
+            ctx.textAlign = 'right';
+            ctx.fillText('Download: ' + new Date().toLocaleString('id-ID'), 
+                        canvasWidth - padding, footerY + 45);
+            
+            // Download
+            canvas.toBlob(function(blob) {
+                var link = document.createElement('a');
+                link.download = 'jadwal-sholat-' + (today || 'download') + '.png';
+                link.href = URL.createObjectURL(blob);
+                link.click();
+                URL.revokeObjectURL(link.href);
+                resetButton();
+            }, 'image/png');
+            
+        } catch (e) {
+            console.error('Simple canvas juga error:', e);
+            alert('Gagal membuat gambar. Silakan gunakan fitur Cetak PDF.');
+            resetButton();
+        }
+    }
+    
+    function resetButton() {
+        downloadBtn.innerHTML = originalText;
+        downloadBtn.disabled = false;
+    }
+}
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM fully loaded");
+    
+    // Tunggu sebentar untuk memastikan semua elemen ter-render
+    setTimeout(function() {
+        // CEK DATA DAN AMBIL DARI DOM JIKA PERLU
+        if ((!jadwalJson || jadwalJson.length === 0) && 
+            (!jadwal || jadwal.length === 0)) {
+            
+            console.log("Variabel JavaScript kosong, mencoba ekstrak dari DOM...");
+            var domData = extractDataFromDOM();
+            
+            if (domData && domData.length > 0) {
+                console.log("Berhasil mengekstrak", domData.length, "data dari DOM");
+                // Simpan ke variabel global untuk digunakan nanti
+                window.extractedJadwalData = domData;
+            }
+        }
+        
+        // Ambil tombol
+        var printBtn = document.getElementById('printBtn');
+        var downloadBtn = document.getElementById('downloadBtn');
+        
+        console.log("Print button found:", !!printBtn);
+        console.log("Download button found:", !!downloadBtn);
+        console.log("Table element found:", !!document.querySelector('.jadwal-table'));
+        
+        // Hapus event listener lama dengan clone & replace
+        if (printBtn) {
+            var newPrintBtn = printBtn.cloneNode(true);
+            printBtn.parentNode.replaceChild(newPrintBtn, printBtn);
+            newPrintBtn.addEventListener('click', handlePrint);
+        }
+        
+        if (downloadBtn) {
+            var newDownloadBtn = downloadBtn.cloneNode(true);
+            downloadBtn.parentNode.replaceChild(newDownloadBtn, downloadBtn);
+            
+            // Flag untuk mencegah double click
+            var isDownloading = false;
+            newDownloadBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                if (isDownloading) {
+                    console.log("Download already in progress");
+                    return;
+                }
+                
+                isDownloading = true;
+                console.log("Download button clicked");
+                
+                handleDownload();
+                
+                // Reset flag setelah selesai (10 detik timeout untuk jaga-jaga)
+                setTimeout(function() {
+                    isDownloading = false;
+                }, 10000);
+            });
+        }
+        
+        // Start countdown
+        if (nextPrayerTime) {
+            startCountdown(parseInt(nextPrayerTime), nextPrayerName);
+        } else {
+            var nextPrayerData = getNextPrayerTime();
+            if (nextPrayerData && nextPrayerData.time) {
+                startCountdown(nextPrayerData.time, nextPrayerData.name);
+            }
+        }
+        
+        console.log("Initialization complete");
+    }, 100);
+});
 </script>
 
 <%+footer%>
