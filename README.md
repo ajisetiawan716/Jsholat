@@ -280,6 +280,8 @@ Aplikasi ini dilisensikan di bawah [Lisensi APACHE](LICENSE).
 - **[MyQuran API](https://api.myquran.com)** — Layanan API dari MyQuran yang menyediakan jadwal sholat, data Al-Qur'an (termasuk ayat acak) dan Kalender Hijriyah.
 - **[Aladhan API](https://aladhan.com/prayer-times-api)** — API jadwal sholat internasional dengan berbagai metode perhitungan.
 - **[AjiMedia API](https://api.ajimedia.my.id)** — API jadwal sholat untuk wilayah Indonesia (sumber data internal).
+- **[Arina.Id](https://jadwalsholat.arina.id)** — Penyedia jadwal sholat berbasis web untuk wilayah Indonesia dengan data per kota dan update berkala.
+- **[Equran.Id](https://equran.id/apidev/shalat)** — API jadwal sholat serta data Al-Qur'an untuk wilayah Indonesia dengan format JSON yang mudah diproses.
 
 ### **Layanan Text-to-Speech (TTS)**
 
