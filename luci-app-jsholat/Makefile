@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-jsholat
-PKG_VERSION:=0.1.5
-PKG_RELEASE:=20251226
+PKG_VERSION:=0.1.6
+PKG_RELEASE:=20260223
 PKG_MAINTAINER:=Aji Setiawan <email@ajisetiawan.my.id>
 
 # LuCI metadata
@@ -17,7 +17,7 @@ PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
 include $(INCLUDE_DIR)/package.mk
 
 define Package/$(PKG_NAME)/description
- LuCI app untuk JSholat, termasuk pemutaran adzan dan pengelolaan jadwal sholat.
+ LuCI app untuk JSholat, termasuk pemutaran adzan, pengelolaan jadwal sholat, serta manajemen via bot TelegramS.
 endef
 
 # --- Build stages (copy tree sumber) ---

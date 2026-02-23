@@ -16,6 +16,14 @@
                     <td id="service-name">-</td>
                 </tr>
                 <tr>
+                    <td><strong><%:Versi%></strong></td>
+                    <td id="service-version">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Deskripsi%></strong></td>
+                    <td id="service-description">-</td>
+                </tr>
+                <tr>
                     <td><strong><%:Status%></strong></td>
                     <td id="service-status">-</td>
                 </tr>
@@ -39,14 +47,18 @@
         </div>
     </fieldset>
     
-    <!-- Status Service Jsholat-Bot -->
+    <!-- Status Service Jsholat-Bot (Telegram) -->
     <fieldset class="cbi-section">
         <legend><%:Status Service Jsholat-Bot (Telegram)%></legend>
         <div class="cbi-section-node">
             <table class="table" style="width:100%">
                 <tr>
                     <td style="width:40%"><strong><%:Nama Service%></strong></td>
-                    <td id="service-name-bot">-</td>
+                    <td id="bot-name">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Versi%></strong></td>
+                    <td id="bot-version">-</td>
                 </tr>
                 <tr>
                     <td><strong><%:Status Bot%></strong></td>
@@ -63,6 +75,7 @@
                 <tr>
                     <td><strong><%:Waktu Mulai Bot%></strong></td>
                     <td id="bot-start-time">-</td>
+                </tr>
                 <tr>
                     <td><strong><%:Bot Telegram%></strong></td>
                     <td id="bot-telegram-enabled">-</td>
@@ -75,6 +88,14 @@
                     <td><strong><%:Memory Bot%></strong></td>
                     <td id="bot-memory">-</td>
                 </tr>
+                <!--<tr>
+                    <td><strong><%:Token%></strong></td>
+                    <td id="bot-has-token">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Chat ID%></strong></td>
+                    <td id="bot-has-chat-id">-</td>
+                </tr>-->
             </table>
         </div>
     </fieldset>
@@ -84,23 +105,53 @@
         <legend><%:Konfigurasi Fitur%></legend>
         <div class="cbi-section-node">
             <table class="table" style="width:100%">
-                <!-- Lokasi dipindahkan ke sini -->
+                <!-- Lokasi -->
                 <tr>
                     <td style="width:40%"><strong><%:Lokasi%></strong></td>
                     <td><span id="location-city">-</span>, <span id="location-province">-</span></td>
                 </tr>
+                <!--<tr>
+                    <td><strong><%:Koordinat%></strong></td>
+                    <td id="location-coordinates">-</td>
+                </tr>-->
+                <tr>
+                    <td><strong><%:Zona Waktu%></strong></td>
+                    <td id="location-timezone">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Penyesuaian Hijriah%></strong></td>
+                    <td id="location-hijri-adjustment">-</td>
+                </tr>
+                
+                <!-- Sumber Jadwal -->
                 <tr>
                     <td><strong><%:Sumber Jadwal%></strong></td>
                     <td id="schedule-source">-</td>
                 </tr>
                 <tr>
-                    <td><strong><%:Terakhir Jadwal Diperbarui%></strong></td>
+                    <td><strong><%:File Jadwal%></strong></td>
+                    <td id="schedule-file">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Format File%></strong></td>
+                    <td id="schedule-format">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Validitas File%></strong></td>
+                    <td id="schedule-valid">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Terakhir Diperbarui%></strong></td>
                     <td id="schedule-last-updated">-</td>
                 </tr>
+                
+                <!-- Telegram -->
                 <tr>
                     <td><strong><%:Notifikasi Telegram%></strong></td>
                     <td id="config-telegram">-</td>
                 </tr>
+                
+                <!-- Sound -->
                 <tr>
                     <td><strong><%:Pemutar Suara%></strong></td>
                     <td id="config-sound">-</td>
@@ -110,16 +161,192 @@
                     <td id="config-volume">-</td>
                 </tr>
                 <tr>
+                    <td><strong><%:Kontrol Volume%></strong></td>
+                    <td id="config-volume-control">-</td>
+                </tr>
+                <tr>
+                    <td><strong><%:Device Mixer%></strong></td>
+                    <td id="config-mixer-device">-</td>
+                </tr>
+                
+                <!-- File Audio -->
+                <tr>
+                    <td><strong><%:File Adzan%></strong></td>
+                    <td id="config-adzan-files">-</td>
+                </tr>
+                
+                <!-- GEMINI AI TTS (DETAIL LENGKAP) -->
+                <tr>
+                    <td colspan="2" style="background-color: #f0f8ff; font-weight: bold; padding: 10px;">
+                        🤖 GEMINI AI TTS
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Status Konfigurasi%></td>
+                    <td id="config-gemini">-</td>
+                </tr>
+               <!-- <tr>
+                    <td style="padding-left: 30px;"><%:API Key%></td>
+                    <td id="config-gemini-api-key">-</td>
+                </tr>-->
+                <tr>
+                    <td style="padding-left: 30px;"><%:Model%></td>
+                    <td id="config-gemini-model">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Voice%></td>
+                    <td id="config-gemini-voice">-</td>
+                </tr>
+                
+                <!-- EDGE-TTS -->
+                <tr>
+                    <td colspan="2" style="background-color: #f0f8ff; font-weight: bold; padding: 10px;">
+                        📘 EDGE-TTS
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Status Instalasi%></td>
+                    <td id="config-edge-tts">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Voice%></td>
+                    <td id="config-edge-voice">-</td>
+                </tr>
+                
+                <!-- MURF.AI -->
+                <tr>
+                    <td colspan="2" style="background-color: #f0f8ff; font-weight: bold; padding: 10px;">
+                        🎙️ MURF.AI TTS
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Status Konfigurasi%></td>
+                    <td id="config-murf">-</td>
+                </tr>
+				
+                <!-- SAHUR RAMADHAN -->
+                <tr>
+                    <td colspan="2" style="background-color: #f0f8ff; font-weight: bold; padding: 10px;">
+                        🌙 SAHUR RAMADHAN
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Status Sahur%></td>
+                    <td id="config-sahur">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Waktu Sahur%></td>
+                    <td id="config-sahur-time">-</td>
+                </tr>
+                <!--<tr>
+                    <td style="padding-left: 30px;"><%:Durasi Reminder%></td>
+                    <td id="config-sahur-reminder">-</td>
+                </tr>-->
+                <tr>
+                    <td style="padding-left: 30px;"><%:Metode TTS%></td>
+                    <td id="config-sahur-tts">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Teks Custom%></td>
+                    <td id="config-sahur-text">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Preview Teks%></td>
+                    <td id="config-sahur-preview" style="font-style: italic; color: #555;">-</td>
+                </tr>
+                
+                <!-- TARHIM IMSYAK -->
+                <tr>
+                    <td colspan="2" style="background-color: #f0f8ff; font-weight: bold; padding: 10px;">
+                        🌙 TARHIM IMSYAK
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Status%></td>
+                    <td id="config-tarhim">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Mode%></td>
+                    <td id="config-tarhim-mode">-</td>
+                </tr>
+                <!--<tr>
+                    <td style="padding-left: 30px;"><%:File Suara%></td>
+                    <td id="config-tarhim-file">-</td>
+                </tr>-->
+                <tr>
+                    <td style="padding-left: 30px;"><%:File Suara Tarhim/Imsyak%></td>
+                    <td id="config-tarhim-file-exists">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Perilaku TTS Imsyak%></td>
+                    <td id="config-tarhim-tts-behavior">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Deskripsi%></td>
+                    <td id="config-tarhim-description">-</td>
+                </tr>
+                
+                <!-- STATUS RAMADHAN -->
+                <tr>
+                    <td><strong><%:Status Ramadhan%></strong></td>
+                    <td id="config-ramadhan">-</td>
+                </tr>
+                
+                <!-- AYAT -->
+                <tr>
                     <td><strong><%:Ayat Acak%></strong></td>
                     <td id="config-ayat">-</td>
                 </tr>
+                
+                <!-- REMINDER -->
                 <tr>
-                    <td><strong><%:Pengingat Sholat%></strong></td>
+                    <td colspan="2" style="background-color: #f0f8ff; font-weight: bold; padding: 10px;">
+                        🔔 PENGATURAN PENGINGAT
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Status Pengingat%></td>
                     <td id="config-reminder">-</td>
                 </tr>
                 <tr>
+                    <td style="padding-left: 30px;"><%:Waktu Pengingat (sebelum waktu sholat)%></td>
+                    <td id="config-reminder-minutes">-</td> 
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Suara Pengingat%></td>
+                    <td id="config-reminder-sound">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Metode TTS%></td>
+                    <td id="config-tts-method">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Jumlah Pengulangan%></td>
+                    <td id="config-reminder-repeat">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:Interval Pengulangan%></td>
+                    <td id="config-reminder-interval">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:File Intro%></td>
+                    <td id="config-in-reminder">-</td>
+                </tr>
+                <tr>
+                    <td style="padding-left: 30px;"><%:File Outro%></td>
+                    <td id="config-out-reminder">-</td>
+                </tr>
+                
+                <!-- DEBUG -->
+                <tr>
                     <td><strong><%:Mode Debug%></strong></td>
                     <td id="config-debug">-</td>
+                </tr>
+                
+                <!-- STATUS KESEHATAN -->
+                <tr>
+                    <td><strong><%:Status Kesehatan%></strong></td>
+                    <td id="status-healthy">-</td>
                 </tr>
             </table>
         </div>
@@ -127,12 +354,12 @@
 
     <!-- Jadwal Sholat Hari Ini -->
     <fieldset class="cbi-section">
-        <legend><%:Jadwal Sholat Hari Ini%></legend>
+        <legend><%:Jadwal Sholat Hari Ini%> - <span id="schedule-gregorian-date">-</span> / <span id="schedule-hijri-date">-</span></legend>
         <div class="cbi-section-node">
             <table class="table" style="width:100%">
                 <tr>
                     <th style="width:30%"><%:Waktu Sholat%></th>
-                    <th><%:Jam%> (<span id="location-timezone">-</span>)</th>
+                    <th><%:Jam%></th>
                     <th><%:Status%></th>
                 </tr>
                 <tr>
@@ -176,6 +403,7 @@
                     <span id="next-prayer-name">-</span>: 
                     <span id="next-prayer-time">-</span> 
                     (<span id="next-prayer-countdown">-</span>)
+                    <span id="next-prayer-timestamp" style="display:none;"></span>
                 </div>
             </div>
         </div>
@@ -205,6 +433,32 @@
                 <div class="cbi-value-field">
                     <span id="system-uptime">-</span>
                     <small style="color: #666; margin-left: 5px;">(update real-time)</small>
+                </div>
+            </div>
+            <div class="cbi-value">
+                <label class="cbi-value-title"><strong><%:Hostname%></strong></label>
+                <div class="cbi-value-field">
+                    <span id="system-hostname">-</span>
+                </div>
+            </div>
+            <div class="cbi-value">
+                <label class="cbi-value-title"><strong><%:Kernel%></strong></label>
+                <div class="cbi-value-field">
+                    <span id="system-kernel">-</span>
+                </div>
+            </div>
+            <div class="cbi-value">
+                <label class="cbi-value-title"><strong><%:Arsitektur%></strong></label>
+                <div class="cbi-value-field">
+                    <span id="system-architecture">-</span>
+                </div>
+            </div>
+            <div class="cbi-value">
+                <label class="cbi-value-title"><strong><%:Load Average%></strong></label>
+                <div class="cbi-value-field">
+                    <span id="system-load-1">-</span>, 
+                    <span id="system-load-5">-</span>, 
+                    <span id="system-load-15">-</span>
                 </div>
             </div>
             <div class="cbi-value">
@@ -244,7 +498,7 @@
             <div class="cbi-value">
                 <label class="cbi-value-title"><%:Log Jsholat%></label>
                 <div class="cbi-value-field">
-                    <span id="log-jsholat-file">-</span> 
+                    <span id="log-jsholat-file">/var/log/jsholat/service.log</span> 
                     (Ukuran: <span id="log-jsholat-size">-</span>, 
                     Baris: <span id="log-jsholat-lines">-</span>)
                 </div>
@@ -252,15 +506,15 @@
             <div class="cbi-value">
                 <label class="cbi-value-title"><%:Log Bot%></label>
                 <div class="cbi-value-field">
-                    <span id="log-bot-file">-</span> 
+                    <span id="log-bot-file">/var/log/jsholat/bot.log</span> 
                     (Ukuran: <span id="log-bot-size">-</span>, 
                     Baris: <span id="log-bot-lines">-</span>)
                 </div>
             </div>
             <div class="cbi-value">
-                <label class="cbi-value-title"><%:Update Terakhir%></label>
+                <label class="cbi-value-title"><%:Timestamp Status%></label>
                 <div class="cbi-value-field">
-                    <span id="last-update">-</span>
+                    <span id="status-timestamp">-</span>
                 </div>
             </div>
         </div>
@@ -354,7 +608,7 @@ function formatUptime(seconds, uptimeHuman) {
     return result.trim();
 }
 
-// Fungsi untuk format detik ke string detail - PERBAIKAN
+// Fungsi untuk format detik ke string detail
 function formatSecondsDetailed(seconds) {
     var secs = parseInt(seconds);
     if (isNaN(secs) || secs <= 0) return "0 detik";
@@ -374,7 +628,7 @@ function formatSecondsDetailed(seconds) {
 }
 
 // Fungsi untuk mendapatkan status sholat berdasarkan waktu sekarang
-function getPrayerStatus(prayerTime, timezone) {
+function getPrayerStatus(prayerTime) {
     if (!prayerTime || prayerTime == "-" || prayerTime == "") return "";
     
     try {
@@ -419,27 +673,159 @@ function getPrayerStatus(prayerTime, timezone) {
     }
 }
 
-// Fungsi untuk mendapatkan label status bot berdasarkan running field (true/false)
-function getBotStatusLabel(running, telegramNotifications, configured) {
-    // Prioritas: running -> telegram_notifications -> configured
-    if (running === true || running === "true" || running === "1") {
-        return '<span class="label label-success">BERJALAN</span>';
-    } else if (telegramNotifications === false || telegramNotifications === "false" || telegramNotifications === "0") {
-        return '<span class="label label-warning">DINONAKTIFKAN</span>';
-    } else if (configured === false || configured === "false" || configured === "0") {
-        return '<span class="label label-warning">BELUM DIKONFIGURASI</span>';
+// Fungsi untuk mendapatkan label status
+function getStatusLabel(value, type = "default") {
+    if (value === true || value === "true" || value === 1 || value === "1") {
+        if (type === "service") {
+            return '<span class="label label-success">BERJALAN</span>';
+        } else if (type === "enabled") {
+            return '<span class="label label-success">AKTIF</span>';
+        } else if (type === "valid") {
+            return '<span class="label label-success">VALID</span>';
+        } else if (type === "installed") {
+            return '<span class="label label-success">TERINSTAL</span>';
+        } else if (type === "exists") {
+            return '<span class="label label-success">ADA</span>';
+        }
+        return '<span class="label label-success">AKTIF</span>';
     } else {
-        return '<span class="label label-danger">BERHENTI</span>';
+        if (type === "service") {
+            return '<span class="label label-danger">TIDAK BERJALAN</span>';
+        } else if (type === "enabled") {
+            return '<span class="label label-danger">NONAKTIF</span>';
+        } else if (type === "valid") {
+            return '<span class="label label-danger">TIDAK VALID</span>';
+        } else if (type === "installed") {
+            return '<span class="label label-danger">TIDAK TERINSTAL</span>';
+        } else if (type === "exists") {
+            return '<span class="label label-danger">TIDAK ADA</span>';
+        }
+        return '<span class="label label-danger">NONAKTIF</span>';
     }
 }
 
-// Fungsi untuk mendapatkan label status bot telegram berdasarkan running field
-function getBotTelegramEnabledLabel(running) {
-    if (running === true || running === "true" || running === "1") {
-        return '<span class="label label-success">AKTIF</span>';
+// Fungsi untuk mendapatkan label status bot
+function getBotStatusLabel(running, configured) {
+    if (running === true || running === "true" || running === 1 || running === "1") {
+        return '<span class="label label-success">BERJALAN</span>';
+    } else if (configured === true || configured === "true" || configured === 1 || configured === "1") {
+        return '<span class="label label-warning">TERKONFIGURASI TAPI TIDAK BERJALAN</span>';
     } else {
-        return '<span class="label label-danger">NONAKTIF</span>';
+        return '<span class="label label-danger">BELUM DIKONFIGURASI</span>';
     }
+}
+
+// Fungsi untuk format API key (masking)
+function maskApiKey(apiKey) {
+    if (!apiKey || apiKey === "-" || apiKey === "") return "-";
+    if (apiKey.length <= 8) return "********";
+    return apiKey.substring(0, 4) + "..." + apiKey.substring(apiKey.length - 4);
+}
+
+// Fungsi format voice Gemini dengan emoji & deskripsi karakter
+function formatGeminiVoice(voice) {
+    if (!voice || voice === "-") return "-";
+    
+    const voiceMap = {
+        Zephyr: "Zephyr ☀️ (Bright - Cerah & Enerjik)",
+        Puck: "Puck 🎉 (Upbeat - Ceria & Bersemangat)",
+        Charon: "Charon 📘 (Informative - Informatif & Profesional)",
+        Kore: "Kore 🎯 (Firm - Tegas & Stabil)",
+        Fenrir: "Fenrir 🔥 (Excitable - Antusias & Ekspresif)",
+        Leda: "Leda 🌸 (Youthful - Muda & Segar)",
+        Orus: "Orus 🛡️ (Firm - Tegas & Dalam)",
+        Aoede: "Aoede 🍃 (Breezy - Ringan & Natural)",
+        Callirrhoe: "Callirrhoe 🙂 (Easy-going - Santai & Nyaman)",
+        Autonoe: "Autonoe 🌟 (Bright - Cerah & Jelas)",
+        Enceladus: "Enceladus 🌬️ (Breathy - Lembut & Berhembus)",
+        Iapetus: "Iapetus 🔊 (Clear - Jelas & Tegas)",
+        Umbriel: "Umbriel 😌 (Easy-going - Tenang & Santai)",
+        Algieba: "Algieba 🎵 (Smooth - Halus & Stabil)",
+        Despina: "Despina 💫 (Smooth - Lembut & Natural)",
+        Erinome: "Erinome 💎 (Clear - Bersih & Jernih)",
+        Algenib: "Algenib 🪨 (Gravelly - Berat & Serak)",
+        Rasalgethi: "Rasalgethi 📰 (Informative - Naratif & Profesional)",
+        Laomedeia: "Laomedeia 🎈 (Upbeat - Ramah & Dinamis)",
+        Achernar: "Achernar 🌙 (Soft - Lembut & Halus)",
+        Alnilam: "Alnilam 🏛️ (Firm - Tegas & Formal)",
+        Schedar: "Schedar ⚖️ (Even - Seimbang & Stabil)",
+        Gacrux: "Gacrux 👑 (Mature - Dewasa & Berwibawa)",
+        Pulcherrima: "Pulcherrima 🚀 (Forward - Tegas & Percaya Diri)",
+        Achird: "Achird 🤝 (Friendly - Ramah & Bersahabat)",
+        Zubenelgenubi: "Zubenelgenubi 🧢 (Casual - Santai & Natural)",
+        Vindemiatrix: "Vindemiatrix 🌷 (Gentle - Lembut & Anggun)",
+        Sadachbia: "Sadachbia 🎊 (Lively - Hidup & Energik)",
+        Sadaltager: "Sadaltager 🧠 (Knowledgeable - Bijak & Edukatif)",
+        Sulafat: "Sulafat ❤️ (Warm - Hangat & Bersahabat)"
+    };
+    
+    return voiceMap[voice] || voice;
+}
+
+// Fungsi untuk format voice Edge
+function formatEdgeVoice(voice) {
+    if (!voice || voice === "-") return "-";
+    
+    var voiceMap = {
+        'id-ID-ArdiNeural': '🗣️ Ardi (Indonesia - Pria)',
+        'id-ID-GadisNeural': '👩 Gadis (Indonesia - Wanita)',
+        'jv-ID-DimasNeural': '👨‍🦰 Dimas (Jawa - Pria)',
+        'jv-ID-SitiNeural': '👩‍🦰 Siti (Jawa - Wanita)'
+    };
+    
+    return voiceMap[voice] || voice;
+}
+
+// Fungsi untuk format perilaku TTS Imsyak
+function formatTtsImsyakBehavior(behavior) {
+    if (!behavior) return "-";
+    
+    var behaviorMap = {
+        'always': '🔊 SELALU DIPUTAR',
+        'active_ramadhan': '🔊 AKTIF (sedang Ramadhan)',
+        'inactive_non_ramadhan': '🔇 NONAKTIF (bukan Ramadhan)',
+        'tarhim_disabled': '🔇 TARHIM DIMATIKAN'
+    };
+    
+    return behaviorMap[behavior] || behavior;
+}
+
+// Fungsi Humanize TTS Method
+function humanizeTTSMethod(method) {
+    if (!method || method === "-") return "-";
+    
+    var methodMap = {
+        'google': 'Google Translate',
+        'edge': 'Edge-TTS',
+        'espeak': 'eSpeak',
+        'festival': 'Festival',
+        'pico': 'Pico TTS',
+        'flite': 'Flite',
+        'mimic': 'Mimic',
+        'mimic2': 'Mimic 2',
+        'mimic3': 'Mimic 3',
+        'amazon': 'Amazon Polly',
+        'azure': 'Azure TTS',
+        'watson': 'IBM Watson',
+        'witai': 'Wit.ai',
+        'acapela': 'Acapela',
+        'voicerss': 'Voice RSS',
+        'custom': 'Custom',
+        'gemini': 'Gemini AI TTS'
+    };
+    
+    // Normalisasi input (lowercase)
+    var normalizedMethod = method.toLowerCase().trim();
+    
+    // Cek apakah method ada di mapping
+    if (methodMap[normalizedMethod]) {
+        return methodMap[normalizedMethod];
+    }
+    
+    // Jika tidak ada di mapping, format dengan huruf kapital di awal setiap kata
+    return method.split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
 }
 
 // ==============================
@@ -448,7 +834,6 @@ function getBotTelegramEnabledLabel(running) {
 
 // Fungsi UPDATE MEMORY SAJA
 function updateMemoryOnly() {
-    // Skip jika halaman tidak fokus (optimasi)
     if (document.hidden) {
         debugLog("Halaman tidak fokus, skip update memory");
         return;
@@ -497,16 +882,21 @@ function updateMemoryOnly() {
         });
 }
 
-// Fungsi UPDATE DISPLAY MEMORY
+// Fungsi UPDATE DISPLAY MEMORY (dengan format GB)
 function updateMemoryDisplay(memory) {
     if (!memory) return;
     
     debugLog("Updating memory display: " + JSON.stringify(memory).substring(0, 100));
     
-    // Update human readable
+    // Update human readable - PRIORITAS FORMAT GB
     var humanReadableElement = document.getElementById('memory-human-readable');
     if (humanReadableElement) {
-        if (memory.human_readable && memory.human_readable !== "") {
+        // Gunakan format GB jika tersedia, fallback ke format lama
+        if (memory.human_readable_gb && memory.human_readable_gb !== "") {
+            humanReadableElement.textContent = memory.human_readable_gb;
+            humanReadableElement.style.color = "";
+            humanReadableElement.title = memory.human_readable_detailed || memory.human_readable;
+        } else if (memory.human_readable && memory.human_readable !== "") {
             humanReadableElement.textContent = memory.human_readable;
             humanReadableElement.style.color = "";
         } else {
@@ -515,12 +905,17 @@ function updateMemoryDisplay(memory) {
         }
     }
     
-    // Update details jika data ada
+    // Update details (tetap pakai MB untuk konsistensi dengan progress bar)
     if (memory.used_mb !== undefined && memory.total_mb !== undefined && memory.used_percent !== undefined) {
-        // Format: "Terpakai: 666 MB / Total: 11412 MB (5%)"
         document.getElementById('memory-used').textContent = memory.used_mb;
         document.getElementById('memory-total').textContent = memory.total_mb;
         document.getElementById('memory-percent').textContent = memory.used_percent;
+        
+        // Tambahkan tooltip dengan informasi detail
+        var memoryDetails = document.getElementById('memory-details');
+        if (memoryDetails && memory.human_readable_detailed) {
+            memoryDetails.title = memory.human_readable_detailed;
+        }
         
         // Update progress bar
         var progressBar = document.getElementById('memory-progress-bar');
@@ -612,7 +1007,6 @@ function updateSystemUptime() {
     const uptimeMs = now - window.systemStartTime;
     const uptimeSeconds = Math.floor(uptimeMs / 1000);
     
-    // Format selalu dengan detik
     const days = Math.floor(uptimeSeconds / 86400);
     const hours = Math.floor((uptimeSeconds % 86400) / 3600);
     const minutes = Math.floor((uptimeSeconds % 3600) / 60);
@@ -637,7 +1031,6 @@ function updateServiceUptimes() {
         const uptimeMs = Date.now() - window.serviceStartTime;
         const uptimeSeconds = Math.floor(uptimeMs / 1000);
         
-        // Format dengan detik
         const days = Math.floor(uptimeSeconds / 86400);
         const hours = Math.floor((uptimeSeconds % 86400) / 3600);
         const minutes = Math.floor((uptimeSeconds % 3600) / 60);
@@ -660,7 +1053,6 @@ function updateServiceUptimes() {
         const uptimeMs = Date.now() - window.botStartTime;
         const uptimeSeconds = Math.floor(uptimeMs / 1000);
         
-        // Format dengan detik
         const days = Math.floor(uptimeSeconds / 86400);
         const hours = Math.floor((uptimeSeconds % 86400) / 3600);
         const minutes = Math.floor((uptimeSeconds % 3600) / 60);
@@ -678,7 +1070,6 @@ function updateServiceUptimes() {
 
 // Fungsi untuk update status sholat setiap detik
 function updatePrayerStatuses() {
-    // Dapatkan semua waktu sholat dari tabel
     const prayerTimes = [
         { id: 'imsyak-time', statusId: 'imsyak-status' },
         { id: 'subuh-time', statusId: 'subuh-status' },
@@ -688,17 +1079,14 @@ function updatePrayerStatuses() {
         { id: 'isya-time', statusId: 'isya-status' }
     ];
     
-    const timezone = document.getElementById('location-timezone').textContent;
-    
     prayerTimes.forEach(prayer => {
         const timeElement = document.getElementById(prayer.id);
         const statusElement = document.getElementById(prayer.statusId);
         
         if (timeElement && statusElement && timeElement.textContent !== '-' && timeElement.textContent.trim() !== '') {
             const prayerTime = timeElement.textContent.trim();
-            const newStatus = getPrayerStatus(prayerTime, timezone);
+            const newStatus = getPrayerStatus(prayerTime);
             
-            // Update status
             if (statusElement.innerHTML !== newStatus) {
                 statusElement.innerHTML = newStatus;
             }
@@ -733,7 +1121,7 @@ function updateNextPrayerCountdown() {
                 
                 // Handle jika sudah lewat (untuk hari berikutnya)
                 if (diffSeconds < 0) {
-                    diffSeconds += 24 * 3600; // Tambah 24 jam
+                    diffSeconds += 24 * 3600;
                 }
                 
                 // Format countdown
@@ -760,7 +1148,7 @@ function updateNextPrayerCountdown() {
                     countdownElement.textContent = countdownText;
                     
                     // Update class berdasarkan waktu
-                    if (diffSeconds <= 300) { // 5 menit
+                    if (diffSeconds <= 300) {
                         countdownElement.className = 'label label-warning';
                     } else if (diffSeconds <= 0) {
                         countdownElement.className = 'label label-success';
@@ -773,24 +1161,13 @@ function updateNextPrayerCountdown() {
     }
 }
 
-// Fungsi utama untuk update SEMUA data waktu setiap detik
+// Fungsi untuk update semua informasi waktu
 function updateAllTimeData() {
-    // 1. Update waktu sistem
     updateCurrentTime();
-    
-    // 2. Update uptime sistem
     updateSystemUptime();
-    
-    // 3. Update uptime service
     updateServiceUptimes();
-    
-    // 4. Update status sholat
     updatePrayerStatuses();
-    
-    // 5. Update countdown sholat berikutnya
     updateNextPrayerCountdown();
-    
-    // 6. Update memory countdown
     updateMemoryCountdownDisplay();
     
     debugLog("Real-time update executed");
@@ -816,12 +1193,14 @@ function loadStatus() {
             debugLog("Data diterima: " + JSON.stringify(data).substring(0, 500) + "...");
             
             // ===== SERVICE JSHOLAT =====
-            if (data.services && data.services.jsholat) {
-                var service = data.services.jsholat;
+            if (data.service) {
+                var service = data.service;
                 debugLog("Service jsholat ditemukan");
                 
                 document.getElementById('service-name').textContent = service.name || "jsholat";
-                document.getElementById('service-pid').textContent = service.pid && service.pid !== "0" && service.pid !== 0 && service.pid !== "" ? service.pid : "-";
+                document.getElementById('service-version').textContent = service.version || "-";
+                document.getElementById('service-description').textContent = service.description || "-";
+                document.getElementById('service-pid').textContent = (service.running && service.pid) ? service.pid : "-";
                 document.getElementById('service-start-time').textContent = service.start_time || "-";
                 
                 // Simpan uptime awal untuk perhitungan real-time
@@ -833,90 +1212,82 @@ function loadStatus() {
                 // Update uptime pertama kali
                 document.getElementById('service-uptime').textContent = formatUptime(service.uptime, service.uptime_human);
                 
-                // Status Service - gunakan running field (true/false)
-                if (service.running === true || service.running === "true" || service.running === "1") {
-                    document.getElementById('service-status').innerHTML = 
-                        '<span class="label label-success">BERJALAN</span>';
-                } else {
-                    document.getElementById('service-status').innerHTML = 
-                        '<span class="label label-danger">TIDAK BERJALAN</span>';
-                    window.serviceStartTime = null; // Reset jika tidak running
-                }
+                // Status Service
+                document.getElementById('service-status').innerHTML = getStatusLabel(service.running, "service");
                 
                 // Status Enabled
-                document.getElementById('service-enabled').innerHTML = 
-                    service.enabled === true || service.enabled === "true" || service.enabled === "1" ? 
-                    '<span class="label label-success">AKTIF</span>' : 
-                    '<span class="label label-danger">NONAKTIF</span>';
+                document.getElementById('service-enabled').innerHTML = getStatusLabel(service.enabled, "enabled");
+                
+                if (!service.running) {
+                    window.serviceStartTime = null;
+                }
             } else {
                 debugLog("Service jsholat tidak ditemukan");
-                document.getElementById('service-status').innerHTML = 
-                    '<span class="label label-warning">TIDAK DITEMUKAN</span>';
+                document.getElementById('service-status').innerHTML = '<span class="label label-warning">TIDAK DITEMUKAN</span>';
                 window.serviceStartTime = null;
             }
             
             // ===== SERVICE JSHOLAT-BOT =====
-            if (data.services && data.services["jsholat-bot"]) {
-                var bot = data.services["jsholat-bot"];
-                debugLog("Service bot ditemukan: " + JSON.stringify(bot));
+            if (data.bot) {
+                var bot = data.bot;
+                debugLog("Service bot ditemukan");
                 
-                // 1. Nama Service Bot
-                document.getElementById('service-name-bot').textContent = bot.name || "jsholat-bot";
+                document.getElementById('bot-name').textContent = bot.name || "jsholat-bot";
+                document.getElementById('bot-version').textContent = bot.version || "-";
+                document.getElementById('bot-pid').textContent = (bot.running && bot.pid) ? bot.pid : "-";
                 
-                // 2. Status Bot
-                var telegramNotifications = bot.telegram_notifications;
-                var configured = bot.configured;
-                
-                document.getElementById('bot-status').innerHTML = getBotStatusLabel(
-                    bot.running, 
-                    telegramNotifications,
-                    configured
-                );
-                
-                // Tampilkan PID hanya jika running
-                if ((bot.running === true || bot.running === "true" || bot.running === "1") && bot.pid && bot.pid !== 0 && bot.pid !== "0" && bot.pid !== "") {
-                    document.getElementById('bot-pid').textContent = bot.pid;
-                } else {
-                    document.getElementById('bot-pid').textContent = "-";
-                }
+                // Status Bot
+                document.getElementById('bot-status').innerHTML = getBotStatusLabel(bot.running, bot.configured);
                 
                 // Simpan uptime awal untuk perhitungan real-time
-                if (bot.running === true || bot.running === "true" || bot.running === "1") {
+                if (bot.running) {
                     if (bot.uptime) {
                         window.botUptimeSeconds = parseInt(bot.uptime) || 0;
                         window.botStartTime = Date.now() - (window.botUptimeSeconds * 1000);
                     }
                     document.getElementById('bot-start-time').textContent = bot.start_time || "-";
-                    document.getElementById('bot-memory').textContent = bot.memory_mb && bot.memory_mb !== 0 && bot.memory_mb !== "0" ? bot.memory_mb + " MB" : "-";
+                    
+                    // Memory bot
+                    if (bot.memory_mb !== undefined && bot.memory_mb !== null) {
+                        document.getElementById('bot-memory').textContent = bot.memory_mb + " MB";
+                    } else {
+                        document.getElementById('bot-memory').textContent = "-";
+                    }
                 } else {
                     document.getElementById('bot-start-time').textContent = "-";
                     document.getElementById('bot-memory').textContent = "-";
-                    window.botStartTime = null; // Reset jika tidak running
+                    window.botStartTime = null;
                 }
                 
                 // Update uptime pertama kali
                 document.getElementById('bot-uptime').textContent = formatUptime(bot.uptime, bot.uptime_human);
                 
-                // Status Telegram menggunakan running field dari bot
-                document.getElementById('bot-telegram-enabled').innerHTML = getBotTelegramEnabledLabel(bot.running);
+                // Status Telegram
+                document.getElementById('bot-telegram-enabled').innerHTML = getStatusLabel(bot.enabled, "enabled");
                 
                 // Status Konfigurasi
                 document.getElementById('bot-configured').innerHTML = 
-                    configured === true || configured === "true" || configured === "1" ? 
+                    (bot.configured === true || bot.configured === "true" || bot.configured === 1 || bot.configured === "1") ? 
                     '<span class="label label-success">TERKONFIGURASI</span>' : 
                     '<span class="label label-warning">BELUM DIKONFIGURASI</span>';
+                
+                // Token & Chat ID
+            //    document.getElementById('bot-has-token').innerHTML = 
+            //        bot.has_token ? '<span class="label label-success">TERISI</span>' : '<span class="label label-danger">KOSONG</span>';
+            //    document.getElementById('bot-has-chat-id').innerHTML = 
+            //        bot.has_chat_id ? '<span class="label label-success">TERISI</span>' : '<span class="label label-danger">KOSONG</span>';
             } else {
                 debugLog("Service bot tidak ditemukan");
-                document.getElementById('bot-status').innerHTML = 
-                    '<span class="label label-warning">TIDAK DITEMUKAN</span>';
+                document.getElementById('bot-status').innerHTML = '<span class="label label-warning">TIDAK DITEMUKAN</span>';
                 document.getElementById('bot-pid').textContent = "-";
                 document.getElementById('bot-uptime').textContent = "-";
                 document.getElementById('bot-start-time').textContent = "-";
                 document.getElementById('bot-memory').textContent = "-";
-                document.getElementById('bot-telegram-enabled').innerHTML = 
-                    '<span class="label label-default">Tidak diketahui</span>';
-                document.getElementById('bot-configured').innerHTML = 
-                    '<span class="label label-default">Tidak diketahui</span>';
+                document.getElementById('bot-version').textContent = "-";
+                document.getElementById('bot-telegram-enabled').innerHTML = '<span class="label label-default">Tidak diketahui</span>';
+                document.getElementById('bot-configured').innerHTML = '<span class="label label-default">Tidak diketahui</span>';
+            //    document.getElementById('bot-has-token').innerHTML = '<span class="label label-default">-</span>';
+            //    document.getElementById('bot-has-chat-id').innerHTML = '<span class="label label-default">-</span>';
                 window.botStartTime = null;
             }
             
@@ -924,180 +1295,390 @@ function loadStatus() {
             if (data.config) {
                 debugLog("Config ditemukan");
                 
-                // Telegram - menggunakan telegram_enabled dari config untuk notifikasi
-                document.getElementById('config-telegram').innerHTML = 
-                    data.config.telegram_enabled === true || data.config.telegram_enabled === "true" || data.config.telegram_enabled === "1" ? 
+                // Telegram
+                var telegram = data.config.telegram || {};
+                document.getElementById('config-telegram').innerHTML = getStatusLabel(telegram.enabled, "enabled");
+                
+                // Sound
+                var sound = data.config.sound || {};
+                document.getElementById('config-sound').innerHTML = getStatusLabel(sound.enabled, "enabled");
+                document.getElementById('config-volume').textContent = (sound.volume_level ? sound.volume_level + "%" : "-");
+                document.getElementById('config-volume-control').textContent = sound.volume_control || "-";
+                document.getElementById('config-mixer-device').textContent = sound.mixer_device || "-";
+                
+                // File Adzan
+                var adzanFiles = [];
+                if (sound.adzan_exists === true) adzanFiles.push("✅ Adzan");
+                if (sound.adzan_subuh_exists === true) adzanFiles.push("✅ Adzan Subuh");
+                if (sound.imsyak_exists === true) adzanFiles.push("✅ Tarhim");
+                document.getElementById('config-adzan-files').textContent = adzanFiles.length > 0 ? adzanFiles.join(", ") : "❌ Tidak ada file audio";
+                
+                // ===== GEMINI TTS =====
+                var reminder = data.config.reminder || {};
+                var geminiConfigured = reminder.gemini_configured === true;
+                
+                document.getElementById('config-gemini').innerHTML = 
+                    geminiConfigured ? 
+                    '<span class="label label-success">TERKONFIGURASI</span>' : 
+                    '<span class="label label-warning">BELUM DIKONFIGURASI</span>';
+                
+                // Model
+                document.getElementById('config-gemini-model').textContent = reminder.gemini_model || "gemini-2.5-flash-preview-tts";
+                
+                // Voice (dengan deskripsi)
+                var geminiVoice = reminder.gemini_voice || "Leda";
+                document.getElementById('config-gemini-voice').innerHTML = formatGeminiVoice(geminiVoice);
+                
+                // ===== EDGE-TTS =====
+                document.getElementById('config-edge-tts').innerHTML = 
+                    (reminder.edge_configured === true) ? 
+                    '<span class="label label-success">TERINSTAL</span>' : 
+                    '<span class="label label-warning">TIDAK TERINSTAL</span>';
+                
+                var edgeVoice = reminder.edge_voice || "id-ID-ArdiNeural";
+                document.getElementById('config-edge-voice').innerHTML = formatEdgeVoice(edgeVoice);
+                
+                // ===== MURF.AI =====
+                document.getElementById('config-murf').innerHTML = 
+                    (reminder.murf_configured === true) ? 
+                    '<span class="label label-success">TERKONFIGURASI</span>' : 
+                    '<span class="label label-warning">BELUM DIKONFIGURASI</span>';
+				
+				// ===== SAHUR RAMADHAN =====
+				if (data.config && data.config.sahur) {
+					var sahur = data.config.sahur;
+					
+					// Status Sahur
+					document.getElementById('config-sahur').innerHTML = 
+						(sahur.enabled === 1 || sahur.enabled === true) ? 
+						'<span class="label label-success">AKTIF</span>' : 
+						'<span class="label label-default">NONAKTIF</span>';
+					
+					// Waktu Sahur
+					document.getElementById('config-sahur-time').textContent = sahur.time || "02:30";
+					
+					// Durasi Reminder
+					// var reminderMinutes = parseInt(sahur.reminder_minutes) || 15;
+					// document.getElementById('config-sahur-reminder').textContent = reminderMinutes + " menit sebelum";
+					
+					// Metode TTS
+					var rawTTSMethod = sahur.tts_method || "edge";
+					var humanizedTTSMethod = humanizeTTSMethod(rawTTSMethod);
+					document.getElementById('config-sahur-tts').textContent = humanizedTTSMethod;
+					
+					// Teks Custom
+					document.getElementById('config-sahur-text').innerHTML = 
+						(sahur.custom_text_exists === true) ? 
+						'<span class="label label-success">ADA</span>' : 
+						'<span class="label label-warning">DEFAULT</span>';
+					
+					// Preview Teks
+					var previewText = sahur.custom_text_preview || "";
+					if (previewText && previewText !== "") {
+						document.getElementById('config-sahur-preview').textContent = '"' + previewText + '"';
+					} else {
+						document.getElementById('config-sahur-preview').textContent = 
+							'(Gunakan bot Telegram untuk mengatur teks custom)';
+					}
+				}                
+                
+				// ===== TARHIM IMSYAK =====
+                // ✅ PERBAIKAN: Ambil dari data.config.tarhim, bukan dari reminder.tarhim
+                var tarhim = data.config.tarhim || {};
+                
+                // Status Tarhim
+                document.getElementById('config-tarhim').innerHTML = 
+                    (tarhim.enabled === true || tarhim.enabled === 1) ? 
+                    '<span class="label label-success">AKTIF</span>' : 
+                    '<span class="label label-default">NONAKTIF</span>';
+                
+                // Mode Tarhim
+                var tarhimModeText = "";
+                if (tarhim.mode === 'always') {
+                    tarhimModeText = '📆 Selalu (Setiap Hari)';
+                } else if (tarhim.mode === 'ramadhan_only') {
+                    tarhimModeText = '🌙 Ramadhan Only (Tarhim selalu, TTS hanya Ramadhan)';
+                } else {
+                    tarhimModeText = tarhim.mode || "-";
+                }
+                document.getElementById('config-tarhim-mode').innerHTML = tarhimModeText;
+                
+                // File Tarhim
+                // document.getElementById('config-tarhim-file').innerHTML = tarhim.file || "-";
+                
+                // File Exists
+                document.getElementById('config-tarhim-file-exists').innerHTML = 
+                    (tarhim.file_exists === true) ? 
+                    '<span class="label label-success">ADA</span>' : 
+                    '<span class="label label-danger">TIDAK ADA</span>';
+                
+                // Perilaku TTS Imsyak
+                document.getElementById('config-tarhim-tts-behavior').innerHTML = formatTtsImsyakBehavior(tarhim.tts_imsyak_behavior);
+                
+                // Deskripsi
+                document.getElementById('config-tarhim-description').innerHTML = tarhim.description || "-";
+                
+				// ===== STATUS RAMADHAN DENGAN TAHUN DAN BULAN HIJRIYAH =====
+				var hijriInfo = "";
+				var currentHijriMonth = "";
+				var currentHijriYear = "";
+				var isRamadhan = false;
+
+				if (data.schedule && data.schedule.date && data.schedule.date.hijri) {
+					// Format hijri biasanya: "12 Ramadhan 1445"
+					var hijriParts = data.schedule.date.hijri.match(/(\d+)\s+([^\d]+)\s+(\d+)/);
+					if (hijriParts) {
+						var day = hijriParts[1];
+						var month = hijriParts[2];
+						var year = hijriParts[3];
+						
+						currentHijriMonth = month;
+						currentHijriYear = year;
+						isRamadhan = (month.toLowerCase().indexOf('ramadhan') !== -1 || 
+									  month.toLowerCase().indexOf('ramadan') !== -1);
+						
+						hijriInfo = year + ' H (' + month + ')';
+					} else {
+						// Fallback: ambil tahun saja
+						var yearMatch = data.schedule.date.hijri.match(/(\d+)$/);
+						if (yearMatch) {
+							currentHijriYear = yearMatch[1];
+							hijriInfo = currentHijriYear + ' H';
+						}
+					}
+				}
+
+				if (tarhim.is_ramadhan_now === true || isRamadhan) {
+					var ramadhanText = '🌙 RAMADHAN ' + (currentHijriYear || '');
+					if (currentHijriMonth && currentHijriMonth !== "") {
+						ramadhanText = '🌙 ' + currentHijriMonth + ' ' + currentHijriYear + ' H';
+					}
+					document.getElementById('config-ramadhan').innerHTML = 
+						'<span class="label label-success" style="font-size: 13px; padding: 4px 10px;">' + 
+						ramadhanText + '</span>';
+				} else {
+					var nonRamadhanText = '📅 ' + (hijriInfo || 'BUKAN RAMADHAN');
+					document.getElementById('config-ramadhan').innerHTML = 
+						'<span class="label label-default" style="font-size: 13px; padding: 4px 10px;">' + 
+						nonRamadhanText + '</span>';
+				}
+                
+                // ===== AYAT =====
+                var ayat = data.config.ayat || {};
+                document.getElementById('config-ayat').innerHTML = getStatusLabel(ayat.enabled, "enabled");
+                
+                // ===== REMINDER =====
+                var reminder = data.config.reminder || {};
+                var reminderMinutes = parseInt(reminder.minutes_before) || 0;
+
+                // ✅ REMINDER ENABLED LOGIC: enabled = 1 jika minutes_before > 0
+                var reminderEnabled = (reminderMinutes > 0);
+
+                // Status Reminder (berdasarkan minutes_before)
+                document.getElementById('config-reminder').innerHTML = 
+                    reminderEnabled ? 
+                    '<span class="label label-success">AKTIF</span>' : 
+                    '<span class="label label-danger">NONAKTIF</span>';
+
+                // Menit Sebelum
+                document.getElementById('config-reminder-minutes').textContent = 
+                    reminderMinutes > 0 ? reminderMinutes + " menit" : "-";
+                
+                // Suara Reminder (sound_enabled dari JSON)
+                document.getElementById('config-reminder-sound').innerHTML = 
+                    (reminder.sound_enabled === true || reminder.sound_enabled === 1 || reminder.sound_enabled === "1") ? 
                     '<span class="label label-success">AKTIF</span>' : 
                     '<span class="label label-danger">NONAKTIF</span>';
                 
-                document.getElementById('config-sound').innerHTML = 
-                    data.config.sound === true || data.config.sound === "true" || data.config.sound === "1" ? 
-                    '<span class="label label-success">AKTIF</span>' : 
-                    '<span class="label label-danger">NONAKTIF</span>';
+                // TTS Method
+                var rawTTSMethod = reminder.tts_method || "edge";
+                var humanizedTTSMethod = humanizeTTSMethod(rawTTSMethod);
+                document.getElementById('config-tts-method').textContent = humanizedTTSMethod;
                 
-                document.getElementById('config-volume').textContent = 
-                    data.config.volume ? data.config.volume + "%" : "-";
+                // Jumlah Pengulangan
+                document.getElementById('config-reminder-repeat').textContent = 
+                    reminder.repeat_count ? reminder.repeat_count + "x" : "3x";
                 
-                document.getElementById('config-ayat').innerHTML = 
-                    data.config.ayat === true || data.config.ayat === "true" || data.config.ayat === "1" ? 
-                    '<span class="label label-success">AKTIF</span>' : 
-                    '<span class="label label-danger">NONAKTIF</span>';
+                // Interval Pengulangan
+                document.getElementById('config-reminder-interval').textContent = 
+                    reminder.repeat_interval ? reminder.repeat_interval + " detik" : "5 detik";
                 
-                document.getElementById('config-reminder').textContent = 
-                    data.config.reminder === "0" || data.config.reminder === 0 ? "NONAKTIF" : (data.config.reminder + " menit");
+                // File Intro
+                document.getElementById('config-in-reminder').innerHTML = 
+                    (reminder.in_reminder_exists === true) ? 
+                    '<span class="label label-success">ADA</span>' : 
+                    '<span class="label label-warning">TIDAK ADA</span>';
                 
+                // File Outro
+                document.getElementById('config-out-reminder').innerHTML = 
+                    (reminder.out_reminder_exists === true) ? 
+                    '<span class="label label-success">ADA</span>' : 
+                    '<span class="label label-warning">TIDAK ADA</span>';
+                
+                // Debug
+                var debug = data.config.debug || {};
                 document.getElementById('config-debug').innerHTML = 
-                    data.config.debug === true || data.config.debug === "true" || data.config.debug === "1" ? 
+                    (debug.enabled === 1) ? 
                     '<span class="label label-warning">AKTIF</span>' : 
                     '<span class="label label-default">NONAKTIF</span>';
-            } else {
-                debugLog("Config tidak ditemukan");
+                
+                // Status Kesehatan
+                document.getElementById('status-healthy').innerHTML = 
+                    (data.status && data.status.healthy === 1 || data.status && data.status.healthy === true) ? 
+                    '<span class="label label-success">SEHAT</span>' : 
+                    '<span class="label label-danger">BERMASALAH</span>';
             }
             
-            // ===== LOKASI (dalam Konfigurasi Fitur) =====
+            // ===== LOKASI =====
             if (data.location) {
                 debugLog("Location ditemukan");
-                document.getElementById('location-city').textContent = data.location.city || "-";
-                document.getElementById('location-province').textContent = data.location.province || "-";
-                document.getElementById('location-timezone').textContent = data.location.timezone || "-";
-                // Tanggal
-                if (document.getElementById('current-date')) {
-                    document.getElementById('current-date').textContent = data.location.date || "-";
-                }
+                var loc = data.location;
+                document.getElementById('location-city').textContent = loc.city || "-";
+                document.getElementById('location-province').textContent = loc.province || "-";
+                document.getElementById('location-timezone').textContent = loc.timezone || "-";
+            //    document.getElementById('location-coordinates').textContent = 
+            //        (loc.latitude && loc.latitude !== "" ? loc.latitude : "?") + ", " + 
+            //        (loc.longitude && loc.longitude !== "" ? loc.longitude : "?");
+                document.getElementById('location-hijri-adjustment').textContent = 
+                    (loc.hijri_adjustment !== undefined) ? loc.hijri_adjustment + " hari" : "-";
             }
-            // ===== INFORMASI TANGGAL =====
-            if (data.system && data.system.date) {
-                debugLog("System date ditemukan");
-                
-                // Hari (Jumat, Sabtu, dll)
-                if (data.system.date.day_name) {
-                    document.getElementById('current-day').textContent = data.system.date.day_name;
-                } else {
-                    // Fallback: hitung dari sistem
-                    var days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-                    var dayIndex = new Date().getDay();
-                    document.getElementById('current-day').textContent = days[dayIndex] || "-";
-                }
-                
-                // Tanggal Gregorian lengkap
-                if (data.system.date.gregorian_date) {
-                    document.getElementById('current-gregorian').textContent = data.system.date.gregorian_date;
-                } else {
-                    // Fallback: format dari sistem
-                    var months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-                                  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-                    var now = new Date();
-                    var day = now.getDate();
-                    var month = months[now.getMonth()];
-                    var year = now.getFullYear();
-                    document.getElementById('current-gregorian').textContent = day + " " + month + " " + year;
-                }
-                
-                // Tanggal Hijriyah
-                if (data.system.date.hijri_date) {
-                    document.getElementById('current-hijri').textContent = data.system.date.hijri_date;
-                } else {
-                    document.getElementById('current-hijri').textContent = "-";
-                }
-            } else {
-                // Fallback jika data.date tidak ada
-                var days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-                var dayIndex = new Date().getDay();
-                document.getElementById('current-day').textContent = days[dayIndex] || "-";
-                
-                var months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-                              'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-                var now = new Date();
-                var day = now.getDate();
-                var month = months[now.getMonth()];
-                var year = now.getFullYear();
-                document.getElementById('current-gregorian').textContent = day + " " + month + " " + year;
-                
-                document.getElementById('current-hijri').textContent = "Tidak tersedia";
-            }
-            // ===== JADWAL SHOLAT =====
+            
+            // ===== INFORMASI JADWAL =====
             if (data.schedule) {
                 debugLog("Schedule ditemukan");
+                var schedule = data.schedule;
                 
-                 // Sumber Jadwal
-                document.getElementById('schedule-source').textContent = data.schedule.source || "-";
+                // Tanggal
+                if (schedule.date) {
+                    document.getElementById('schedule-gregorian-date').textContent = 
+                        schedule.date.gregorian_full || schedule.date.gregorian || "-";
+                    document.getElementById('schedule-hijri-date').textContent = 
+                        schedule.date.hijri || "-";
+                    document.getElementById('current-day').textContent = 
+                        schedule.date.day_name || "-";
+                    document.getElementById('current-gregorian').textContent = 
+                        schedule.date.gregorian_full || schedule.date.gregorian || "-";
+                    document.getElementById('current-hijri').textContent = 
+                        schedule.date.hijri || "-";
+                }
                 
-                // Terakhir Jadwal Diperbarui
-                document.getElementById('schedule-last-updated').textContent = data.schedule.last_updated || "-";
+                // Sumber Jadwal
+                if (schedule.source) {
+                    document.getElementById('schedule-source').innerHTML = 
+                        schedule.source.name || schedule.source.id || "-";
+                }
+                
+                // File Jadwal
+                if (schedule.file) {
+                    document.getElementById('schedule-file').textContent = schedule.file.path || "-";
+                    document.getElementById('schedule-format').innerHTML = 
+                        '<span class="label label-info">' + (schedule.file.format || "unknown") + '</span>';
+                    document.getElementById('schedule-valid').innerHTML = 
+                        (schedule.file.valid === true) ? 
+                        '<span class="label label-success">VALID</span>' : 
+                        '<span class="label label-danger">TIDAK VALID</span>';
+                    document.getElementById('schedule-last-updated').textContent = 
+                        schedule.file.last_updated || "-";
+                }
                 
                 // Waktu Sholat
-                var prayerFields = [
-                    {id: 'imsyak-time', field: 'imsyak'},
-                    {id: 'subuh-time', field: 'subuh'},
-                    {id: 'dzuhur-time', field: 'dzuhur'},
-                    {id: 'ashar-time', field: 'ashar'},
-                    {id: 'maghrib-time', field: 'maghrib'},
-                    {id: 'isya-time', field: 'isya'}
-                ];
-                
-                prayerFields.forEach(function(item) {
-                    var time = data.schedule[item.field];
-                    if (time && time !== "-") {
-                        document.getElementById(item.id).textContent = time;
-                    } else {
-                        document.getElementById(item.id).textContent = "-";
-                    }
-                });
+                if (schedule.times) {
+                    var times = schedule.times;
+                    document.getElementById('imsyak-time').textContent = times.imsyak || "-";
+                    document.getElementById('subuh-time').textContent = times.subuh || "-";
+                    document.getElementById('dzuhur-time').textContent = times.dzuhur || "-";
+                    document.getElementById('ashar-time').textContent = times.ashar || "-";
+                    document.getElementById('maghrib-time').textContent = times.maghrib || "-";
+                    document.getElementById('isya-time').textContent = times.isya || "-";
+                }
             }
             
             // ===== SHOLAT BERIKUTNYA =====
             if (data.next_prayer) {
                 debugLog("Next prayer ditemukan");
-                document.getElementById('next-prayer-name').textContent = data.next_prayer.name || "-";
-                document.getElementById('next-prayer-time').textContent = data.next_prayer.time || "-";
+                var next = data.next_prayer;
+                document.getElementById('next-prayer-name').textContent = next.name || "-";
+                document.getElementById('next-prayer-time').textContent = next.time || "-";
+                document.getElementById('next-prayer-timestamp').textContent = next.timestamp || "";
+                
+                // Update countdown langsung
+                if (next.minutes_left_human) {
+                    var countdownElement = document.getElementById('next-prayer-countdown');
+                    countdownElement.textContent = next.minutes_left_human;
+                }
             }
             
             // ===== INFORMASI SISTEM =====
             if (data.system) {
                 debugLog("System ditemukan");
+                var sys = data.system;
                 
-                // Simpan uptime sistem untuk perhitungan real-time
-                if (data.system.uptime) {
-                    window.systemUptimeSeconds = parseInt(data.system.uptime) || 0;
+                // Uptime sistem
+                if (sys.uptime) {
+                    window.systemUptimeSeconds = parseInt(sys.uptime) || 0;
                     window.systemStartTime = Date.now() - (window.systemUptimeSeconds * 1000);
                 }
+                document.getElementById('system-uptime').textContent = formatUptime(sys.uptime, sys.uptime_human);
                 
-                // Update uptime sistem pertama kali
-                document.getElementById('system-uptime').textContent = formatUptime(data.system.uptime, data.system.uptime_human);
+                // Hostname
+                document.getElementById('system-hostname').textContent = sys.hostname || "unknown";
                 
-                // ===== MEMORI SISTEM =====
-                if (data.system.memory) {
-                    // Sync cache dengan data terbaru dari loadStatus
-                    memoryDataCache = data.system.memory;
-                    memoryLastUpdate = Date.now();
-                    debugLog("Memory cache synced from loadStatus");
-                    
-                    // Update tampilan memory juga
-                    updateMemoryDisplay(data.system.memory);
+                // Kernel
+                document.getElementById('system-kernel').textContent = sys.kernel || "-";
+                
+                // Architecture
+                document.getElementById('system-architecture').textContent = sys.architecture || "-";
+                
+                // Load Average
+                if (sys.load_average) {
+                    document.getElementById('system-load-1').textContent = sys.load_average["1min"] || "0.00";
+                    document.getElementById('system-load-5').textContent = sys.load_average["5min"] || "0.00";
+                    document.getElementById('system-load-15').textContent = sys.load_average["15min"] || "0.00";
                 }
                 
-                // Log Jsholat
-                if (data.system.jsholat_log) {
-                    document.getElementById('log-jsholat-file').textContent = 
-                        "service.log";
-                    document.getElementById('log-jsholat-size').textContent = data.system.jsholat_log.size || "0";
-                    document.getElementById('log-jsholat-lines').textContent = data.system.jsholat_log.lines || "0";
-                }
+				// Memory dengan format GB
+				if (sys.memory) {
+					memoryDataCache = sys.memory;
+					memoryLastUpdate = Date.now();
+					debugLog("Memory cache synced from loadStatus");
+					
+					// Tentukan format mana yang akan ditampilkan
+					var memoryDisplay = sys.memory.human_readable_gb || sys.memory.human_readable || "-";
+					
+					// Update display dengan format GB
+					var memHumanElement = document.getElementById('memory-human-readable');
+					if (memHumanElement) {
+						memHumanElement.textContent = memoryDisplay;
+					}
+					
+					// Update memory display dengan data lengkap
+					updateMemoryDisplay(sys.memory);
+				}
                 
-                // Log Bot
-                if (data.system.bot_log) {
-                    document.getElementById('log-bot-file').textContent = "bot.log";
-                    document.getElementById('log-bot-size').textContent = data.system.bot_log.size || "0";
-                    document.getElementById('log-bot-lines').textContent = data.system.bot_log.lines || "0";
-                } else {
-                    // Fallback ke bot.log jika tidak ada di system
-                    document.getElementById('log-bot-file').textContent = "bot.log";
-                }
+                // Current time
+                document.getElementById('current-time').textContent = sys.current_time || 
+                    new Date().getHours().toString().padStart(2,'0') + ":" + 
+                    new Date().getMinutes().toString().padStart(2,'0');
             }
             
-            // ===== UPDATE TIME =====
-            if (data.status && data.status.last_update) {
-                document.getElementById('last-update').textContent = data.status.last_update;
+            // ===== LOG FILES =====
+            if (data.service) {
+                var service = data.service;
+                document.getElementById('log-jsholat-file').textContent = service.log_file || "/var/log/jsholat/service.log";
+                document.getElementById('log-jsholat-size').textContent = service.log_size || "0";
+                document.getElementById('log-jsholat-lines').textContent = service.log_lines || "0";
+            }
+            
+            if (data.bot) {
+                var bot = data.bot;
+                document.getElementById('log-bot-file').textContent = bot.log_file || "/var/log/jsholat/bot.log";
+                document.getElementById('log-bot-size').textContent = bot.log_size || "0";
+                document.getElementById('log-bot-lines').textContent = bot.log_lines || "0";
+            }
+            
+            // ===== STATUS TIMESTAMP =====
+            if (data.status && data.status.timestamp) {
+                document.getElementById('status-timestamp').textContent = data.status.timestamp;
             }
             
             debugLog("Load status selesai");
@@ -1115,26 +1696,19 @@ function loadStatus() {
                 '<span class="label label-danger">Gagal memuat data</span>';
             document.getElementById('service-name').textContent = "Error: " + error.message;
             
-            // Set semua field ke error state
-            var errorElements = [
-                'service-name-bot', 'bot-status', 'service-pid', 'service-uptime', 'service-start-time',
-                'service-enabled', 'bot-pid', 'bot-uptime', 'bot-start-time',
-                'bot-telegram-enabled', 'bot-configured', 'bot-memory',
-                'config-telegram', 'config-sound', 'config-volume',
-                'config-ayat', 'config-reminder', 'config-debug',
-                'location-city', 'location-province', 'location-timezone', 'current-date',
-                'current-time', 'system-uptime', 'imsyak-time', 'subuh-time',
-                'dzuhur-time', 'ashar-time', 'maghrib-time', 'isya-time',
-                'next-prayer-name', 'next-prayer-time', 'next-prayer-countdown',
-                'log-jsholat-size', 'log-jsholat-lines', 'log-bot-size',
-                'log-bot-lines', 'last-update',
-                'memory-human-readable', 'memory-used', 'memory-total', 'memory-percent',
-                'memory-update-timer'
-            ];
-            
-            errorElements.forEach(function(id) {
-                var element = document.getElementById(id);
-                if (element) element.textContent = "-";
+            // Reset semua field ke error state
+            var errorElements = document.querySelectorAll('table td[id], .cbi-value-field span[id]');
+            errorElements.forEach(function(element) {
+                if (element.id && element.id !== 'debug-output' && element.id !== 'memory-update-timer') {
+                    if (element.id.includes('config-gemini') || 
+                        element.id.includes('config-edge') ||
+                        element.id.includes('config-murf') ||
+                        element.id.includes('config-tarhim')) {
+                        element.innerHTML = "-";
+                    } else {
+                        element.textContent = "-";
+                    }
+                }
             });
             
             // Reset progress bar
@@ -1174,13 +1748,12 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(loadStatus, 30000);
     
     // 3. Mulai interval KHUSUS memory (5 detik)
-    // Tunggu 2 detik pertama biar tidak bentrok dengan loadStatus awal
     setTimeout(function() {
         memoryUpdateInterval = setInterval(updateMemoryOnly, 5000);
         debugLog("Memory interval started (5 seconds)");
     }, 2000);
     
-    // 4. Real-time updates untuk waktu (1 detik) - TETAP ADA
+    // 4. Real-time updates untuk waktu (1 detik)
     setInterval(updateAllTimeData, 1000);
 });
 
@@ -1190,13 +1763,10 @@ document.addEventListener('DOMContentLoaded', function() {
 document.addEventListener('visibilitychange', function() {
     if (memoryUpdateInterval) {
         if (document.hidden) {
-            // Halaman tidak terlihat, pause interval
             clearInterval(memoryUpdateInterval);
             memoryUpdateInterval = null;
             debugLog("Memory interval paused (tab hidden)");
         } else {
-            // Halaman terlihat lagi, resume interval
-            // Update segera, lalu mulai interval
             updateMemoryOnly();
             memoryUpdateInterval = setInterval(updateMemoryOnly, 5000);
             debugLog("Memory interval resumed (tab visible)");
@@ -1293,6 +1863,17 @@ table.table tr:hover {
     .cbi-value-field {
         margin-left: 130px;
     }
+}
+
+/* Style untuk preview teks sahur */
+#config-sahur-preview {
+    max-width: 400px;
+    word-wrap: break-word;
+    background-color: #f9f9f9;
+    padding: 5px 10px;
+    border-radius: 4px;
+    border-left: 3px solid #ff9800;
+    font-size: 12px;
 }
 </style>
 

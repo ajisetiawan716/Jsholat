@@ -1,9 +1,9 @@
 #!/bin/bash
-#(c) 2022-2025 Jsholat by Aji Setiawan - github.com/ajisetiawan716/Jsholat
+#(c) 2025-2026 Jsholat by Aji Setiawan - github.com/ajisetiawan716/Jsholat
 # jsholat-installer — luci-app-jsholat installer (OpenWrt)
 # Menu:
-#  1) Install paket pendukung (deps + MP3)
-#  2) Install paket pendukung (deps + MP3)
+#  1) Install paket pendukung (deps + MP3 + TTS Feature)
+#  2) Install driver soundcard
 #  3) Install IPK/APK (URL/file | MAIN* | DEV* | Latest Release)
 #  4) Uninstall (opkg remove)
 #  5) Bersihkan cache LuCI
@@ -36,11 +36,11 @@ IPK_PREFIX="${IPK_PREFIX:-luci-app-jsholat}"
 IPK_REGEX="${IPK_REGEX:-luci-app-jsholat.*\.(ipk|apk)$}"
 
 # URL raw data untuk instal manual (file luci + script + data)
-GH_DATA="https://raw.githubusercontent.com/ajisetiawan716/luci-app-jsholat/refs/heads/main/data"
+GH_DATA="https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/data"
 
 # URL langsung (blob GitHub .ipk) — boleh diubah sesuai rilis
-MAIN_DIRECT_URL="https://github.com/ajisetiawan716/Jsholat/blob/package/main/luci-app-jsholat-0.1.0-r20250819_all.ipk"
-DEV_DIRECT_URL="https://github.com/ajisetiawan716/Jsholat/blob/package/dev/luci-app-jsholat-0.1.0-r20250819_all.ipk"
+MAIN_DIRECT_URL="https://github.com/${GH_OWNER}/Jsholat/blob/package/main/luci-app-jsholat-0.1.0-r20250819_all.ipk"
+DEV_DIRECT_URL="https://github.com/${GH_OWNER}/Jsholat/blob/package/dev/luci-app-jsholat-0.1.0-r20250819_all.ipk"
 
 # Temp
 JSHOLAT_TEMP_DIR="/tmp/jsholat"
@@ -233,7 +233,10 @@ strip_crlf(){ [ -f "$1" ] && grep -q $'\r' "$1" && sed -i 's/\r$//' "$1" || true
 clean_luci_cache(){
   info "bersihkan cache LuCI..."
   rm -f /tmp/luci-indexcache
+  rm -f /tmp/luci-indexcache*
   rm -f /tmp/luci-modulecache/* 2>/dev/null || true
+  /etc/init.d/uhttpd restart
+  /etc/init.d/rpcd restart
   ok "cache LuCI bersih"
 }
 enable_and_start(){
@@ -249,6 +252,7 @@ sanitize_data644(){ [ -f "$1" ] && chmod 644 "$1" 2>/dev/null || true; }
 
 # ===== Python & PIL/Pillow =====
 pip_has_break_flag(){ command -v pip3 >/dev/null 2>&1 && pip3 --help 2>/dev/null | grep -q -- '--break-system-packages'; }
+pip_has_root_user_action(){ command -v pip3 >/dev/null 2>&1 && pip3 --help 2>/dev/null | grep -q -- '--root-user-action'; }
 python_can_import_pillow(){
   command -v python3 >/dev/null 2>&1 || return 1
   python3 - <<'PY'
@@ -262,9 +266,18 @@ PY
 }
 pip_install(){
   PKGNAME="$1"
+  # Coba dengan --root-user-action=ignore jika tersedia
+  if pip_has_root_user_action; then
+    if python3 -m pip install --no-cache-dir --upgrade --root-user-action=ignore "$PKGNAME"; then
+      return 0
+    fi
+  fi
+  
+  # Fallback ke metode lama
   if python3 -m pip install --no-cache-dir --upgrade "$PKGNAME"; then
     return 0
   fi
+  
   if pip_has_break_flag; then
     warn "pip install $PKGNAME gagal, coba dengan --break-system-packages ..."
     python3 -m pip install --no-cache-dir --upgrade --break-system-packages "$PKGNAME"
@@ -275,6 +288,13 @@ pip_install(){
 }
 pip_install_ignore_nodeps(){
   PKGNAME="$1"
+  # Coba dengan --root-user-action=ignore jika tersedia
+  if pip_has_root_user_action; then
+    if python3 -m pip install --ignore-installed --no-deps --root-user-action=ignore "$PKGNAME"; then
+      return 0
+    fi
+  fi
+  
   if pip_has_break_flag; then
     python3 -m pip install --ignore-installed --no-deps --break-system-packages "$PKGNAME"
   else
@@ -294,6 +314,93 @@ resolve_pillow_version(){
   V=$(parse_pillow_ver_from_pkgname 2>/dev/null || true)
   if [ -n "$V" ]; then echo "$V"; return 0; fi
   echo "$PILLOW_PIN_DEFAULT"
+}
+
+# ===== Fungsi untuk Install edge-tts =====
+python_can_import_edge_tts(){
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 - <<'PY'
+try:
+    import edge_tts
+    print("✅ edge_tts dapat diimport")
+except ImportError:
+    print("❌ edge_tts tidak dapat diimport")
+    import sys
+    sys.exit(1)
+PY
+}
+
+install_edge_tts(){
+  info "Memulai instalasi edge-tts..."
+  
+  # Cek apakah edge-tts sudah terinstall
+  if python_can_import_edge_tts 2>/dev/null; then
+    ok "edge-tts sudah terinstall"
+    return 0
+  fi
+  
+  # Update pip terlebih dahulu
+  info "Update pip..."
+  if pip_has_root_user_action; then
+    python3 -m pip install --upgrade --root-user-action=ignore pip || warn "Update pip mungkin gagal, lanjut..."
+  else
+    python3 -m pip install --upgrade pip || warn "Update pip mungkin gagal, lanjut..."
+  fi
+  
+  # Install edge-tts via pip dengan --root-user-action=ignore jika tersedia
+  info "Instal edge-tts via pip..."
+  
+  if pip_has_root_user_action; then
+    info "Menggunakan --root-user-action=ignore..."
+    if python3 -m pip install --no-cache-dir --upgrade --root-user-action=ignore edge-tts; then
+      if python_can_import_edge_tts 2>/dev/null; then
+        ok "edge-tts berhasil diinstall (dengan --root-user-action=ignore)"
+        return 0
+      fi
+    fi
+  fi
+  
+  # Jika --root-user-action tidak tersedia atau gagal, coba metode biasa
+  warn "Coba install edge-tts tanpa --root-user-action..."
+  if pip_install "edge-tts"; then
+    if python_can_import_edge_tts 2>/dev/null; then
+      ok "edge-tts berhasil diinstall"
+      return 0
+    fi
+  fi
+  
+  # Coba versi spesifik yang lebih stabil
+  info "Coba install edge-tts versi 6.1.9 (lebih stabil)..."
+  if pip_has_root_user_action; then
+    python3 -m pip install --no-cache-dir --upgrade --root-user-action=ignore "edge-tts==6.1.9"
+  else
+    pip_install "edge-tts==6.1.9"
+  fi
+  
+  if python_can_import_edge_tts 2>/dev/null; then
+    ok "edge-tts 6.1.9 berhasil diinstall"
+    return 0
+  fi
+  
+  # Fallback terakhir: install dengan ignore-installed
+  warn "Coba install dengan --ignore-installed --no-deps..."
+  pip_install_ignore_nodeps "edge-tts"
+  
+  if python_can_import_edge_tts 2>/dev/null; then
+    ok "edge-tts berhasil diinstall (dengan ignore-installed)"
+    
+    # Test edge-tts
+    info "Testing edge-tts..."
+    if python3 -c "import edge_tts; print('✅ edge_tts versi:', edge_tts.__version__)" 2>/dev/null; then
+      ok "edge-tts berfungsi dengan baik"
+    fi
+    
+    return 0
+  else
+    warn "Gagal install edge-tts"
+    warn "Mungkin perlu dependencies tambahan atau koneksi internet"
+    return 1
+  fi
 }
 
 # ===== Cleanup Pillow =====
@@ -337,6 +444,9 @@ ensure_base_deps(){
   install_pkg alsa-utils || warn "alsa-utils gagal"
   install_pkg curl || warn "curl gagal"
   install_pkg jq || warn "jq gagal"
+  install_pkg svox || warn "svox gagal"
+  install_pkg libsoxr || warn "libsoxr gagal"
+  install_pkg ffmpeg || warn "ffmpeg gagal"
   install_pkg whiptail || warn "whiptail gagal"
   
   if ! install_pkg madplay; then
@@ -355,6 +465,11 @@ ensure_base_deps(){
   install_pkg libfreetype || warn "libfreetype gagal"
   install_pkg python3 || { err "python3 gagal"; return 1; }
   pkg_installed python3-pip || install_pkg python3-pip || warn "pip3 tak ada"
+  
+  # Dependencies tambahan untuk edge-tts
+  install_pkg python3-urllib3 || warn "urllib3 mungkin gagal"
+  install_pkg python3-requests || warn "requests mungkin gagal"
+  install_pkg python3-websockets || warn "websockets mungkin gagal"
   
   return 0
 }
@@ -403,17 +518,22 @@ install_support_files(){
   
   # Buat direktori sounds untuk file reminder
   mkdir -p /usr/share/jsholat/sounds
-
+  
+  # Unduh file adzan ke /root/jsholat
   download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/adzan.mp3"       "/root/jsholat/adzan.mp3"       || true
   download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/adzan_subuh.mp3" "/root/jsholat/adzan_subuh.mp3" || true
   download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/tarhim.mp3"      "/root/jsholat/tarhim.mp3" || true
-  download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/in_reminder.mp3"      "/usr/share/jsholat/sounds/in_reminder.mp3" || true
-  download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/out_reminder.mp3"      "/usr/share/jsholat/sounds/out_reminder.mp3" || true
+  
+  # Cek jika tarhim.mp3 tidak ada, coba tahrim.mp3 sebagai fallback
   if [ ! -s /root/jsholat/tarhim.mp3 ]; then
     warn "tarhim.mp3 tidak ditemukan, fallback tahrim.mp3"
     download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/tahrim.mp3" "/root/jsholat/tarhim.mp3" || true
   fi
- 
+  
+  # Unduh file reminder ke /usr/share/jsholat/sounds
+  download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/in_reminder.mp3" "/usr/share/jsholat/sounds/in_reminder.mp3" || true
+  download_if_missing "https://raw.githubusercontent.com/${GH_OWNER}/luci-app-jsholat/refs/heads/main/sounds/out_reminder.mp3" "/usr/share/jsholat/sounds/out_reminder.mp3" || true
+  
   # Sanitasi hanya file yang berhasil diunduh
   [ -f /root/jsholat/adzan.mp3 ] && sanitize_data644 /root/jsholat/adzan.mp3
   [ -f /root/jsholat/adzan_subuh.mp3 ] && sanitize_data644 /root/jsholat/adzan_subuh.mp3
@@ -439,17 +559,25 @@ install_dependencies_consolidated() {
       ensure_base_deps
       ensure_pillow || warn "Pillow belum aktif"
       install_support_files
+      install_edge_tts || warn "Edge-TTS mungkin gagal"
     } 2>&1 | whiptail --title "Install Dependencies" --gauge "Sedang menginstall dependencies..." 8 78 0
     if [ ${PIPESTATUS[0]} -eq 0 ]; then
-      whiptail --title "Sukses" --msgbox "✅ Install dependensi & paket pendukung selesai!" 8 78
+      whiptail --title "Sukses" --msgbox "✅ Install dependensi & paket pendukung selesai!\n\nTermasuk:\n• Dependencies dasar\n• Pillow (image processing)\n• File MP3 adzan\n• Edge-TTS (Text-to-Speech)" 12 78
     else
-      whiptail --title "Error" --msgbox "❌ Ada error saat install dependencies" 8 78
+      whiptail --title "Info" --msgbox "⚠️  Install dependencies selesai dengan beberapa warning.\nBeberapa fitur mungkin tidak optimal." 10 78
     fi
   else
     echo "🚀 Memulai install dependensi & paket pendukung..."
+    echo "📋 Termasuk:"
+    echo "  • Dependencies dasar"
+    echo "  • Pillow (image processing)"
+    echo "  • File MP3 adzan"
+    echo "  • Edge-TTS (Text-to-Speech)"
+    echo ""
     ensure_base_deps
     ensure_pillow || warn "Pillow belum aktif"
     install_support_files
+    install_edge_tts || warn "Edge-TTS mungkin gagal"
     echo "✅ Install dependensi & paket pendukung selesai!"
   fi
 }
@@ -592,6 +720,7 @@ install_pkg_file(){
   opkg install "$FILE" || { err "gagal opkg install"; return 1; }
   enable_and_start jsholat
   enable_and_start jadwal
+  enable_and_start jsholat-bot
   clean_luci_cache
   ok "instal paket selesai"
 }
@@ -721,6 +850,7 @@ install_soundcard_driver() {
   # Tulis /etc/asound.conf
   cat > /etc/asound.conf <<EOF_ASOUND
 # Auto-generated by jsholat-installer
+# (c) 2025-2026 @ajisetiawan716
 # Default diarahkan ke non-HDMI; gunakan nama card agar stabil.
 pcm.dmixer {
     type dmix
@@ -782,7 +912,7 @@ menu(){
   echo " ==========================================="
   echo "           🕌 JSHOLAT INSTALLER 🕌          "
   echo " ==========================================="
-  echo " 1) 📦 Install paket pendukung (deps + MP3)"
+  echo " 1) 📦 Install paket pendukung (deps + MP3 + TTS Feature)"
   echo " 2) 🔊 Install driver soundcard"
   echo " 3) 📥 Install IPK/APK"
   echo "    a) 🌐 Paket dari URL/file"
@@ -802,7 +932,7 @@ is_root || { err "jalankan sebagai root"; exit 1; }
 while true; do
   if has_whiptail; then
     choice=$(whiptail --title "🕌 JSHOLAT INSTALLER" --menu "Pilih aksi:" 22 78 12 \
-      "1" "📦 Install paket pendukung (deps + MP3)" \
+      "1" "📦 Install paket pendukung (deps + MP3 + TTS Feature)" \
       "2" "🔊 Install driver soundcard" \
       "3" "📥 Install IPK/APK" \
       "4" "🗑️  Uninstall (opkg remove)" \
