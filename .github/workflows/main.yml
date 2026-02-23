@@ -1,0 +1,181 @@
+name: Compile The New Version JSholat
+
+on:
+  push:
+    branches: [ dev ]
+    paths: [ 'luci-app-jsholat/Makefile' ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  get_version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      current_version: ${{ steps.current_version.outputs.version }}
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: New Version
+        id: version
+        shell: bash
+        run: |
+          V=$(grep 'PKG_VERSION:=' ./luci-app-jsholat/Makefile | awk -F '=' '{gsub(/[ \t]/,"",$2); print $2}')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "New Version: $V"
+
+      - name: Checkout package branch
+        uses: actions/checkout@v4
+        with:
+          ref: package
+
+      - name: Current Version
+        id: current_version
+        shell: bash
+        run: |
+          if [ -f "./${{ github.ref_name }}/version" ]; then
+            CV=$(sed -n '1p' "./${{ github.ref_name }}/version" | awk -F 'v' '{print $2}')
+          else
+            CV=0
+          fi
+          echo "version=$CV" >> "$GITHUB_OUTPUT"
+          echo "Current Version: $CV"
+
+  Compile:
+    runs-on: ubuntu-latest
+    needs: get_version
+    if: ${{ needs.get_version.outputs.version != needs.get_version.outputs.current_version }}
+    env:
+      PKG_NAME: luci-app-jsholat
+      # ====== SESUAIKAN TARGET SDK-MU ======
+      # Stable (IPK)
+      SDK_IPK_URL: https://downloads.openwrt.org/releases/24.10.2/targets/x86/64/openwrt-sdk-24.10.2-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+      # Snapshot (APK)
+      SDK_APK_URL: https://downloads.openwrt.org/snapshots/targets/x86/64/openwrt-sdk-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+    steps:
+      - name: Checkout dev (source)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Install prerequisites
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install git curl wget xz-utils zstd tar build-essential \
+                                  python3 rsync file
+
+      - name: Prep dirs
+        run: |
+          echo "TMPDIR=$GITHUB_WORKSPACE/../tmp" >> "$GITHUB_ENV"
+          echo "OUTDIR=$GITHUB_WORKSPACE/_out"  >> "$GITHUB_ENV"
+          mkdir -p "$GITHUB_WORKSPACE/../tmp" "$GITHUB_WORKSPACE/_out"
+
+      - name: Download & extract SDK (IPK / stable)
+        run: |
+          set -eux
+          cd "$TMPDIR"
+          wget -q "$SDK_IPK_URL" -O SDK_IPK.tar.zst
+          tar --zstd -xf SDK_IPK.tar.zst
+          mv openwrt-sdk-* SDK_IPK
+
+      - name: Download & extract SDK (APK / snapshot)
+        run: |
+          set -eux
+          cd "$TMPDIR"
+          wget -q "$SDK_APK_URL" -O SDK_APK.tar.zst
+          tar --zstd -xf SDK_APK.tar.zst
+          mv openwrt-sdk-* SDK_APK
+
+      - name: Prepare feeds & link package (IPK)
+        run: |
+          set -eux
+          cd "$TMPDIR/SDK_IPK"
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          rm -rf package/$PKG_NAME
+          ln -s "$GITHUB_WORKSPACE/$PKG_NAME" "package/$PKG_NAME"
+          make defconfig
+
+      - name: Build (IPK / stable)
+        run: |
+          set -eux
+          cd "$TMPDIR/SDK_IPK"
+          make package/$PKG_NAME/compile -j$(nproc) V=sc
+
+      - name: Prepare feeds & link package (APK)
+        run: |
+          set -eux
+          cd "$TMPDIR/SDK_APK"
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          rm -rf package/$PKG_NAME
+          ln -s "$GITHUB_WORKSPACE/$PKG_NAME" "package/$PKG_NAME"
+          make defconfig
+
+      - name: Build (APK / snapshot)
+        run: |
+          set -eux
+          cd "$TMPDIR/SDK_APK"
+          make package/$PKG_NAME/compile -j$(nproc) V=sc
+
+      - name: Collect artifacts (.ipk & .apk)
+        id: collect
+        run: |
+          set -eux
+          find "$TMPDIR/SDK_IPK/bin" -type f -name "*.ipk" -exec cp -v {} "$OUTDIR"/ \; || true
+          find "$TMPDIR/SDK_APK/bin" -type f -name "*.apk" -exec cp -v {} "$OUTDIR"/ \; || true
+          ls -lh "$OUTDIR" || true
+          echo "count=$(ls -1 "$OUTDIR"/*.{ipk,apk} 2>/dev/null | wc -l || true)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifacts
+        if: steps.collect.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jsholat-${{ needs.get_version.outputs.version }}
+          path: |
+            _out/*.ipk
+            _out/*.apk
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Switch to package branch
+        uses: actions/checkout@v4
+        with:
+          ref: package
+
+      - name: Publish to package branch
+        run: |
+          set -eux
+          BR="${{ github.ref_name }}"
+          mkdir -p "./$BR"
+          rm -f "./$BR/${{ env.PKG_NAME }}*.ipk" "./$BR/${{ env.PKG_NAME }}*.apk" || true
+          echo "v${{ needs.get_version.outputs.version }}" > "./$BR/version"
+          echo "https://img.shields.io/badge/New Release-v${{ needs.get_version.outputs.version }}-orange.svg" >> "./$BR/version"
+          cp -v "$OUTDIR"/*.{ipk,apk} "./$BR/" 2>/dev/null || true
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .
+          git commit -m "Auto Package Update: v${{ needs.get_version.outputs.version }}" || echo "No changes"
+          git push
+
+      - name: Create GitHub Release (upload .ipk & .apk)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.get_version.outputs.version }}
+          name: v${{ needs.get_version.outputs.version }}
+          files: |
+            _out/*.ipk
+            _out/*.apk
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
