@@ -23,45 +23,45 @@
 
 ### 1. Pengaturan Jadwal
 
-![Screenshot JSHOLAT 1](docs/screenshot/Screenshots_1.png)
+![Screenshot JSHOLAT 1](docs/screenshots/Screenshots_1.png)
 
-![Screenshot JSHOLAT 2](docs/screenshot/Screenshots_2.png)
+![Screenshot JSHOLAT 2](docs/screenshots/Screenshots_2.png)
 
-![Screenshot JSHOLAT 3](docs/screenshot/Screenshots_3.png)
+![Screenshot JSHOLAT 3](docs/screenshots/Screenshots_3.png)
 
-![Screenshot JSHOLAT 4](docs/screenshot/Screenshots_4.png)
+![Screenshot JSHOLAT 4](docs/screenshots/Screenshots_4.png)
 
-![Screenshot JSHOLAT 5](docs/screenshot/Screenshots_5.png)
+![Screenshot JSHOLAT 5](docs/screenshots/Screenshots_5.png)
 
-![Screenshot JSHOLAT 6](docs/screenshot/Screenshots_6.png)
+![Screenshot JSHOLAT 6](docs/screenshots/Screenshots_6.png)
 
 ---
 
 ### 2. Status Detail
 
-![Screenshot JSHOLAT 7](docs/screenshot/Screenshots_7.png)
+![Screenshot JSHOLAT 7](docs/screenshots/Screenshots_7.png)
 
-![Screenshot JSHOLAT 8](docs/screenshot/Screenshots_8.png)
+![Screenshot JSHOLAT 8](docs/screenshots/Screenshots_8.png)
 
-![Screenshot JSHOLAT 9](docs/screenshot/Screenshots_9.png)
+![Screenshot JSHOLAT 9](docs/screenshots/Screenshots_9.png)
 
-![Screenshot JSHOLAT 10](docs/screenshot/Screenshots_10.png)
+![Screenshot JSHOLAT 10](docs/screenshots/Screenshots_10.png)
 
 ---
 
 ### 3. Jadwal Bulanan
 
-![Screenshot JSHOLAT 11](docs/screenshot/Screenshots_11.png)
+![Screenshot JSHOLAT 11](docs/screenshots/Screenshots_11.png)
 
 ---
 
 ### 4. Halaman Log
 
-![Screenshot JSHOLAT 12](docs/screenshot/Screenshots_12.png)
+![Screenshot JSHOLAT 12](docs/screenshots/Screenshots_12.png)
 
-![Screenshot JSHOLAT 13](docs/screenshot/Screenshots_13.png)
+![Screenshot JSHOLAT 13](docs/screenshots/Screenshots_13.png)
 
-![Screenshot JSHOLAT 14](docs/screenshot/Screenshots_14.png)
+![Screenshot JSHOLAT 14](docs/screenshots/Screenshots_14.png)
 
 ---
 
