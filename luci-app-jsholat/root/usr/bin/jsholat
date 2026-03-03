@@ -2131,12 +2131,16 @@ check_internet_connection() {
 
 declare -a GLOBAL_FAILED_METHODS=()
 GLOBAL_FAILED_METHODS_CACHE="/tmp/jsholat_cache/jsholat_failed_methods.cache"
-TTS_PRIORITY=(
-    ["gemini"]=100
-    ["edge"]=90
-    ["murf"]=80
-    ["google"]=60
-    ["espeak"]=30
+
+# FUNGSI TTS FALLBACK BIDIRECTIONAL 
+# Skor kualitas suara untuk prioritas fallback
+# Skor prioritas (semakin tinggi, semakin diprioritaskan)
+declare -A TTS_PRIORITY=(
+    ["gemini"]=100  # Premium AI voice (butuh API key)
+    ["edge"]=90     # Natural neural voice (gratis, kualitas bagus)
+    ["murf"]=80     # Premium AI voice (butuh API key berbayar)
+    ["google"]=60   # Standard TTS (gratis, selalu tersedia)
+    ["espeak"]=30   # Robotik voice (offline, last resort)
 )
 
 # ----------------------------------------------------------------------
@@ -2196,17 +2200,6 @@ reset_global_failed_methods() {
     echo "$(date +"%Y-%m-%d")" > "$GLOBAL_FAILED_METHODS_CACHE"
     [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔄 Reset global failed methods untuk hari baru"
 }
-
-# FUNGSI TTS FALLBACK BIDIRECTIONAL 
-# Skor kualitas suara untuk prioritas fallback
-# Skor prioritas (semakin tinggi, semakin diprioritaskan)
-declare -A TTS_PRIORITY=(
-    ["gemini"]=100  # Premium AI voice (butuh API key)
-    ["edge"]=90     # Natural neural voice (gratis, kualitas bagus)
-    ["murf"]=80     # Premium AI voice (butuh API key berbayar)
-    ["google"]=60   # Standard TTS (gratis, selalu tersedia)
-    ["espeak"]=30   # Robotik voice (offline, last resort)
-)
 
 # =============================================
 # FUNGSI MENDAPATKAN METODE TTS YANG TERSEDIA
