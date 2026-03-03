@@ -11,13 +11,20 @@
     {"value": "acehtenggara", "label": "Aceh Tenggara", "timezone": "WIB"},
     {"value": "acehtimur", "label": "Aceh Timur", "timezone": "WIB"},
     {"value": "acehutara", "label": "Aceh Utara", "timezone": "WIB"},
-    {"value": "bener-meriah", "label": "Bener Meriah", "timezone": "WIB"},
+    {"value": "benermeriah", "label": "Bener Meriah", "timezone": "WIB"},
     {"value": "bireuen", "label": "Bireuen", "timezone": "WIB"},
-    {"value": "gayo-lues", "label": "Gayo Lues", "timezone": "WIB"},
+    {"value": "gayolues", "label": "Gayo Lues", "timezone": "WIB"},
     {"value": "lhokseumawe", "label": "Lhokseumawe", "timezone": "WIB"},
     {"value": "sabang", "label": "Sabang", "timezone": "WIB"},
     {"value": "tapaktuan", "label": "Tapak Tuan", "timezone": "WIB"},
-    {"value": "takengon", "label": "Takengon", "timezone": "WIB"}
+    {"value": "takengon", "label": "Takengon", "timezone": "WIB"},
+    {"value": "kotabandaaceh", "label": "Kota Banda Aceh", "timezone": "WIB"},
+    {"value": "kotalangsa", "label": "Kota Langsa", "timezone": "WIB"},
+    {"value": "kotasubulussalam", "label": "Kota Subulussalam", "timezone": "WIB"},
+    {"value": "naganraya", "label": "Nagan Raya", "timezone": "WIB"},
+    {"value": "pidie", "label": "Pidie", "timezone": "WIB"},
+    {"value": "pidiejaya", "label": "Pidie Jaya", "timezone": "WIB"},
+    {"value": "simeulue", "label": "Simeulue", "timezone": "WIB"}
   ],
   "Sumatera Utara": [
     {"value": "asahan", "label": "Asahan", "timezone": "WIB"},
@@ -25,7 +32,7 @@
     {"value": "dairi", "label": "Dairi", "timezone": "WIB"},
     {"value": "deliserdang", "label": "Deli Serdang", "timezone": "WIB"},
     {"value": "gunungsitoli", "label": "Gunung Sitoli", "timezone": "WIB"},
-    {"value": "humbang-hasundutan", "label": "Humbang Hasundutan", "timezone": "WIB"},
+    {"value": "humbanghasundutan", "label": "Humbang Hasundutan", "timezone": "WIB"},
     {"value": "karo", "label": "Karo", "timezone": "WIB"},
     {"value": "labuhanbatu", "label": "Labuhan Batu", "timezone": "WIB"},
     {"value": "medan", "label": "Medan", "timezone": "WIB"},
@@ -34,7 +41,28 @@
     {"value": "sibolga", "label": "Sibolga", "timezone": "WIB"},
     {"value": "tanjungbalai", "label": "Tanjung Balai", "timezone": "WIB"},
     {"value": "tebingtinggi", "label": "Tebing Tinggi", "timezone": "WIB"},
-    {"value": "tarutung", "label": "Tarutung", "timezone": "WIB"}
+    {"value": "tarutung", "label": "Tarutung", "timezone": "WIB"},
+    {"value": "batubara", "label": "Batubara", "timezone": "WIB"},
+    {"value": "kotapadangsidimpuan", "label": "Kota Padang Sidimpuan", "timezone": "WIB"},
+    {"value": "kotapematangsiantar", "label": "Kota Pematang Siantar", "timezone": "WIB"},
+    {"value": "labuhanbatuselatan", "label": "Labuhanbatu Selatan", "timezone": "WIB"},
+    {"value": "labuhanbatuutara", "label": "Labuhanbatu Utara", "timezone": "WIB"},
+    {"value": "langkat", "label": "Langkat", "timezone": "WIB"},
+    {"value": "mandailingnatal", "label": "Mandailing Natal", "timezone": "WIB"},
+    {"value": "nias", "label": "Nias", "timezone": "WIB"},
+    {"value": "niasbarat", "label": "Nias Barat", "timezone": "WIB"},
+    {"value": "niasselatan", "label": "Nias Selatan", "timezone": "WIB"},
+    {"value": "niasutara", "label": "Nias Utara", "timezone": "WIB"},
+    {"value": "padanglawas", "label": "Padang Lawas", "timezone": "WIB"},
+    {"value": "padanglawasutara", "label": "Padang Lawas Utara", "timezone": "WIB"},
+    {"value": "pakpakbharat", "label": "Pakpak Bharat", "timezone": "WIB"},
+    {"value": "samosir", "label": "Samosir", "timezone": "WIB"},
+    {"value": "serdangbedagai", "label": "Serdang Bedagai", "timezone": "WIB"},
+    {"value": "simalungun", "label": "Simalungun", "timezone": "WIB"},
+    {"value": "tapanuliselatan", "label": "Tapanuli Selatan", "timezone": "WIB"},
+    {"value": "tapanulitengah", "label": "Tapanuli Tengah", "timezone": "WIB"},
+    {"value": "tapanuliutara", "label": "Tapanuli Utara", "timezone": "WIB"},
+    {"value": "tobasamosir", "label": "Toba Samosir", "timezone": "WIB"}
   ],
   "Sumatera Barat": [
     {"value": "agam", "label": "Agam", "timezone": "WIB"},
@@ -45,16 +73,20 @@
     {"value": "painan", "label": "Painan", "timezone": "WIB"},
     {"value": "payakumbuh", "label": "Payakumbuh", "timezone": "WIB"},
     {"value": "sawahlunto", "label": "Sawahlunto", "timezone": "WIB"},
-    {"value": "solok", "label": "Solok", "timezone": "WIB"}
-  ],
-  "Kepulauan Riau": [
-    {"value": "batam", "label": "Kota Batam", "timezone": "WIB"},
-    {"value": "tanjungpinang", "label": "Kota Tanjung Pinang", "timezone": "WIB"},
-    {"value": "bintan", "label": "Kabupaten Bintan", "timezone": "WIB"},
-    {"value": "karimun", "label": "Kabupaten Karimun", "timezone": "WIB"},
-    {"value": "lingga", "label": "Kabupaten Lingga", "timezone": "WIB"},
-    {"value": "natuna", "label": "Kabupaten Natuna", "timezone": "WIB"},
-    {"value": "kepulauananambas", "label": "Kabupaten Kepulauan Anambas", "timezone": "WIB"}
+    {"value": "solok", "label": "Solok", "timezone": "WIB"},
+    {"value": "kotapadangpanjang", "label": "Kota Padang Panjang", "timezone": "WIB"},
+    {"value": "kotapariaman", "label": "Kota Pariaman", "timezone": "WIB"},
+    {"value": "kotasawahlunto", "label": "Kota Sawahlunto", "timezone": "WIB"},
+    {"value": "kotasolok", "label": "Kota Solok", "timezone": "WIB"},
+    {"value": "kepulauanmentawai", "label": "Kepulauan Mentawai", "timezone": "WIB"},
+    {"value": "limapuluhkota", "label": "Lima Puluh Kota", "timezone": "WIB"},
+    {"value": "padangpariaman", "label": "Padang Pariaman", "timezone": "WIB"},
+    {"value": "pasaman", "label": "Pasaman", "timezone": "WIB"},
+    {"value": "pasamanbarat", "label": "Pasaman Barat", "timezone": "WIB"},
+    {"value": "pesisirselatan", "label": "Pesisir Selatan", "timezone": "WIB"},
+    {"value": "sijunjung", "label": "Sijunjung", "timezone": "WIB"},
+    {"value": "solokselatan", "label": "Solok Selatan", "timezone": "WIB"},
+    {"value": "tanahdatar", "label": "Tanah Datar", "timezone": "WIB"}
   ],
   "Riau": [
     {"value": "bengkalis", "label": "Bengkalis", "timezone": "WIB"},
@@ -67,7 +99,18 @@
     {"value": "rokanhilir", "label": "Rokan Hilir", "timezone": "WIB"},
     {"value": "rokanhulu", "label": "Rokan Hulu", "timezone": "WIB"},
     {"value": "siak", "label": "Siak", "timezone": "WIB"},
-    {"value": "tembilahan", "label": "Tembilahan", "timezone": "WIB"}
+    {"value": "tembilahan", "label": "Tembilahan", "timezone": "WIB"},
+    {"value": "kepulauanmeranti", "label": "Kepulauan Meranti", "timezone": "WIB"},
+    {"value": "pelalawan", "label": "Pelalawan", "timezone": "WIB"}
+  ],
+  "Kepulauan Riau": [
+    {"value": "batam", "label": "Kota Batam", "timezone": "WIB"},
+    {"value": "tanjungpinang", "label": "Kota Tanjung Pinang", "timezone": "WIB"},
+    {"value": "bintan", "label": "Kabupaten Bintan", "timezone": "WIB"},
+    {"value": "karimun", "label": "Kabupaten Karimun", "timezone": "WIB"},
+    {"value": "lingga", "label": "Kabupaten Lingga", "timezone": "WIB"},
+    {"value": "natuna", "label": "Kabupaten Natuna", "timezone": "WIB"},
+    {"value": "kepulauananambas", "label": "Kabupaten Kepulauan Anambas", "timezone": "WIB"}
   ],
   "Jambi": [
     {"value": "batanghari", "label": "Batanghari", "timezone": "WIB"},
@@ -78,7 +121,11 @@
     {"value": "muarabulian", "label": "Muara Bulian", "timezone": "WIB"},
     {"value": "sungaipenuh", "label": "Sungai Penuh", "timezone": "WIB"},
     {"value": "tanjabbarat", "label": "Tanjab Barat", "timezone": "WIB"},
-    {"value": "tanjabtimur", "label": "Tanjab Timur", "timezone": "WIB"}
+    {"value": "tanjabtimur", "label": "Tanjab Timur", "timezone": "WIB"},
+    {"value": "kotasungaipenuh", "label": "Kota Sungai Penuh", "timezone": "WIB"},
+    {"value": "muarojambi", "label": "Muaro Jambi", "timezone": "WIB"},
+    {"value": "sarolangun", "label": "Sarolangun", "timezone": "WIB"},
+    {"value": "tebo", "label": "Tebo", "timezone": "WIB"}
   ],
   "Sumatera Selatan": [
     {"value": "banyuasin", "label": "Banyuasin", "timezone": "WIB"},
@@ -90,20 +137,32 @@
     {"value": "musirawas", "label": "Musi Rawas", "timezone": "WIB"},
     {"value": "oganhilir", "label": "Ogan Hilir", "timezone": "WIB"},
     {"value": "oganilir", "label": "Ogan Ilir", "timezone": "WIB"},
-    {"value": "ogan-komering-ulu", "label": "Ogan Komering Ulu", "timezone": "WIB"},
+    {"value": "ogankomeringulu", "label": "Ogan Komering Ulu", "timezone": "WIB"},
     {"value": "palembang", "label": "Palembang", "timezone": "WIB"},
     {"value": "pagaralam", "label": "Pagar Alam", "timezone": "WIB"},
     {"value": "prabumulih", "label": "Prabumulih", "timezone": "WIB"},
-    {"value": "sekayu", "label": "Sekayu", "timezone": "WIB"}
+    {"value": "sekayu", "label": "Sekayu", "timezone": "WIB"},
+    {"value": "kotalubuklinggau", "label": "Kota Lubuk Linggau", "timezone": "WIB"},
+    {"value": "kotapagaralam", "label": "Kota Pagar Alam", "timezone": "WIB"},
+    {"value": "kotaprabumulih", "label": "Kota Prabumulih", "timezone": "WIB"},
+    {"value": "musirawasutara", "label": "Musi Rawas Utara", "timezone": "WIB"},
+    {"value": "ogankomeringilir", "label": "Ogan Komering Ilir", "timezone": "WIB"},
+    {"value": "ogankomeringuluselatan", "label": "Ogan Komering Ulu Selatan", "timezone": "WIB"},
+    {"value": "ogankomeringulutimur", "label": "Ogan Komering Ulu Timur", "timezone": "WIB"},
+    {"value": "penukalabablematangilir", "label": "Penukal Abab Lematang Ilir", "timezone": "WIB"}
   ],
   "Bengkulu": [
     {"value": "bengkulu", "label": "Bengkulu", "timezone": "WIB"},
     {"value": "bengkuluselatan", "label": "Bengkulu Selatan", "timezone": "WIB"},
     {"value": "bengkuluutara", "label": "Bengkulu Utara", "timezone": "WIB"},
     {"value": "kepahiang", "label": "Kepahiang", "timezone": "WIB"},
-    {"value": "muko-muko", "label": "Muko-Muko", "timezone": "WIB"},
-    {"value": "rejang-lebong", "label": "Rejang Lebong", "timezone": "WIB"},
-    {"value": "seluma", "label": "Seluma", "timezone": "WIB"}
+    {"value": "mukomuko", "label": "MukoMuko", "timezone": "WIB"},
+    {"value": "rejanglebong", "label": "Rejang Lebong", "timezone": "WIB"},
+    {"value": "seluma", "label": "Seluma", "timezone": "WIB"},
+    {"value": "kaur", "label": "Kaur", "timezone": "WIB"},
+    {"value": "lebong", "label": "Lebong", "timezone": "WIB"},
+    {"value": "mukomuko", "label": "Mukomuko", "timezone": "WIB"},
+    {"value": "bengkulutengah", "label": "Bengkulu Tengah", "timezone": "WIB"}
   ],
   "Lampung": [
     {"value": "bandarlampung", "label": "Bandar Lampung", "timezone": "WIB"},
@@ -111,21 +170,52 @@
     {"value": "kotabumi", "label": "Kota Bumi", "timezone": "WIB"},
     {"value": "liwa", "label": "Liwa", "timezone": "WIB"},
     {"value": "metro", "label": "Metro", "timezone": "WIB"},
-    {"value": "sukadana", "label": "Sukadana", "timezone": "WIB"}
+    {"value": "sukadana", "label": "Sukadana", "timezone": "WIB"},
+    {"value": "kotabandarlampung", "label": "Kota Bandar Lampung", "timezone": "WIB"},
+    {"value": "kotametro", "label": "Kota Metro", "timezone": "WIB"},
+    {"value": "lampungbarat", "label": "Lampung Barat", "timezone": "WIB"},
+    {"value": "lampungselatan", "label": "Lampung Selatan", "timezone": "WIB"},
+    {"value": "lampungtengah", "label": "Lampung Tengah", "timezone": "WIB"},
+    {"value": "lampungtimur", "label": "Lampung Timur", "timezone": "WIB"},
+    {"value": "lampungutara", "label": "Lampung Utara", "timezone": "WIB"},
+    {"value": "mesuji", "label": "Mesuji", "timezone": "WIB"},
+    {"value": "pesawaran", "label": "Pesawaran", "timezone": "WIB"},
+    {"value": "pesisirbarat", "label": "Pesisir Barat", "timezone": "WIB"},
+    {"value": "pringsewu", "label": "Pringsewu", "timezone": "WIB"},
+    {"value": "tanggamus", "label": "Tanggamus", "timezone": "WIB"},
+    {"value": "tulangbawang", "label": "Tulang Bawang", "timezone": "WIB"},
+    {"value": "tulangbawangbarat", "label": "Tulang Bawang Barat", "timezone": "WIB"},
+    {"value": "waykanan", "label": "Way Kanan", "timezone": "WIB"}
   ],
   "Bangka Belitung": [
     {"value": "bangka", "label": "Bangka", "timezone": "WIB"},
     {"value": "belitung", "label": "Belitung", "timezone": "WIB"},
     {"value": "pangkalpinang", "label": "Pangkalpinang", "timezone": "WIB"},
     {"value": "sungailiat", "label": "Sungai Liat", "timezone": "WIB"},
-    {"value": "tanjungpandan", "label": "Tanjung Pandan", "timezone": "WIB"}
+    {"value": "tanjungpandan", "label": "Tanjung Pandan", "timezone": "WIB"},
+    {"value": "bangkabarat", "label": "Bangka Barat", "timezone": "WIB"},
+    {"value": "bangkaselatan", "label": "Bangka Selatan", "timezone": "WIB"},
+    {"value": "bangkatengah", "label": "Bangka Tengah", "timezone": "WIB"},
+    {"value": "belitungtimur", "label": "Belitung Timur", "timezone": "WIB"}
   ],
   "Banten": [
     {"value": "cilegon", "label": "Cilegon", "timezone": "WIB"},
     {"value": "lebak", "label": "Lebak", "timezone": "WIB"},
     {"value": "pandeglang", "label": "Pandeglang", "timezone": "WIB"},
     {"value": "serang", "label": "Serang", "timezone": "WIB"},
-    {"value": "tangerang", "label": "Tangerang", "timezone": "WIB"}
+    {"value": "tangerang", "label": "Tangerang", "timezone": "WIB"},
+    {"value": "kotacilegon", "label": "Kota Cilegon", "timezone": "WIB"},
+    {"value": "kotaserang", "label": "Kota Serang", "timezone": "WIB"},
+    {"value": "kotatangerang", "label": "Kota Tangerang", "timezone": "WIB"},
+    {"value": "kotatangerangselatan", "label": "Kota Tangerang Selatan", "timezone": "WIB"}
+  ],
+  "DKI Jakarta": [
+    {"value": "jakartabarat", "label": "Jakarta Barat", "timezone": "WIB"},
+    {"value": "jakartapusat", "label": "Jakarta Pusat", "timezone": "WIB"},
+    {"value": "jakartaselatan", "label": "Jakarta Selatan", "timezone": "WIB"},
+    {"value": "jakartatimur", "label": "Jakarta Timur", "timezone": "WIB"},
+    {"value": "jakartautara", "label": "Jakarta Utara", "timezone": "WIB"},
+    {"value": "kepulauanseribu", "label": "Kepulauan Seribu", "timezone": "WIB"}
   ],
   "Jawa Barat": [
     {"value": "bandung", "label": "Bandung", "timezone": "WIB"},
@@ -136,7 +226,6 @@
     {"value": "cianjur", "label": "Cianjur", "timezone": "WIB"},
     {"value": "cibinong", "label": "Cibinong", "timezone": "WIB"},
     {"value": "cimahi", "label": "Cimahi", "timezone": "WIB"},
-    {"value": "ciamis", "label": "Ciamis", "timezone": "WIB"},
     {"value": "depok", "label": "Depok", "timezone": "WIB"},
     {"value": "garut", "label": "Garut", "timezone": "WIB"},
     {"value": "indramayu", "label": "Indramayu", "timezone": "WIB"},
@@ -147,7 +236,17 @@
     {"value": "subang", "label": "Subang", "timezone": "WIB"},
     {"value": "sukabumi", "label": "Sukabumi", "timezone": "WIB"},
     {"value": "sumedang", "label": "Sumedang", "timezone": "WIB"},
-    {"value": "tasikmalaya", "label": "Tasikmalaya", "timezone": "WIB"}
+    {"value": "tasikmalaya", "label": "Tasikmalaya", "timezone": "WIB"},
+    {"value": "kotabanjar", "label": "Kota Banjar", "timezone": "WIB"},
+    {"value": "kotabekasi", "label": "Kota Bekasi", "timezone": "WIB"},
+    {"value": "kotabogor", "label": "Kota Bogor", "timezone": "WIB"},
+    {"value": "kotacimahi", "label": "Kota Cimahi", "timezone": "WIB"},
+    {"value": "kotacirebon", "label": "Kota Cirebon", "timezone": "WIB"},
+    {"value": "kotadepok", "label": "Kota Depok", "timezone": "WIB"},
+    {"value": "kotasukabumi", "label": "Kota Sukabumi", "timezone": "WIB"},
+    {"value": "kotatasikmalaya", "label": "Kota Tasikmalaya", "timezone": "WIB"},
+    {"value": "bandungbarat", "label": "Bandung Barat", "timezone": "WIB"},
+    {"value": "pangandaran", "label": "Pangandaran", "timezone": "WIB"}
   ],
   "Jawa Tengah": [
     {"value": "banjarnegara", "label": "Banjarnegara", "timezone": "WIB"},
@@ -178,11 +277,25 @@
     {"value": "sukoharjo", "label": "Sukoharjo", "timezone": "WIB"},
     {"value": "surakarta", "label": "Surakarta", "timezone": "WIB"},
     {"value": "tegal", "label": "Tegal", "timezone": "WIB"},
-    {"value": "kab. tegal", "label": "Kabupaten Tegal", "timezone": "WIB"},
-    {"value": "kota tegal", "label": "Kota Tegal", "timezone": "WIB"},
+    {"value": "kabtegal", "label": "Kabupaten Tegal", "timezone": "WIB"},
     {"value": "temanggung", "label": "Temanggung", "timezone": "WIB"},
     {"value": "wonogiri", "label": "Wonogiri", "timezone": "WIB"},
-    {"value": "wonosobo", "label": "Wonosobo", "timezone": "WIB"}
+    {"value": "wonosobo", "label": "Wonosobo", "timezone": "WIB"},
+    {"value": "kotamagelang", "label": "Kota Magelang", "timezone": "WIB"},
+    {"value": "kotapekalongan", "label": "Kota Pekalongan", "timezone": "WIB"},
+    {"value": "kota salatiga", "label": "Kota Salatiga", "timezone": "WIB"},
+    {"value": "kotasemarang", "label": "Kota Semarang", "timezone": "WIB"},
+    {"value": "kotasurakarta", "label": "Kota Surakarta", "timezone": "WIB"},
+    {"value": "kotategal", "label": "Kota Tegal", "timezone": "WIB"}
+  ],
+  "DI Yogyakarta": [
+    {"value": "bantul", "label": "Bantul", "timezone": "WIB"},
+    {"value": "gunungkidul", "label": "Gunung Kidul", "timezone": "WIB"},
+    {"value": "wates", "label": "Wates, Kab. Kulon Progo", "timezone": "WIB"},
+    {"value": "kulonprogo", "label": "Kulon Progo", "timezone": "WIB"},
+    {"value": "sleman", "label": "Sleman", "timezone": "WIB"},
+    {"value": "yogyakarta", "label": "Yogyakarta", "timezone": "WIB"},
+    {"value": "kotayogyakarta", "label": "Kota Yogyakarta", "timezone": "WIB"}
   ],
   "Jawa Timur": [
     {"value": "bangkalan", "label": "Bangkalan", "timezone": "WIB"},
@@ -217,21 +330,6 @@
     {"value": "tuban", "label": "Tuban", "timezone": "WIB"},
     {"value": "tulungagung", "label": "Tulungagung", "timezone": "WIB"}
   ],
-  "DKI Jakarta": [
-    {"value": "jakartabarat", "label": "Jakarta Barat", "timezone": "WIB"},
-    {"value": "jakartapusat", "label": "Jakarta Pusat", "timezone": "WIB"},
-    {"value": "jakartaselatan", "label": "Jakarta Selatan", "timezone": "WIB"},
-    {"value": "jakartatimur", "label": "Jakarta Timur", "timezone": "WIB"},
-    {"value": "jakartautara", "label": "Jakarta Utara", "timezone": "WIB"}
-  ],
-  "DI Yogyakarta": [
-    {"value": "bantul", "label": "Bantul", "timezone": "WIB"},
-    {"value": "gunungkidul", "label": "Gunung Kidul", "timezone": "WIB"},
-    {"value": "wates", "label": "Wates, Kab. Kulon Progo", "timezone": "WIB"},
-    {"value": "kulonprogo", "label": "Kulon Progo", "timezone": "WIB"},
-    {"value": "sleman", "label": "Sleman", "timezone": "WIB"},
-    {"value": "yogyakarta", "label": "Yogyakarta", "timezone": "WIB"}
-  ],
   "Bali": [
     {"value": "badung", "label": "Badung", "timezone": "WITA"},
     {"value": "bangli", "label": "Bangli", "timezone": "WITA"},
@@ -240,7 +338,9 @@
     {"value": "jembrana", "label": "Jembrana", "timezone": "WITA"},
     {"value": "karangasem", "label": "Karangasem", "timezone": "WITA"},
     {"value": "klungkung", "label": "Klungkung", "timezone": "WITA"},
-    {"value": "tabanan", "label": "Tabanan", "timezone": "WITA"}
+    {"value": "tabanan", "label": "Tabanan", "timezone": "WITA"},
+    {"value": "kotadenpasar", "label": "Kota Denpasar", "timezone": "WITA"},
+    {"value": "buleleng", "label": "Buleleng", "timezone": "WITA"}
   ],
   "Nusa Tenggara Barat": [
     {"value": "bima", "label": "Bima", "timezone": "WITA"},
@@ -250,7 +350,10 @@
     {"value": "lomboktimur", "label": "Lombok Timur", "timezone": "WITA"},
     {"value": "mataram", "label": "Mataram", "timezone": "WITA"},
     {"value": "sumbawa", "label": "Sumbawa", "timezone": "WITA"},
-    {"value": "sumbawabarat", "label": "Sumbawa Barat", "timezone": "WITA"}
+    {"value": "sumbawabarat", "label": "Sumbawa Barat", "timezone": "WITA"},
+    {"value": "kotabima", "label": "Kota Bima", "timezone": "WITA"},
+    {"value": "kotamataram", "label": "Kota Mataram", "timezone": "WITA"},
+    {"value": "lombokutara", "label": "Lombok Utara", "timezone": "WITA"}
   ],
   "Nusa Tenggara Timur": [
     {"value": "alor", "label": "Alor", "timezone": "WITA"},
@@ -261,12 +364,20 @@
     {"value": "lembata", "label": "Lembata", "timezone": "WITA"},
     {"value": "manggarai", "label": "Manggarai", "timezone": "WITA"},
     {"value": "ngada", "label": "Ngada", "timezone": "WITA"},
-    {"value": "rote-ndao", "label": "Rote Ndao", "timezone": "WITA"},
+    {"value": "rotendao", "label": "Rote Ndao", "timezone": "WITA"},
     {"value": "sikka", "label": "Sikka", "timezone": "WITA"},
     {"value": "sumbatengah", "label": "Sumba Tengah", "timezone": "WITA"},
     {"value": "sumbatimur", "label": "Sumba Timur", "timezone": "WITA"},
     {"value": "kabtimortengahselatan", "label": "Timor Tengah Selatan", "timezone": "WITA"},
-    {"value": "timortengahutara", "label": "Timor Tengah Utara", "timezone": "WITA"}
+    {"value": "timortengahutara", "label": "Timor Tengah Utara", "timezone": "WITA"},
+    {"value": "kotakupang", "label": "Kota Kupang", "timezone": "WITA"},
+    {"value": "manggaraibarat", "label": "Manggarai Barat", "timezone": "WITA"},
+    {"value": "manggaraitimur", "label": "Manggarai Timur", "timezone": "WITA"},
+    {"value": "nagekeo", "label": "Nagekeo", "timezone": "WITA"},
+    {"value": "sumbabarat", "label": "Sumba Barat", "timezone": "WITA"},
+    {"value": "sumbabaratdaya", "label": "Sumba Barat Daya", "timezone": "WITA"},
+    {"value": "malaka", "label": "Malaka", "timezone": "WITA"},
+    {"value": "rotendao", "label": "Rote Ndao", "timezone": "WITA"}
   ],
   "Kalimantan Barat": [
     {"value": "bengkayang", "label": "Bengkayang", "timezone": "WIB"},
@@ -279,7 +390,12 @@
     {"value": "sanggau", "label": "Sanggau", "timezone": "WIB"},
     {"value": "sekadau", "label": "Sekadau", "timezone": "WIB"},
     {"value": "singkawang", "label": "Singkawang", "timezone": "WIB"},
-    {"value": "sintang", "label": "Sintang", "timezone": "WIB"}
+    {"value": "sintang", "label": "Sintang", "timezone": "WIB"},
+    {"value": "kotapontianak", "label": "Kota Pontianak", "timezone": "WIB"},
+    {"value": "kotasingkawang", "label": "Kota Singkawang", "timezone": "WIB"},
+    {"value": "landak", "label": "Landak", "timezone": "WIB"},
+    {"value": "melawi", "label": "Melawi", "timezone": "WIB"},
+    {"value": "mempawah", "label": "Mempawah", "timezone": "WIB"}
   ],
   "Kalimantan Tengah": [
     {"value": "buntok", "label": "Buntok, Kab. Barito Selatan", "timezone": "WIB"},
@@ -295,7 +411,9 @@
     {"value": "palangkaraya", "label": "Palangkaraya", "timezone": "WIB"},
     {"value": "pulangpisau", "label": "Pulang Pisau", "timezone": "WIB"},
     {"value": "sukamara", "label": "Sukamara", "timezone": "WIB"},
-    {"value": "seruyan", "label": "Seruyan", "timezone": "WIB"}
+    {"value": "seruyan", "label": "Seruyan", "timezone": "WIB"},
+    {"value": "kotapalangkaraya", "label": "Kota Palangkaraya", "timezone": "WIB"},
+    {"value": "baritotimur", "label": "Barito Timur", "timezone": "WIB"}
   ],
   "Kalimantan Selatan": [
     {"value": "banjarbaru", "label": "Banjarbaru", "timezone": "WITA"},
@@ -308,56 +426,70 @@
     {"value": "tabalong", "label": "Tabalong", "timezone": "WITA"},
     {"value": "tanahbumbu", "label": "Tanah Bumbu", "timezone": "WITA"},
     {"value": "tanahlaut", "label": "Tanah Laut", "timezone": "WITA"},
-    {"value": "tapin", "label": "Tapin", "timezone": "WITA"}
+    {"value": "tapin", "label": "Tapin", "timezone": "WITA"},
+    {"value": "kotabanjarbaru", "label": "Kota Banjarbaru", "timezone": "WITA"},
+    {"value": "kotabanjarmasin", "label": "Kota Banjarmasin", "timezone": "WITA"},
+    {"value": "balangan", "label": "Balangan", "timezone": "WITA"}
   ],
   "Kalimantan Timur": [
     {"value": "balikpapan", "label": "Balikpapan", "timezone": "WITA"},
     {"value": "berau", "label": "Berau", "timezone": "WITA"},
     {"value": "bontang", "label": "Bontang", "timezone": "WITA"},
-    {"value": "kutai-barat", "label": "Kutai Barat", "timezone": "WITA"},
-    {"value": "kutai-kartanegara", "label": "Kutai Kartanegara", "timezone": "WITA"},
-    {"value": "kutai-timur", "label": "Kutai Timur", "timezone": "WITA"},
-    {"value": "penajam-paser-utara", "label": "Penajam Paser Utara", "timezone": "WITA"},
+    {"value": "kutaibarat", "label": "Kutai Barat", "timezone": "WITA"},
+    {"value": "kutaikartanegara", "label": "Kutai Kartanegara", "timezone": "WITA"},
+    {"value": "kutaitimur", "label": "Kutai Timur", "timezone": "WITA"},
+    {"value": "penajampaserutara", "label": "Penajam Paser Utara", "timezone": "WITA"},
     {"value": "samarinda", "label": "Samarinda", "timezone": "WITA"},
-    {"value": "tana-pasir", "label": "Tana Pasir", "timezone": "WITA"},
-    {"value": "tarakan", "label": "Tarakan", "timezone": "WITA"}
+    {"value": "tanapasir", "label": "Tana Pasir", "timezone": "WITA"},
+    {"value": "tarakan", "label": "Tarakan", "timezone": "WITA"},
+    {"value": "kotabalikpapan", "label": "Kota Balikpapan", "timezone": "WITA"},
+    {"value": "kotabontang", "label": "Kota Bontang", "timezone": "WITA"},
+    {"value": "kotasamarinda", "label": "Kota Samarinda", "timezone": "WITA"},
+    {"value": "mahakamulu", "label": "Mahakam Ulu", "timezone": "WITA"},
+    {"value": "paser", "label": "Paser", "timezone": "WITA"}
   ],
   "Kalimantan Utara": [
     {"value": "bulungan", "label": "Bulungan", "timezone": "WITA"},
     {"value": "malinau", "label": "Malinau", "timezone": "WITA"},
     {"value": "nunukan", "label": "Nunukan", "timezone": "WITA"},
-    {"value": "tana-tidung", "label": "Tana Tidung", "timezone": "WITA"},
-    {"value": "tanjungselor", "label": "Tanjung Selor", "timezone": "WITA"}
-  ],
-  "Sulawesi Barat": [
-    {"value": "mamuju", "label": "Kabupaten Mamuju", "timezone": "WITA"},
-    {"value": "majene", "label": "Kabupaten Majene", "timezone": "WITA"},
-    {"value": "polewalimandar", "label": "Kabupaten Polewali Mandar", "timezone": "WITA"},
-    {"value": "mamasa", "label": "Kabupaten Mamasa", "timezone": "WITA"},
-    {"value": "pasangkayu", "label": "Kabupaten Pasangkayu", "timezone": "WITA"},
-    {"value": "mamujutengah", "label": "Kabupaten Mamuju Tengah", "timezone": "WITA"}
+    {"value": "tanatidung", "label": "Tana Tidung", "timezone": "WITA"},
+    {"value": "tanjungselor", "label": "Tanjung Selor", "timezone": "WITA"},
+    {"value": "kotatarakan", "label": "Kota Tarakan", "timezone": "WITA"}
   ],
   "Sulawesi Utara": [
     {"value": "bitung", "label": "Bitung", "timezone": "WITA"},
-    {"value": "bolaang-mongondow", "label": "Bolaang Mongondow", "timezone": "WITA"},
-    {"value": "kepulauan-sangihe", "label": "Kepulauan Sangihe", "timezone": "WITA"},
-    {"value": "kepulauan-talaud", "label": "Kepulauan Talaud", "timezone": "WITA"},
+    {"value": "bolaangmongondow", "label": "Bolaang Mongondow", "timezone": "WITA"},
+    {"value": "kepulauansangihe", "label": "Kepulauan Sangihe", "timezone": "WITA"},
+    {"value": "kepulauantalaud", "label": "Kepulauan Talaud", "timezone": "WITA"},
     {"value": "manado", "label": "Manado", "timezone": "WITA"},
     {"value": "minahasa", "label": "Minahasa", "timezone": "WITA"},
-    {"value": "tomohon", "label": "Tomohon", "timezone": "WITA"}
+    {"value": "tomohon", "label": "Tomohon", "timezone": "WITA"},
+    {"value": "kotabitung", "label": "Kota Bitung", "timezone": "WITA"},
+    {"value": "kotakotamobagu", "label": "Kota Kotamobagu", "timezone": "WITA"},
+    {"value": "kotamanado", "label": "Kota Manado", "timezone": "WITA"},
+    {"value": "kotatomohon", "label": "Kota Tomohon", "timezone": "WITA"},
+    {"value": "bolaangmongondowselatan", "label": "Bolaang Mongondow Selatan", "timezone": "WITA"},
+    {"value": "bolaangmongondowtimur", "label": "Bolaang Mongondow Timur", "timezone": "WITA"},
+    {"value": "bolaangmongondowutara", "label": "Bolaang Mongondow Utara", "timezone": "WITA"},
+    {"value": "minahasaselatan", "label": "Minahasa Selatan", "timezone": "WITA"},
+    {"value": "minahasatenggara", "label": "Minahasa Tenggara", "timezone": "WITA"},
+    {"value": "minahasautara", "label": "Minahasa Utara", "timezone": "WITA"}
   ],
   "Sulawesi Tengah": [
     {"value": "banggai", "label": "Banggai", "timezone": "WITA"},
-    {"value": "banggai-kepulauan", "label": "Banggai Kepulauan", "timezone": "WITA"},
+    {"value": "banggaikepulauan", "label": "Banggai Kepulauan", "timezone": "WITA"},
     {"value": "buol", "label": "Buol", "timezone": "WITA"},
     {"value": "donggala", "label": "Donggala", "timezone": "WITA"},
     {"value": "morowali", "label": "Morowali", "timezone": "WITA"},
     {"value": "palu", "label": "Palu", "timezone": "WITA"},
-    {"value": "parigi-moutong", "label": "Parigi Moutong", "timezone": "WITA"},
+    {"value": "parigimoutong", "label": "Parigi Moutong", "timezone": "WITA"},
     {"value": "poso", "label": "Poso", "timezone": "WITA"},
     {"value": "sigi", "label": "Sigi", "timezone": "WITA"},
-    {"value": "tojo-una-una", "label": "Tojo Una-Una", "timezone": "WITA"},
-    {"value": "tolitoli", "label": "Tolitoli", "timezone": "WITA"}
+    {"value": "tojounauna", "label": "Tojo UnaUna", "timezone": "WITA"},
+    {"value": "tolitoli", "label": "Tolitoli", "timezone": "WITA"},
+    {"value": "kotapalu", "label": "Kota Palu", "timezone": "WITA"},
+    {"value": "banggailaut", "label": "Banggai Laut", "timezone": "WITA"},
+    {"value": "morowaliutara", "label": "Morowali Utara", "timezone": "WITA"}
   ],
   "Sulawesi Selatan": [
     {"value": "bantaeng", "label": "Bantaeng", "timezone": "WITA"},
@@ -368,8 +500,8 @@
     {"value": "gowa", "label": "Gowa", "timezone": "WITA"},
     {"value": "jeneponto", "label": "Jeneponto", "timezone": "WITA"},
     {"value": "luwu", "label": "Luwu", "timezone": "WITA"},
-    {"value": "luwu-timur", "label": "Luwu Timur", "timezone": "WITA"},
-    {"value": "luwu-utara", "label": "Luwu Utara", "timezone": "WITA"},
+    {"value": "luwutimur", "label": "Luwu Timur", "timezone": "WITA"},
+    {"value": "luwuutara", "label": "Luwu Utara", "timezone": "WITA"},
     {"value": "makassar", "label": "Makassar", "timezone": "WITA"},
     {"value": "maros", "label": "Maros", "timezone": "WITA"},
     {"value": "palopo", "label": "Palopo", "timezone": "WITA"},
@@ -379,10 +511,17 @@
     {"value": "sinjai", "label": "Sinjai", "timezone": "WITA"},
     {"value": "sungguminasa", "label": "Sungguminasa", "timezone": "WITA"},
     {"value": "takalar", "label": "Takalar", "timezone": "WITA"},
-    {"value": "tana-toraja", "label": "Tana Toraja", "timezone": "WITA"},
-    {"value": "toraja-utara", "label": "Toraja Utara", "timezone": "WITA"},
+    {"value": "tanatoraja", "label": "Tana Toraja", "timezone": "WITA"},
+    {"value": "torajautara", "label": "Toraja Utara", "timezone": "WITA"},
     {"value": "watampone", "label": "Watampone", "timezone": "WITA"},
-    {"value": "watansoppeng", "label": "Watansoppeng", "timezone": "WITA"}
+    {"value": "watansoppeng", "label": "Watansoppeng", "timezone": "WITA"},
+    {"value": "kotamakassar", "label": "Kota Makassar", "timezone": "WITA"},
+    {"value": "kotapalopo", "label": "Kota Palopo", "timezone": "WITA"},
+    {"value": "kotaparepare", "label": "Kota Parepare", "timezone": "WITA"},
+    {"value": "kepulauanselayar", "label": "Kepulauan Selayar", "timezone": "WITA"},
+    {"value": "sidenrengrappang", "label": "Sidenreng Rappang", "timezone": "WITA"},
+    {"value": "soppeng", "label": "Soppeng", "timezone": "WITA"},
+    {"value": "wajo", "label": "Wajo", "timezone": "WITA"}
   ],
   "Sulawesi Tenggara": [
     {"value": "bombana", "label": "Bombana", "timezone": "WITA"},
@@ -391,24 +530,50 @@
     {"value": "kolaka", "label": "Kolaka", "timezone": "WITA"},
     {"value": "konawe", "label": "Konawe", "timezone": "WITA"},
     {"value": "muna", "label": "Muna", "timezone": "WITA"},
-    {"value": "wakatobi", "label": "Wakatobi", "timezone": "WITA"}
+    {"value": "wakatobi", "label": "Wakatobi", "timezone": "WITA"},
+    {"value": "kotabaubau", "label": "Kota BauBau", "timezone": "WITA"},
+    {"value": "kotakendari", "label": "Kota Kendari", "timezone": "WITA"},
+    {"value": "butonselatan", "label": "Buton Selatan", "timezone": "WITA"},
+    {"value": "butontengah", "label": "Buton Tengah", "timezone": "WITA"},
+    {"value": "butonutara", "label": "Buton Utara", "timezone": "WITA"},
+    {"value": "kolakatimur", "label": "Kolaka Timur", "timezone": "WITA"},
+    {"value": "kolakautara", "label": "Kolaka Utara", "timezone": "WITA"},
+    {"value": "konawekepulauan", "label": "Konawe Kepulauan", "timezone": "WITA"},
+    {"value": "konaweselatan", "label": "Konawe Selatan", "timezone": "WITA"},
+    {"value": "konaweutara", "label": "Konawe Utara", "timezone": "WITA"},
+    {"value": "munabarat", "label": "Muna Barat", "timezone": "WITA"}
   ],
   "Gorontalo": [
     {"value": "boalemo", "label": "Boalemo", "timezone": "WITA"},
-    {"value": "bone-bolango", "label": "Bone Bolango", "timezone": "WITA"},
+    {"value": "bonebolango", "label": "Bone Bolango", "timezone": "WITA"},
     {"value": "gorontalo", "label": "Gorontalo", "timezone": "WITA"},
-    {"value": "gorontalo-utara", "label": "Gorontalo Utara", "timezone": "WITA"},
-    {"value": "pohuwato", "label": "Pohuwato", "timezone": "WITA"}
+    {"value": "gorontaloutara", "label": "Gorontalo Utara", "timezone": "WITA"},
+    {"value": "pohuwato", "label": "Pohuwato", "timezone": "WITA"},
+    {"value": "kotagorontalo", "label": "Kota Gorontalo", "timezone": "WITA"},
+    {"value": "pahuwato", "label": "Pahuwato", "timezone": "WITA"}
+  ],
+  "Sulawesi Barat": [
+    {"value": "mamuju", "label": "Kabupaten Mamuju", "timezone": "WITA"},
+    {"value": "majene", "label": "Kabupaten Majene", "timezone": "WITA"},
+    {"value": "polewalimandar", "label": "Kabupaten Polewali Mandar", "timezone": "WITA"},
+    {"value": "mamasa", "label": "Kabupaten Mamasa", "timezone": "WITA"},
+    {"value": "pasangkayu", "label": "Kabupaten Pasangkayu", "timezone": "WITA"},
+    {"value": "mamujutengah", "label": "Kabupaten Mamuju Tengah", "timezone": "WITA"}
   ],
   "Maluku": [
     {"value": "ambon", "label": "Ambon", "timezone": "WIT"},
     {"value": "buru", "label": "Buru", "timezone": "WIT"},
-    {"value": "kepulauan-aru", "label": "Kepulauan Aru", "timezone": "WIT"},
+    {"value": "kepulauanaru", "label": "Kepulauan Aru", "timezone": "WIT"},
     {"value": "malukubaratdaya", "label": "Maluku Barat Daya", "timezone": "WIT"},
-    {"value": "maluku-tengah", "label": "Maluku Tengah", "timezone": "WIT"},
-    {"value": "seram-bagian-barat", "label": "Seram Bagian Barat", "timezone": "WIT"},
+    {"value": "malukutengah", "label": "Maluku Tengah", "timezone": "WIT"},
+    {"value": "serambagianbarat", "label": "Seram Bagian Barat", "timezone": "WIT"},
     {"value": "serambagiantimur", "label": "Seram Bagian Timur", "timezone": "WIT"},
-    {"value": "tual", "label": "Tual", "timezone": "WIT"}
+    {"value": "tual", "label": "Tual", "timezone": "WIT"},
+    {"value": "kotaambon", "label": "Kota Ambon", "timezone": "WIT"},
+    {"value": "kotatual", "label": "Kota Tual", "timezone": "WIT"},
+    {"value": "buruselatan", "label": "Buru Selatan", "timezone": "WIT"},
+    {"value": "malukutenggara", "label": "Maluku Tenggara", "timezone": "WIT"},
+    {"value": "malukutenggarabarat", "label": "Maluku Tenggara Barat", "timezone": "WIT"}
   ],
   "Maluku Utara": [
     {"value": "halmaherabarat", "label": "Halmahera Barat", "timezone": "WIT"},
@@ -419,44 +584,70 @@
     {"value": "kepulauansula", "label": "Kepulauan Sula", "timezone": "WIT"},
     {"value": "pulaumorotai", "label": "Pulau Morotai", "timezone": "WIT"},
     {"value": "ternate", "label": "Ternate", "timezone": "WIT"},
-    {"value": "tidore", "label": "Tidore", "timezone": "WIT"}
+    {"value": "tidore", "label": "Tidore", "timezone": "WIT"},
+    {"value": "kotaternate", "label": "Kota Ternate", "timezone": "WIT"},
+    {"value": "kotatidorekepulauan", "label": "Kota Tidore Kepulauan", "timezone": "WIT"},
+    {"value": "pulautaliabu", "label": "Pulau Taliabu", "timezone": "WIT"}
   ],
   "Papua": [
-    {"value": "asmat", "label": "Asmat", "timezone": "WIT"},
     {"value": "biak", "label": "Biak", "timezone": "WIT"},
-    {"value": "biak-numfor", "label": "Biak Numfor", "timezone": "WIT"},
-    {"value": "boven-digoel", "label": "Boven Digoel", "timezone": "WIT"},
-    {"value": "deiyai", "label": "Deiyai", "timezone": "WIT"},
-    {"value": "dogiyai", "label": "Dogiyai", "timezone": "WIT"},
-    {"value": "intanjaya", "label": "Intan Jaya", "timezone": "WIT"},
+    {"value": "biaknumfor", "label": "Biak Numfor", "timezone": "WIT"},
     {"value": "jayapura", "label": "Jayapura", "timezone": "WIT"},
     {"value": "keerom", "label": "Keerom", "timezone": "WIT"},
-    {"value": "kepulauan-yapen", "label": "Kepulauan Yapen", "timezone": "WIT"},
-    {"value": "lannyjaya", "label": "Lanny Jaya", "timezone": "WIT"},
-    {"value": "mamberamo-raya", "label": "Mamberamo Raya", "timezone": "WIT"},
-    {"value": "nabire", "label": "Nabire", "timezone": "WIT"},
-    {"value": "paniai", "label": "Paniai", "timezone": "WIT"},
-    {"value": "pegunungan-bintang", "label": "Pegunungan Bintang", "timezone": "WIT"},
-    {"value": "puncak", "label": "Puncak", "timezone": "WIT"},
-    {"value": "puncak-jaya", "label": "Puncak Jaya", "timezone": "WIT"},
+    {"value": "kepulauanyapen", "label": "Kepulauan Yapen", "timezone": "WIT"},
+    {"value": "mamberamoraya", "label": "Mamberamo Raya", "timezone": "WIT"},
     {"value": "sarmi", "label": "Sarmi", "timezone": "WIT"},
     {"value": "supiori", "label": "Supiori", "timezone": "WIT"},
-    {"value": "tolikara", "label": "Tolikara", "timezone": "WIT"},
     {"value": "waropen", "label": "Waropen", "timezone": "WIT"},
-    {"value": "yahukimo", "label": "Yahukimo", "timezone": "WIT"},
-    {"value": "yalimo", "label": "Yalimo", "timezone": "WIT"},
-    {"value": "wamena", "label": "Wamena", "timezone": "WIT"}
+    {"value": "kotajayapura", "label": "Kota Jayapura", "timezone": "WIT"}
   ],
   "Papua Barat": [
     {"value": "fakfak", "label": "Fakfak", "timezone": "WIT"},
     {"value": "kaimana", "label": "Kaimana", "timezone": "WIT"},
     {"value": "manokwari", "label": "Manokwari", "timezone": "WIT"},
+    {"value": "manokwariselatan", "label": "Manokwari Selatan", "timezone": "WIT"},
     {"value": "maybrat", "label": "Maybrat", "timezone": "WIT"},
-    {"value": "raja-ampat", "label": "Raja Ampat", "timezone": "WIT"},
+    {"value": "pegununganarfak", "label": "Pegunungan Arfak", "timezone": "WIT"},
+    {"value": "rajaampat", "label": "Raja Ampat", "timezone": "WIT"},
     {"value": "sorong", "label": "Sorong", "timezone": "WIT"},
-    {"value": "sorong-selatan", "label": "Sorong Selatan", "timezone": "WIT"},
+    {"value": "sorongselatan", "label": "Sorong Selatan", "timezone": "WIT"},
     {"value": "tambrauw", "label": "Tambrauw", "timezone": "WIT"},
     {"value": "telukbintuni", "label": "Teluk Bintuni", "timezone": "WIT"},
-    {"value": "telukwondama", "label": "Teluk Wondama", "timezone": "WIT"}
+    {"value": "telukwondama", "label": "Teluk Wondama", "timezone": "WIT"},
+    {"value": "kotasorong", "label": "Kota Sorong", "timezone": "WIT"}
+  ],
+  "Papua Selatan": [
+    {"value": "asmat", "label": "Asmat", "timezone": "WIT"},
+    {"value": "bovendigoel", "label": "Boven Digoel", "timezone": "WIT"},
+    {"value": "mappi", "label": "Mappi", "timezone": "WIT"},
+    {"value": "merauke", "label": "Merauke", "timezone": "WIT"}
+  ],
+  "Papua Tengah": [
+    {"value": "deiyai", "label": "Deiyai", "timezone": "WIT"},
+    {"value": "dogiyai", "label": "Dogiyai", "timezone": "WIT"},
+    {"value": "intanjaya", "label": "Intan Jaya", "timezone": "WIT"},
+    {"value": "mimika", "label": "Mimika", "timezone": "WIT"},
+    {"value": "nabire", "label": "Nabire", "timezone": "WIT"},
+    {"value": "paniai", "label": "Paniai", "timezone": "WIT"},
+    {"value": "puncak", "label": "Puncak", "timezone": "WIT"},
+    {"value": "puncakjaya", "label": "Puncak Jaya", "timezone": "WIT"}
+  ],
+  "Papua Pegunungan": [
+    {"value": "jayawijaya", "label": "Jayawijaya", "timezone": "WIT"},
+    {"value": "lannyjaya", "label": "Lanny Jaya", "timezone": "WIT"},
+    {"value": "mamberamotengah", "label": "Mamberamo Tengah", "timezone": "WIT"},
+    {"value": "nduga", "label": "Nduga", "timezone": "WIT"},
+    {"value": "pegununganbintang", "label": "Pegunungan Bintang", "timezone": "WIT"},
+    {"value": "tolikara", "label": "Tolikara", "timezone": "WIT"},
+    {"value": "wamena", "label": "Wamena", "timezone": "WIT"},
+    {"value": "yahukimo", "label": "Yahukimo", "timezone": "WIT"},
+    {"value": "yalimo", "label": "Yalimo", "timezone": "WIT"}
+  ],
+  "Papua Barat Daya": [
+    {"value": "rajaampat", "label": "Raja Ampat", "timezone": "WIT"},
+    {"value": "sorong", "label": "Sorong", "timezone": "WIT"},
+    {"value": "sorongselatan", "label": "Sorong Selatan", "timezone": "WIT"},
+    {"value": "tambrauw", "label": "Tambrauw", "timezone": "WIT"},
+    {"value": "kotasorong", "label": "Kota Sorong", "timezone": "WIT"}
   ]
 }

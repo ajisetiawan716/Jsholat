@@ -1001,6 +1001,124 @@ clean_city_value() {
     echo "$city_value"
 }
 
+# Fungsi baru untuk update jadwal di background dengan progress
+run_update_background_for_location() {
+    local chat_id="$1"
+    local msg_id="$2"
+    local token="$3"
+    local city_label="$4"
+    local province="$5"
+    
+    # Fungsi untuk update progress
+    update_progress() {
+        local text="$1"
+        curl -s -X POST \
+            "https://api.telegram.org/bot${token}/editMessageText" \
+            -d chat_id="${chat_id}" \
+            -d message_id="${msg_id}" \
+            -d text="$text" \
+            -d parse_mode="Markdown" \
+            > /dev/null 2>&1
+    }
+    
+    # Update progress pertama
+    update_progress "🔄 *Memperbarui jadwal sholat untuk ${city_label}, ${province}...*"
+    
+    # Buat file log sementara
+    local log_file="/tmp/jsholat_update_loc_${chat_id}_$$_$(date +%s).log"
+    local line_count=0
+    local last_update_time=$(date +%s)
+    
+    # Jalankan update dan proses output secara REAL-TIME
+    /usr/bin/jadwal-update.sh 2>&1 | while IFS= read -r line; do
+        if [ -n "$line" ]; then
+            # Simpan ke log
+            echo "$line" >> "$log_file"
+            line_count=$((line_count + 1))
+            
+            # Update progress setiap 2 baris atau untuk baris penting
+            local current_time=$(date +%s)
+            if [ $((line_count % 2)) -eq 0 ] || \
+               [ $((current_time - last_update_time)) -ge 2 ] || \
+               echo "$line" | grep -qi "error\|gagal\|berhasil\|selesai\|update\|mengambil\|jadwal"; then
+                
+                if ! echo "$line" | grep -q "Ping gagal"; then
+                    update_progress "$(printf '🔄 *Memperbarui jadwal...*\n📍 Lokasi: %s, %s\n\n%s' "$city_label" "$province" "$line")"
+                    last_update_time=$current_time
+                fi
+            fi
+        fi
+    done
+    
+    # Tentukan pesan akhir
+    local final_message=""
+    if grep -q "✅ Jadwal sholat berhasil diperbarui" "$log_file"; then
+        # UPDATE BERHASIL
+        local important_lines=$(grep -E "Memulai update dari sumber|Mengambil jadwal|✅ Jadwal sholat berhasil diperbarui|Update berhasil|Service berhasil" "$log_file" | tail -10)
+        final_message="✅ *Jadwal Sholat Berhasil Diperbarui*
+
+📍 *Lokasi Baru*: ${city_label}, ${province}
+
+📋 *Ringkasan*:
+\`\`\`
+${important_lines}
+\`\`\`"
+        
+    elif grep -q "Jadwal masih valid" "$log_file"; then
+        # JADWAL MASIH VALID
+        local last_check=$(grep "Jadwal masih valid" "$log_file" | tail -1)
+        final_message="ℹ️ *Jadwal Masih Valid*
+
+📍 *Lokasi Baru*: ${city_label}, ${province}
+
+${last_check}
+
+Jadwal untuk lokasi baru sudah tersedia."
+        
+    elif grep -q "ERROR\|Gagal" "$log_file" | grep -v "Ping gagal"; then
+        # ERROR
+        local error_lines=$(grep -E "ERROR|Gagal" "$log_file" | grep -v "Ping gagal" | tail -5)
+        final_message="❌ *Gagal Memperbarui Jadwal*
+
+📍 *Lokasi*: ${city_label}, ${province}
+
+*Error*:
+\`\`\`
+${error_lines}
+\`\`\`
+
+Silakan coba /update manual."
+        
+    else
+        # KONDISI LAIN
+        local last_lines=$(tail -5 "$log_file")
+        final_message="ℹ️ *Hasil Update Jadwal*
+
+📍 *Lokasi Baru*: ${city_label}, ${province}
+
+\`\`\`
+${last_lines}
+\`\`\`"
+    fi
+    
+    # Update pesan final
+    update_progress "$final_message"
+    
+    # Hapus keyboard jika ada
+    curl -s -X POST \
+        "https://api.telegram.org/bot${token}/editMessageReplyMarkup" \
+        -d chat_id="${chat_id}" \
+        -d message_id="${msg_id}" \
+        -d reply_markup='{"inline_keyboard":[]}' \
+        > /dev/null 2>&1
+    
+    # Bersihkan log setelah 5 menit
+    (
+        sleep 300
+        rm -f "$log_file"
+    ) &
+}
+
 # Fungsi untuk menyimpan lokasi yang dipilih
 set_location() {
     local chat_id="$1"
@@ -1024,13 +1142,13 @@ set_location() {
     local city_label=$(echo "$location_info" | jq -r '.label')
     local original_city_value="$city_value"
     
-	# Bersihkan city_value jika sumber jadwal adalah jadwalsholat atau arina
-	local cleaned_city_value="$city_value"
+    # Bersihkan city_value jika sumber jadwal adalah jadwalsholat atau arina
+    local cleaned_city_value="$city_value"
 
-	if [ "$SCHEDULE_SOURCE" = "jadwalsholat" ] || [ "$SCHEDULE_SOURCE" = "arina" ]; then
-		cleaned_city_value=$(clean_city_value "$city_value" "$SCHEDULE_SOURCE")
-		log "Membersihkan city_value: '$original_city_value' -> '$cleaned_city_value'"
-	fi
+    if [ "$SCHEDULE_SOURCE" = "jadwalsholat" ] || [ "$SCHEDULE_SOURCE" = "arina" ]; then
+        cleaned_city_value=$(clean_city_value "$city_value" "$SCHEDULE_SOURCE")
+        log "Membersihkan city_value: '$original_city_value' -> '$cleaned_city_value'"
+    fi
 
     # Simpan ke config
     uci set jsholat.schedule.city_label="$city_label"
@@ -1038,52 +1156,40 @@ set_location() {
     uci set jsholat.schedule.city_value="$cleaned_city_value"
     uci set jsholat.schedule.timezone_value="$timezone"
     uci commit jsholat
-	
+    
     # Update variabel config
     SCHEDULE_CITY_LABEL="$city_label"
     SCHEDULE_PROVINCE="$province"
     SCHEDULE_CITY_VALUE="$cleaned_city_value"
     SCHEDULE_TIMEZONE="$timezone"
-	
+    
     log "Lokasi disimpan: $city_label, $province ($timezone)"
 
-    # Kirim konfirmasi
+    # Kirim konfirmasi dan hapus keyboard
     remove_keyboard "$chat_id" "$message_id" "✅ Lokasi berhasil diubah ke: *${city_label}, ${province} (${timezone})*"
 
-    # Update jadwal
-    local progress_msg=$(send_message "$chat_id" "🔄 Memperbarui jadwal sholat untuk lokasi baru...")
-    local progress_msg_id=$(echo "$progress_msg" | jq -r '.result.message_id')
-
-    # Proses update dengan logging
-    local tmp_file=$(mktemp)
-    log "Memulai update jadwal, output disimpan di: $tmp_file"
-    /usr/bin/jadwal-update.sh 2>&1 | tee "$tmp_file" &
-
-    # Proses output untuk ditampilkan
-    while IFS= read -r line; do
-        # Bersihkan line dari karakter khusus
-        clean_line=$(echo "$line" | sed 's/[[:cntrl:]]//g' | sed 's/"/\\"/g')
-        
-        curl -s -X POST \
-        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+    # Buat pesan progress BARU untuk update jadwal
+    local progress_msg=$(curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
         -d chat_id="${chat_id}" \
-        -d message_id="${progress_msg_id}" \
-        -d text="$(printf '🔄 Memperbarui jadwal...\n\n%s' "$clean_line")" \
-        -d parse_mode="Markdown" \
-        > /dev/null 2>&1
-    sleep 0.3
-    done < "$tmp_file"
-
-
-    # Cek hasil update
-    if grep -qi "error" "$tmp_file"; then
-        local last_error=$(grep -i "error" "$tmp_file" | tail -1 | sed -E 's/^\[[0-9-]+ [0-9:]+\] //')
-        send_message "$chat_id" "$(printf '❌ Gagal memperbarui jadwal\n\nPesan error: %s\n\nSilakan coba /update manual.' "$last_error")"
-    else
-        send_message "$chat_id" "✅ Jadwal sholat berhasil diperbarui untuk *${city_label}, ${province}*"
-    fi
-
-    rm -f "$tmp_file"
+        -d text="🔄 *Mempersiapkan update jadwal untuk lokasi baru...*" \
+        -d parse_mode="Markdown")
+    
+    local progress_msg_id=$(echo "$progress_msg" | jq -r '.result.message_id')
+    
+    # Ekspor fungsi jika perlu
+    export -f run_update_background_for_location
+    export TELEGRAM_TOKEN
+    
+    # Jalankan update di background
+    (
+        run_update_background_for_location "$chat_id" "$progress_msg_id" "$TELEGRAM_TOKEN" "$city_label" "$province"
+    ) &
+    
+    local bg_pid=$!
+    log "🔄 Update jadwal untuk lokasi baru berjalan di background (PID: $bg_pid) untuk chat_id=$chat_id"
+    
+    return 0
 }
 
 # Fungsi untuk menampilkan menu adjustment Hijriyah
@@ -8038,12 +8144,12 @@ while true; do
                 log "⚠️ WARNING: Update $current_update_id ($processing_type) gagal diproses, offset TIDAK dinaikkan"
                 
                 # KIRIM NOTIFIKASI KE ADMIN (opsional)
-                if [ -n "$AUTHORIZED_CHAT_ID" ] && [ "$AUTHORIZED_CHAT_ID" != "null" ]; then
+                #if [ -n "$AUTHORIZED_CHAT_ID" ] && [ "$AUTHORIZED_CHAT_ID" != "null" ]; then
                     # Kirim notifikasi hanya untuk error penting, jangan spam
-                    if [ "$processing_type" = "message" ] || [ "$processing_type" = "callback" ]; then
-                        send_message "$AUTHORIZED_CHAT_ID" "⚠️ Update $current_update_id ($processing_type) gagal diproses. Cek log." > /dev/null 2>&1
-                    fi
-                fi
+                #    if [ "$processing_type" = "message" ] || [ "$processing_type" = "callback" ]; then
+                #        send_message "$AUTHORIZED_CHAT_ID" "⚠️ Update $current_update_id ($processing_type) gagal diproses. Cek log." > /dev/null 2>&1
+                #    fi
+                #fi
             fi
         fi
 

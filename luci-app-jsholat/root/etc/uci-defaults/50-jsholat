@@ -2,76 +2,76 @@
 
 CONFIG_NAME="jsholat"
 
-# Fungsi untuk nge-set nilai default kalau opsi belum ada
+# 1. Pastikan file config ada
+if [ ! -f /etc/config/$CONFIG_NAME ]; then
+    touch /etc/config/$CONFIG_NAME
+fi
+
+# 2. Pastikan named section ada
+if ! uci -q get "$CONFIG_NAME.schedule" >/dev/null; then
+    uci set "$CONFIG_NAME.schedule=schedule"
+fi
+
+if ! uci -q get "$CONFIG_NAME.sound" >/dev/null; then
+    uci set "$CONFIG_NAME.sound=sound"
+fi
+
+if ! uci -q get "$CONFIG_NAME.service" >/dev/null; then
+    uci set "$CONFIG_NAME.service=service"
+fi
+
+uci commit "$CONFIG_NAME"
+
+# 3. Fungsi set default
 set_default() {
     local section="$1"
     local option="$2"
     local value="$3"
-    
-    # Cek apakah opsi udah ada di konfigurasi
-    if ! uci -q get "$CONFIG_NAME.$section.$option" > /dev/null; then
-        # Kalau belum ada, set ke nilai default
-        uci set "$CONFIG_NAME.$section.$option='$value'"
-        echo "Menambahkan opsi baru: $section.$option = $value"
+
+    if ! uci -q get "$CONFIG_NAME.$section.$option" >/dev/null; then
+        uci set "$CONFIG_NAME.$section.$option=$value"
+        echo "Menambahkan default: $section.$option = $value"
     fi
 }
 
-# 1. Pastikan section ada (kalau nggak ada, bikin)
-# Section schedule
-if ! uci -q get "$CONFIG_NAME.schedule" > /dev/null; then
-    uci set "$CONFIG_NAME.schedule"="schedule"
-fi
+# 4. Default Schedule
+set_default schedule country Indonesia
+set_default schedule interval monthly_special
+set_default schedule province "Jawa Tengah"
+set_default schedule timezone_value WIB
+set_default schedule hijri_adjust -1
+set_default schedule file_jadwal /root/jsholat/jadwal.json
+set_default schedule city_label Brebes
+set_default schedule city_value brebes
+set_default schedule source jadwalsholat
 
-# Section sound
-if ! uci -q get "$CONFIG_NAME.sound" > /dev/null; then
-    uci set "$CONFIG_NAME.sound"="sound"
-fi
+# 5. Default Sound
+set_default sound volume_control hardware
+set_default sound mixer_device Speaker
+set_default sound sound_adzan /root/jsholat/adzan.mp3
+set_default sound sound_adzan_shubuh /root/jsholat/adzan_subuh.mp3
+set_default sound sound_adzan_imsy /root/jsholat/tarhim.mp3
+set_default sound reminder_repeat_interval 5
+set_default sound tarhim_enabled 1
+set_default sound sound_enabled 1
+set_default sound reminder_sound_enabled 1
+set_default sound reminder_before 15
+set_default sound gemini_model gemini-2.5-flash-preview-tts
+set_default sound tarhim_mode ramadhan_only
+set_default sound gemini_voice Zephyr
+set_default sound edge_voice id-ID-ArdiNeural
+set_default sound tts_method gemini
+set_default sound sahur_enabled 1
+set_default sound sahur_time 02:30
+set_default sound reminder_repeat_count 3
+set_default sound volume_level 90
 
-# Section service
-if ! uci -q get "$CONFIG_NAME.service" > /dev/null; then
-    uci set "$CONFIG_NAME.service"="service"
-fi
+# 6. Default Service
+set_default service service 1
+set_default service telegram_enabled 0
+set_default service ayat_enabled 0
+set_default service debug_mode 0
 
-# 2. Set default values CUMA KALAU OPSI BELUM ADA
-# Schedule section
-set_default "schedule" "country" "Indonesia"
-set_default "schedule" "interval" "monthly_special"
-set_default "schedule" "province" "Jawa Tengah"
-set_default "schedule" "timezone_value" "WIB"
-set_default "schedule" "hijri_adjust" "-1"
-set_default "schedule" "file_jadwal" "/root/jsholat/jadwal.json"
-set_default "schedule" "city_label" "Brebes"
-set_default "schedule" "source" "jadwalsholat"
-set_default "schedule" "city_value" "brebes"
-
-# Sound section
-set_default "sound" "volume_control" "hardware"
-set_default "sound" "mixer_device" "Speaker"
-set_default "sound" "sound_adzan" "/root/jsholat/adzan.mp3"
-set_default "sound" "sound_adzan_shubuh" "/root/jsholat/adzan_subuh.mp3"
-set_default "sound" "sound_adzan_imsy" "/root/jsholat/tarhim.mp3"
-set_default "sound" "reminder_repeat_interval" "5"
-set_default "sound" "tarhim_enabled" "1"
-set_default "sound" "sound_enabled" "1"
-set_default "sound" "reminder_sound_enabled" "1"
-set_default "sound" "reminder_before" "15"
-set_default "sound" "gemini_model" "gemini-2.5-flash-preview-tts"
-set_default "sound" "tarhim_mode" "ramadhan_only"
-set_default "sound" "gemini_voice" "Zephyr"
-set_default "sound" "edge_voice" "id-ID-ArdiNeural"
-set_default "sound" "tts_method" "gemini"
-set_default "sound" "sahur_enabled" "1"
-set_default "sound" "sahur_time" "02:30"
-set_default "sound" "reminder_repeat_count" "3"
-set_default "sound" "volume_level" "90"
-
-# Service section
-set_default "service" "service" "1"
-set_default "service" "telegram_enabled" "0"
-set_default "service" "ayat_enabled" "0"
-set_default "service" "debug_mode" "0"
-
-# 3. Commit perubahan
 uci commit "$CONFIG_NAME"
 
 exit 0

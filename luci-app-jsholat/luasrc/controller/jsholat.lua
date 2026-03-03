@@ -1356,7 +1356,7 @@ function get_status_json()
     
     -- Tanggal
     local today = os.date("%d-%m-%Y")
-    local day_names = {"Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"}
+    local day_names = {"Ahad", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"}
     local day_name = day_names[tonumber(os.date("%w")) + 1] or os.date("%A")
     
     local month_names = {"Januari", "Februari", "Maret", "April", "Mei", "Juni", 
@@ -1458,102 +1458,165 @@ function get_status_json()
     -- =============================================
     -- 12. NEXT PRAYER
     -- =============================================
-    
-    local function get_next_prayer_time(imsyak, subuh, dzuhur, ashar, maghrib, isya, current_time)
-        if not current_time or current_time == "" then return nil end
-        
-        local cur_h, cur_m = current_time:match("(%d+):(%d+)")
-        if not cur_h or not cur_m then return nil end
-        local cur_sec = safe_tonumber(cur_h, 0) * 3600 + safe_tonumber(cur_m, 0) * 60
-        
-        local prayers = {
-            { name = "Imsyak", time = imsyak },
-            { name = "Subuh", time = subuh },
-            { name = "Dzuhur", time = dzuhur },
-            { name = "Ashar", time = ashar },
-            { name = "Maghrib", time = maghrib },
-            { name = "Isya", time = isya }
-        }
-        
-        local next_name = ""
-        local next_time = ""
-        local min_diff = 86400
-        
-        for _, p in ipairs(prayers) do
-            if p.time and p.time ~= "-" then
-                local h, m = p.time:match("(%d+):(%d+)")
-                if h and m then
-                    local sec = safe_tonumber(h, 0) * 3600 + safe_tonumber(m, 0) * 60
-                    local diff = sec - cur_sec
-                    if diff > 0 and diff < min_diff then
-                        min_diff = diff
-                        next_name = p.name
-                        next_time = p.time
-                    end
-                end
-            end
-        end
-        
-        if next_name == "" and imsyak ~= "-" then
-            local h, m = imsyak:match("(%d+):(%d+)")
-            if h and m then
-                local imsak_sec = safe_tonumber(h, 0) * 3600 + safe_tonumber(m, 0) * 60
-                local to_midnight = (24 * 3600) - cur_sec
-                min_diff = to_midnight + imsak_sec
-                next_name = "Imsyak (besok)"
-                next_time = imsyak
-            end
-        end
-        
-        if next_name ~= "" then
-            local minutes = math.floor(min_diff / 60)
-            local minutes_text = ""
-            if min_diff >= 3600 then
-                local hours = math.floor(min_diff / 3600)
-                local mins = math.floor((min_diff % 3600) / 60)
-                minutes_text = hours .. " jam " .. mins .. " menit"
-            elseif min_diff >= 60 then
-                minutes_text = math.floor(min_diff / 60) .. " menit"
-            else
-                minutes_text = min_diff .. " detik"
-            end
-            
-            local timestamp = os.date("%Y-%m-%d") .. " " .. next_time .. ":00"
-            if next_name == "Imsyak (besok)" then
-                timestamp = os.date("%Y-%m-%d", os.time() + 86400) .. " " .. next_time .. ":00"
-            end
-            
-            return {
-                name = next_name,
-                time = next_time,
-                minutes_left = minutes,
-                minutes_left_human = minutes_text,
-                timestamp = timestamp
-            }
-        end
-        
-        return nil
-    end
-    
-    local next_prayer_data = {
-        name = "",
-        time = "",
-        minutes_left = 0,
-        minutes_left_human = "0 detik",
-        timestamp = ""
-    }
-    
-    if file_valid then
-        local current_time = os.date("%H:%M")
-        local next_prayer = get_next_prayer_time(
-            times.imsyak, times.subuh, times.dzuhur,
-            times.ashar, times.maghrib, times.isya,
-            current_time
-        )
-        if next_prayer then
-            next_prayer_data = next_prayer
-        end
-    end
+	
+	local next_prayer_data = {
+		name = "",
+		time = "",
+		minutes_left = 0,
+		minutes_left_human = "0 detik",
+		timestamp = ""
+	}
+
+	if file_valid then
+		-- Baca file JSON untuk mendapatkan data lengkap
+		local json_file_path = "/root/jsholat/jadwal.json"
+		local jadwal_json = {}
+		
+		local json_file = io.open(json_file_path, "r")
+		if json_file then
+			local json_content = json_file:read("*a")
+			json_file:close()
+			
+			if json_content and json_content ~= "" then
+				local success, json_data = pcall(json.decode, json_content)
+				if success and type(json_data) == "table" then
+					-- Filter data valid
+					for _, entry in ipairs(json_data) do
+						if entry and type(entry) == "table" and entry.gregorian_date then
+							table.insert(jadwal_json, entry)
+						end
+					end
+				end
+			end
+		end
+		
+		-- Fungsi baru untuk next prayer dengan data JSON
+		local function get_next_prayer_from_json(jadwal_json)
+			if not jadwal_json or #jadwal_json == 0 then
+				return nil
+			end
+			
+			local now = os.time()
+			local today = os.date("%d-%m-%Y")
+			local tomorrow = os.date("%d-%m-%Y", now + 86400)
+			
+			-- Parse tanggal hari ini
+			local cur_day, cur_month, cur_year = today:match("(%d+)-(%d+)-(%d+)")
+			cur_day = tonumber(cur_day)
+			cur_month = tonumber(cur_month)
+			cur_year = tonumber(cur_year)
+			
+			local next_time = nil
+			local next_name = nil
+			local next_time_str = nil
+			
+			-- Cari di hari ini dulu
+			local today_entry = nil
+			for _, entry in ipairs(jadwal_json) do
+				if entry.gregorian_date == today then
+					today_entry = entry
+					break
+				end
+			end
+			
+			if today_entry then
+				local prayers = {
+					{name = "Imsyak", time = today_entry.imsyak},
+					{name = "Subuh", time = today_entry.subuh},
+					{name = "Dzuhur", time = today_entry.dzuhur},
+					{name = "Ashar", time = today_entry.ashar},
+					{name = "Maghrib", time = today_entry.maghrib},
+					{name = "Isya", time = today_entry.isya}
+				}
+				
+				for _, p in ipairs(prayers) do
+					if p.time and p.time ~= "-" and p.time:match("%d%d:%d%d") then
+						local h = tonumber(p.time:sub(1, 2))
+						local m = tonumber(p.time:sub(4, 5))
+						local prayer_time = os.time({
+							year = cur_year,
+							month = cur_month,
+							day = cur_day,
+							hour = h,
+							min = m,
+							sec = 0
+						})
+						
+						if prayer_time > now then
+							if not next_time or prayer_time < next_time then
+								next_time = prayer_time
+								next_name = p.name
+								next_time_str = p.time
+							end
+						end
+					end
+				end
+			end
+			
+			-- Jika tidak ada di hari ini, ambil Imsyak besok
+			if not next_time then
+				local tomorrow_entry = nil
+				for _, entry in ipairs(jadwal_json) do
+					if entry.gregorian_date == tomorrow then
+						tomorrow_entry = entry
+						break
+					end
+				end
+				
+				if tomorrow_entry and tomorrow_entry.imsyak and tomorrow_entry.imsyak ~= "-" then
+					local h = tonumber(tomorrow_entry.imsyak:sub(1, 2))
+					local m = tonumber(tomorrow_entry.imsyak:sub(4, 5))
+					local tom_day, tom_month, tom_year = tomorrow:match("(%d+)-(%d+)-(%d+)")
+					
+					next_time = os.time({
+						year = tonumber(tom_year),
+						month = tonumber(tom_month),
+						day = tonumber(tom_day),
+						hour = h,
+						min = m,
+						sec = 0
+					})
+					next_name = "Imsyak (besok)"
+					next_time_str = tomorrow_entry.imsyak
+				end
+			end
+			
+			-- Format hasil
+			if next_time then
+				local diff = next_time - now
+				if diff < 0 then diff = 0 end
+				
+				local minutes = math.floor(diff / 60)
+				local hours = math.floor(diff / 3600)
+				local mins = math.floor((diff % 3600) / 60)
+				
+				local diff_text = ""
+				if hours > 0 then
+					diff_text = string.format("%d jam %d menit", hours, mins)
+				elseif minutes > 0 then
+					diff_text = string.format("%d menit", minutes)
+				else
+					diff_text = string.format("%d detik", diff)
+				end
+				
+				return {
+					name = next_name,
+					time = next_time_str,
+					minutes_left = minutes,
+					minutes_left_human = diff_text,
+					timestamp = os.date("%Y-%m-%d %H:%M:%S", next_time)
+				}
+			end
+			
+			return nil
+		end
+		
+		-- Panggil fungsi baru
+		local next_prayer = get_next_prayer_from_json(jadwal_json)
+		if next_prayer then
+			next_prayer_data = next_prayer
+		end
+	end
     
 	-- =============================================
 	-- 13. DATA SISTEM (DENGAN FORMAT GB)

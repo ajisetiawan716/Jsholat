@@ -2125,6 +2125,78 @@ check_internet_connection() {
     return 1
 }
 
+# ----------------------------------------------------------------------
+# GLOBAL VARIABLES UNTUK FALLBACK UNTUK TTS
+# ----------------------------------------------------------------------
+
+declare -a GLOBAL_FAILED_METHODS=()
+GLOBAL_FAILED_METHODS_CACHE="/tmp/jsholat_cache/jsholat_failed_methods.cache"
+TTS_PRIORITY=(
+    ["gemini"]=100
+    ["edge"]=90
+    ["murf"]=80
+    ["google"]=60
+    ["espeak"]=30
+)
+
+# ----------------------------------------------------------------------
+# FUNGSI MANAJEMEN GLOBAL FAILED METHODS TTS
+# ----------------------------------------------------------------------
+
+# Fungsi untuk load failed methods dari cache
+load_global_failed_methods() {
+    if [ -f "$GLOBAL_FAILED_METHODS_CACHE" ]; then
+        local cache_date=$(head -1 "$GLOBAL_FAILED_METHODS_CACHE" 2>/dev/null)
+        local today=$(date +"%Y-%m-%d")
+        
+        if [ "$cache_date" = "$today" ]; then
+            # Load failed methods dari baris 2 dst
+            mapfile -t GLOBAL_FAILED_METHODS < <(tail -n +2 "$GLOBAL_FAILED_METHODS_CACHE" 2>/dev/null)
+            [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📂 Load failed methods: ${GLOBAL_FAILED_METHODS[*]}"
+        else
+            # Cache expired, reset
+            GLOBAL_FAILED_METHODS=()
+            echo "$today" > "$GLOBAL_FAILED_METHODS_CACHE"
+            [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🆕 Reset failed methods cache untuk hari baru"
+        fi
+    else
+        # Buat cache baru
+        mkdir -p "$(dirname "$GLOBAL_FAILED_METHODS_CACHE")"
+        echo "$(date +"%Y-%m-%d")" > "$GLOBAL_FAILED_METHODS_CACHE"
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🆕 Inisialisasi failed methods cache"
+    fi
+}
+
+# Fungsi untuk save failed methods
+save_global_failed_methods() {
+    local today=$(date +"%Y-%m-%d")
+    {
+        echo "$today"
+        printf "%s\n" "${GLOBAL_FAILED_METHODS[@]}"
+    } > "$GLOBAL_FAILED_METHODS_CACHE"
+}
+
+# Fungsi untuk menambah failed method
+add_global_failed_method() {
+    local method="$1"
+    # Cek apakah sudah ada
+    for m in "${GLOBAL_FAILED_METHODS[@]}"; do
+        if [ "$m" = "$method" ]; then
+            return
+        fi
+    done
+    GLOBAL_FAILED_METHODS+=("$method")
+    save_global_failed_methods
+    [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "➕ Tambah $method ke global failed methods"
+}
+
+# Fungsi untuk reset global failed methods (dipanggil setiap hari baru)
+reset_global_failed_methods() {
+    GLOBAL_FAILED_METHODS=()
+    echo "$(date +"%Y-%m-%d")" > "$GLOBAL_FAILED_METHODS_CACHE"
+    [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔄 Reset global failed methods untuk hari baru"
+}
+
 # FUNGSI TTS FALLBACK BIDIRECTIONAL 
 # Skor kualitas suara untuk prioritas fallback
 # Skor prioritas (semakin tinggi, semakin diprioritaskan)
@@ -2136,41 +2208,60 @@ declare -A TTS_PRIORITY=(
     ["espeak"]=30   # Robotik voice (offline, last resort)
 )
 
-# Fungsi untuk mendapatkan daftar metode TTS yang tersedia (FIXED SORTING)
+# =============================================
+# FUNGSI MENDAPATKAN METODE TTS YANG TERSEDIA
+# =============================================
+
+# Fungsi untuk mendapatkan daftar metode TTS yang tersedia (dengan filter internet)
 get_available_tts_methods() {
     local -a available_methods=()
     local -a available_scores=()
     
-    # Koleksi metode yang tersedia beserta skornya
-    # Gemini
-    if [ -n "$(uci -q get jsholat.sound.gemini_api_key)" ]; then
+    # Cek koneksi internet SEKALI
+    local has_internet=0
+    if check_internet_connection; then
+        has_internet=1
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🌐 Koneksi internet tersedia"
+    else
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📵 Tidak ada koneksi internet"
+    fi
+    
+    # GEMINI (online, butuh API key)
+    if [ $has_internet -eq 1 ] && [ -n "$(uci -q get jsholat.sound.gemini_api_key)" ]; then
         available_methods+=("gemini")
         available_scores+=("${TTS_PRIORITY[gemini]}")
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "➕ Gemini tersedia (online, API key OK)"
     fi
     
-    # Edge
-    if command -v edge-tts >/dev/null 2>&1; then
+    # EDGE (online, butuh instalasi)
+    if [ $has_internet -eq 1 ] && command -v edge-tts >/dev/null 2>&1; then
         available_methods+=("edge")
         available_scores+=("${TTS_PRIORITY[edge]}")
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "➕ Edge-TTS tersedia (online, terinstal)"
     fi
     
-    # Murf
-    if [ -n "$(uci -q get jsholat.sound.murf_api_key)" ]; then
+    # MURF (online, butuh API key)
+    if [ $has_internet -eq 1 ] && [ -n "$(uci -q get jsholat.sound.murf_api_key)" ]; then
         available_methods+=("murf")
         available_scores+=("${TTS_PRIORITY[murf]}")
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "➕ Murf tersedia (online, API key OK)"
     fi
     
-    # Google (selalu tersedia)
-    available_methods+=("google")
-    available_scores+=("${TTS_PRIORITY[google]}")
+    # GOOGLE (online, selalu tersedia jika ada internet)
+    if [ $has_internet -eq 1 ]; then
+        available_methods+=("google")
+        available_scores+=("${TTS_PRIORITY[google]}")
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "➕ Google TTS tersedia (online)"
+    fi
     
-    # eSpeak
+    # E-SPEAK (offline, selalu tersedia jika terinstal)
     if command -v espeak >/dev/null 2>&1 && command -v aplay >/dev/null 2>&1; then
         available_methods+=("espeak")
         available_scores+=("${TTS_PRIORITY[espeak]}")
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "➕ eSpeak tersedia (offline)"
     fi
     
-    # Sorting manual dengan bubble sort (descending by score)
+    # Bubble sort untuk mengurutkan berdasarkan prioritas (descending)
     local n=${#available_methods[@]}
     for ((i = 0; i < n-1; i++)); do
         for ((j = 0; j < n-i-1; j++)); do
@@ -2188,42 +2279,52 @@ get_available_tts_methods() {
         done
     done
     
-    # Debug output
-    if [ "$DEBUG_MODE" = "1" ]; then
-        local debug_msg="📋 Metode TTS tersedia (sorted): "
-        for i in "${!available_methods[@]}"; do
-            debug_msg+="${available_methods[$i]}(${available_scores[$i]}) "
-        done
-        log "DEBUG" "$debug_msg"
-    fi
-    
-    # Return hanya metode (tanpa skor)
+    [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📋 Metode TTS setelah sorting: ${available_methods[*]}"
     echo "${available_methods[@]}"
 }
 
-# Fungsi untuk mendapatkan urutan fallback (IMPROVED)
+# Fungsi untuk mendapatkan urutan fallback (dengan filter blacklist)
 get_fallback_order() {
     local original_method="$1"
+    local current_failed="${2:-}"
     local all_available=($(get_available_tts_methods))
     local -a fallback=()
     
-    # Log semua metode yang tersedia (already sorted)
-    [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📋 Semua metode tersedia (prioritas): ${all_available[*]}"
+    # Log semua metode yang tersedia
+    [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📋 Semua metode tersedia: ${all_available[*]}"
     
-    # Ambil semua metode yang available, kecuali metode asal
+    # Filter kandidat:
+    # 1. Bukan metode asal
+    # 2. Tidak ada di global failed methods
+    # 3. Tidak ada di current failed
     for method in "${all_available[@]}"; do
-        if [ "$method" != "$original_method" ]; then
-            fallback+=("$method")
+        # Skip metode asal
+        [ "$method" = "$original_method" ] && continue
+        
+        # Skip jika sudah ada di global failed
+        local found=0
+        for failed in "${GLOBAL_FAILED_METHODS[@]}"; do
+            if [ "$failed" = "$method" ]; then
+                found=1
+                break
+            fi
+        done
+        [ $found -eq 1 ] && continue
+        
+        # Skip jika sudah ada di current failed
+        if [[ "$current_failed" == *"$method"* ]]; then
+            continue
         fi
+        
+        fallback+=("$method")
     done
     
-    # Jika tidak ada fallback, setidaknya Google
+    # Jika tidak ada fallback, setidaknya eSpeak
     if [ ${#fallback[@]} -eq 0 ]; then
-        fallback=("google")
-        if command -v espeak >/dev/null 2>&1; then
-            fallback+=("espeak")
+        if command -v espeak >/dev/null 2>&1 && command -v aplay >/dev/null 2>&1; then
+            fallback=("espeak")
+            [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "⚠️ Tidak ada fallback, menggunakan eSpeak"
         fi
-        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "⚠️ Tidak ada fallback, menggunakan default: ${fallback[*]}"
     fi
     
     # Log urutan fallback final
@@ -2232,7 +2333,7 @@ get_fallback_order() {
     echo "${fallback[@]}"
 }
 
-# Fungsi try_tts_fallback (UPDATE - panggil debug_priority_values)
+# Fungsi try_tts_fallback dengan global tracking
 try_tts_fallback() {
     local original_method="$1"
     local text="$2"
@@ -2240,73 +2341,58 @@ try_tts_fallback() {
     local prayer_time="$4"
     local lokasi="$5"
     local timezone="$6"
-    local failed_methods="${7:-}"
+    local current_failed="${7:-}"
     
     log "INFO" "🔄 Mencoba fallback TTS untuk $salat_name (dari $original_method)"
     
-    # Debug priority values
-    debug_priority_values
+    # Dapatkan urutan fallback berdasarkan ketersediaan dan blacklist
+    local fallback_order=($(get_fallback_order "$original_method" "$current_failed"))
     
-    # Dapatkan urutan fallback berdasarkan ketersediaan
-    local fallback_order=($(get_fallback_order "$original_method"))
+    if [ ${#fallback_order[@]} -eq 0 ]; then
+        log "ERROR" "❌ Tidak ada kandidat fallback tersedia untuk $salat_name"
+        return 1
+    fi
     
-    # Log daftar fallback yang akan dicoba
     log "INFO" "📋 Urutan fallback: ${fallback_order[*]}"
     
     # Coba setiap metode fallback
     for method in "${fallback_order[@]}"; do
-        # Skip jika metode ini sudah pernah dicoba
-        if [[ "$failed_methods" == *"$method"* ]]; then
-            [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "⏭️  Skip $method (sudah dicoba)"
-            continue
-        fi
-        
         log "INFO" "🔧 Mencoba fallback ke metode: $method"
         
+        local success=1
         case "$method" in
             "gemini")
                 play_gemini_tts_with_repeat "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone"
-                if [ $? -eq 0 ]; then
-                    log "INFO" "✅ Fallback ke Gemini berhasil"
-                    return 0
-                fi
+                success=$?
                 ;;
-                
-            "murf")
-                play_murf_tts_with_repeat "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone"
-                if [ $? -eq 0 ]; then
-                    log "INFO" "✅ Fallback ke Murf.ai berhasil"
-                    return 0
-                fi
-                ;;
-                
             "edge")
                 play_edge_tts_with_repeat "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone"
-                if [ $? -eq 0 ]; then
-                    log "INFO" "✅ Fallback ke Edge-TTS berhasil"
-                    return 0
-                fi
+                success=$?
                 ;;
-                
             "google")
                 play_google_tts_with_repeat "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone"
-                if [ $? -eq 0 ]; then
-                    log "INFO" "✅ Fallback ke Google TTS berhasil"
-                    return 0
-                fi
+                success=$?
                 ;;
-                
             "espeak")
                 play_espeak_tts_with_repeat "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone"
-                if [ $? -eq 0 ]; then
-                    log "INFO" "✅ Fallback ke eSpeak berhasil"
-                    return 0
-                fi
+                success=$?
+                ;;
+            "murf")
+                play_murf_tts_with_repeat "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone"
+                success=$?
                 ;;
         esac
         
-        # Tambahkan metode yang gagal ke daftar
-        failed_methods="$failed_methods,$method"
+        if [ $success -eq 0 ]; then
+            log "INFO" "✅ Fallback ke $method berhasil untuk $salat_name"
+            return 0
+        else
+            log "WARNING" "❌ Fallback ke $method gagal untuk $salat_name"
+            # Tambahkan metode yang gagal ke global failed methods
+            add_global_failed_method "$method"
+            # Update current_failed untuk menghindari pengulangan
+            current_failed="$current_failed,$method"
+        fi
     done
     
     log "ERROR" "❌ Semua metode fallback gagal untuk $salat_name"
@@ -2917,6 +3003,14 @@ play_google_tts_with_repeat() {
         log "INFO" "🔄 REMINDER $salat_name: Akan diputar $repeat_count kali untuk penegasan"
     fi
     
+    # CEK KONEKSI INTERNET - EARLY EXIT
+    if ! check_internet_connection; then
+        log "WARNING" "📵 Tidak ada koneksi internet untuk Google TTS"
+        add_global_failed_method "google"
+        try_tts_fallback "google" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "google"
+        return $?
+    fi
+    
     # Tentukan maksimal percobaan download jika gagal
     local max_attempts=2
     
@@ -2952,6 +3046,8 @@ play_google_tts_with_repeat() {
         
         # Jika ini attempt terakhir, fallback
         if [ $download_attempt -eq $max_attempts ] && [ -z "$downloaded_file" ]; then
+            log "WARNING" "❌ Google TTS gagal setelah $max_attempts percobaan"
+            add_global_failed_method "google"
             log "INFO" "🔄 Mencoba fallback ke metode TTS lain..."
             try_tts_fallback "google" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "google"
             return $?
@@ -2967,10 +3063,9 @@ play_google_tts_with_repeat() {
         download_attempt=$((download_attempt + 1))
     done
     
-    # Jika download gagal
+    # Jika download gagal (seharusnya sudah tertangani)
     if [ -z "$downloaded_file" ]; then
-        try_tts_fallback "google" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "google"
-        return $?
+        return 1
     fi
     
     # ===== BAGIAN 2: PUTAR AUDIO DENGAN PENGULANGAN =====
@@ -3040,9 +3135,18 @@ play_edge_tts_with_repeat() {
         log "INFO" "🔄 REMINDER $salat_name: Akan diputar $repeat_count kali untuk penegasan"
     fi
     
+    # CEK KONEKSI INTERNET - EARLY EXIT
+    if ! check_internet_connection; then
+        log "WARNING" "📵 Tidak ada koneksi internet untuk Edge-TTS"
+        add_global_failed_method "edge"
+        try_tts_fallback "edge" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "edge"
+        return $?
+    fi
+    
     # Cek apakah edge-tts tersedia
     if ! command -v edge-tts >/dev/null 2>&1; then
         log "ERROR" "❌ edge-tts tidak ditemukan"
+        add_global_failed_method "edge"
         try_tts_fallback "edge" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "edge"
         return $?
     fi
@@ -3081,6 +3185,8 @@ play_edge_tts_with_repeat() {
         
         # Jika ini attempt terakhir, fallback
         if [ $generate_attempt -eq $max_attempts ] && [ -z "$downloaded_file" ]; then
+            log "WARNING" "❌ Edge-TTS gagal setelah $max_attempts percobaan"
+            add_global_failed_method "edge"
             log "INFO" "🔄 Mencoba fallback ke metode TTS lain..."
             try_tts_fallback "edge" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "edge"
             return $?
@@ -3096,10 +3202,9 @@ play_edge_tts_with_repeat() {
         generate_attempt=$((generate_attempt + 1))
     done
     
-    # Jika generate gagal
+    # Jika generate gagal (seharusnya sudah tertangani di loop)
     if [ -z "$downloaded_file" ]; then
-        try_tts_fallback "edge" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "edge"
-        return $?
+        return 1
     fi
     
     # ===== BAGIAN 2: PUTAR AUDIO DENGAN PENGULANGAN =====
@@ -3169,6 +3274,14 @@ play_murf_tts_with_repeat() {
         log "INFO" "🔄 REMINDER $salat_name: Akan diputar $repeat_count kali untuk penegasan"
     fi
     
+    # CEK KONEKSI INTERNET - EARLY EXIT
+    if ! check_internet_connection; then
+        log "WARNING" "📵 Tidak ada koneksi internet untuk Murf TTS"
+        add_global_failed_method "murf"
+        try_tts_fallback "murf" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "murf"
+        return $?
+    fi
+    
     # Tentukan maksimal percobaan jika gagal
     local max_attempts=2
     
@@ -3177,6 +3290,7 @@ play_murf_tts_with_repeat() {
     
     if [ -z "$murf_api_key" ]; then
         log "ERROR" "❌ API key Murf.ai belum dikonfigurasi"
+        add_global_failed_method "murf"
         try_tts_fallback "murf" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "murf"
         return $?
     fi
@@ -3232,13 +3346,15 @@ play_murf_tts_with_repeat() {
         else
             log "ERROR" "❌ REMINDER SUARA: Gagal membuat suara dengan Murf.ai (attempt $download_attempt, HTTP: $http_code)"
             [ -f "$temp_audio_file" ] && rm -f "$temp_audio_file"
-            
-            # Jika ini attempt terakhir, fallback
-            if [ $download_attempt -eq $max_attempts ]; then
-                log "INFO" "🔄 Mencoba fallback ke metode TTS lain..."
-                try_tts_fallback "murf" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "murf"
-                return $?
-            fi
+        fi
+        
+        # Jika ini attempt terakhir, fallback
+        if [ $download_attempt -eq $max_attempts ] && [ -z "$downloaded_file" ]; then
+            log "WARNING" "❌ Murf TTS gagal setelah $max_attempts percobaan"
+            add_global_failed_method "murf"
+            log "INFO" "🔄 Mencoba fallback ke metode TTS lain..."
+            try_tts_fallback "murf" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "murf"
+            return $?
         fi
         
         # Tunggu sebelum retry
@@ -3251,10 +3367,9 @@ play_murf_tts_with_repeat() {
         download_attempt=$((download_attempt + 1))
     done
     
-    # Jika download gagal
+    # Jika download gagal (seharusnya sudah tertangani)
     if [ -z "$downloaded_file" ]; then
-        try_tts_fallback "murf" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "murf"
-        return $?
+        return 1
     fi
     
     # ===== BAGIAN 2: PUTAR AUDIO DENGAN PENGULANGAN =====
@@ -3324,18 +3439,26 @@ play_gemini_tts_with_repeat() {
         log "INFO" "🔄 REMINDER $salat_name: Akan diputar $repeat_count kali untuk penegasan"
     fi
     
+    # CEK KONEKSI INTERNET - EARLY EXIT
+    if ! check_internet_connection; then
+        log "WARNING" "📵 Tidak ada koneksi internet untuk Gemini TTS"
+        add_global_failed_method "gemini"
+        try_tts_fallback "gemini" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "gemini"
+        return $?
+    fi
+    
     # Tentukan maksimal percobaan jika gagal
     local max_attempts=2  # Kurangi jadi 2 percobaan untuk respons lebih cepat
     
     # Ambil konfigurasi Gemini dari UCI
     local gemini_api_key=$(uci -q get jsholat.sound.gemini_api_key || echo "")
     local gemini_model=$(uci -q get jsholat.sound.gemini_model || echo "gemini-2.5-flash-preview-tts")
-    local gemini_voice=$(uci -q get jsholat.sound.gemini_voice || echo "Rasalgethi")
+    local gemini_voice=$(uci -q get jsholat.sound.gemini_voice || echo "Zephyr")
     
     # Validasi API key
     if [ -z "$gemini_api_key" ]; then
         log "ERROR" "❌ API key Gemini belum dikonfigurasi"
-        # LANGSUNG FALLBACK tanpa percobaan
+        add_global_failed_method "gemini"
         try_tts_fallback "gemini" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "gemini"
         return $?
     fi
@@ -3358,26 +3481,25 @@ play_gemini_tts_with_repeat() {
         
         # Buat payload JSON untuk request Gemini
         local json_payload=$(jq -n \
-			  --arg text "$text" \
-			  --arg voice "$gemini_voice" \
-			  '{
-				contents: [{
-				  parts: [{
-					text: $text
-				  }]
-				}],
-				generationConfig: {
-				  responseModalities: ["AUDIO"],
-				  speechConfig: {
-					voiceConfig: {
-					  prebuiltVoiceConfig: {
-						voiceName: $voice
-					  }
-					}
-				  }
-				}
-			  }')
-
+            --arg text "$text" \
+            --arg voice "$gemini_voice" \
+            '{
+                contents: [{
+                    parts: [{
+                        text: $text
+                    }]
+                }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        voiceConfig: {
+                            prebuiltVoiceConfig: {
+                                voiceName: $voice
+                            }
+                        }
+                    }
+                }
+            }')
         
         # Panggil API Gemini
         http_code=$(curl -s -w "%{http_code}" -X POST \
@@ -3426,15 +3548,6 @@ play_gemini_tts_with_repeat() {
             
             # HAPUS FILE CACHE YANG MUNGKIN TERBUAT
             rm -f "$OUT_JSON" "$OUT_B64" "$OUT_RAW" "$OUT_WAV" 2>/dev/null
-            
-            # Jika ini attempt terakhir, langsung fallback
-            if [ $generate_attempt -eq $max_attempts ]; then
-                log "INFO" "🔄 Mencoba fallback ke metode TTS lain..."
-                
-                # Panggil fungsi fallback bidirectional
-                try_tts_fallback "gemini" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "gemini"
-                return $?
-            fi
         fi
         
         # PASTIKAN FILE CACHE DIBERSIHKAN DI SETIAP ITERASI (kecuali WAV yang sukses)
@@ -3459,6 +3572,10 @@ play_gemini_tts_with_repeat() {
         # PASTIKAN SEMUA FILE CACHE TERHAPUS
         rm -f "$OUT_JSON" "$OUT_B64" "$OUT_RAW" "$OUT_WAV" 2>/dev/null
         
+        # TAMBAHKAN KE GLOBAL FAILED METHODS
+        add_global_failed_method "gemini"
+        
+        # PANGGIL FALLBACK
         try_tts_fallback "gemini" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "gemini"
         return $?
     fi
@@ -3575,7 +3692,7 @@ play_espeak_tts_with_repeat() {
         
         # Jika ini attempt terakhir dan gagal
         if [ $generate_attempt -eq $max_attempts ] && [ -z "$generated_file" ]; then
-            log "ERROR" "❌ REMINDER SUARA: Gagal generate audio dengan eSpeak - TIDAK ADA FALLBACK LAGI"
+            log "ERROR" "❌ REMINDER SUARA: Gagal generate audio dengan eSpeak setelah $max_attempts percobaan"
             return 1
         fi
         
@@ -3857,6 +3974,10 @@ check_gemini_dependencies() {
     return 0
 }
 
+# =============================================
+# FUNGSI REMINDER BEFORE PRAYER - FIXED VERSION
+# =============================================
+
 # Fungsi Peringatan Sebelum Waktu Sholat
 reminder_before_prayer() {
     local salat_name="$1"
@@ -3864,26 +3985,19 @@ reminder_before_prayer() {
     local timezone=$(uci -q get jsholat.schedule.timezone_value || echo "")
     local reminder_mins=$(uci -q get jsholat.sound.reminder_before || echo "5")
     local LOKASI=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Wilayah Tidak Diketahui")
-	local PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null || echo "")
+    local PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null || echo "")
     local ayat_enabled=$(uci -q get jsholat.service.ayat_enabled || echo "1")
     local telegram_enabled=$(uci -q get jsholat.service.telegram_enabled || echo "1")
+    local reminder_sound_enabled=$(uci -q get jsholat.sound.reminder_sound_enabled || echo "0")
+    local tts_method=$(uci -q get jsholat.sound.tts_method || echo "google")
     
     # Validasi 1: Reminder dinonaktifkan
-    [ "$REMINDER_BEFORE" = "0" ] && return 1
-    
-    # Validasi 2: Suara reminder dinonaktifkan
-    [ "$SOUND_REMINDER_SOUND_ENABLED" = "0" ] && {
-        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔇 Suara reminder dinonaktifkan"
-        return 1
-    }
-    
-    # ✅ CEK JIKA REMINDER DINONAKTIFKAN (nilai 0)
     if [ "$reminder_mins" = "0" ]; then
-        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Fitur reminder dinonaktifkan untuk semua waktu sholat"
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Fitur reminder dinonaktifkan (reminder_mins=0)"
         return 1
     fi
     
-    # Skip jika reminder sudah dikirim
+    # Validasi 2: Skip jika reminder sudah dikirim hari ini
     case "$salat_name" in
         "Imsyak") [ "$REMINDER_IMSYAK" -eq 1 ] && return 1 ;;
         "Subuh") [ "$REMINDER_SUBUH" -eq 1 ] && return 1 ;;
@@ -3895,32 +4009,41 @@ reminder_before_prayer() {
 
     # Konversi waktu ke detik dengan validasi
     local prayer_sec=$(time_to_seconds "$prayer_time")
-    [ "$prayer_sec" -eq 0 ] && return 1
+    if [ "$prayer_sec" -eq 0 ]; then
+        log "ERROR" "❌ Gagal mengkonversi waktu sholat: $prayer_time"
+        return 1
+    fi
     
     local reminder_sec=$((prayer_sec - reminder_mins * 60))
     
     # Waktu sekarang dalam detik
     local current_time=$(date +"%H:%M")
     local current_sec=$(time_to_seconds "$current_time")
-    [ "$current_sec" -eq 0 ] && return 1
+    if [ "$current_sec" -eq 0 ]; then
+        log "ERROR" "❌ Gagal mengkonversi waktu sekarang: $current_time"
+        return 1
+    fi
     
+    # Cek apakah masuk waktu reminder
     if [ "$current_sec" -ge "$reminder_sec" ] && [ "$current_sec" -lt "$prayer_sec" ]; then
-        log "INFO" "🔔 REMINDER: Waktu $salat_name untuk wilayah $LOKASI akan tiba dalam $reminder_mins menit ($prayer_time)"
+        log "INFO" "🔔 REMINDER: Waktu $salat_name akan tiba dalam $reminder_mins menit ($prayer_time $timezone) untuk wilayah $LOKASI"
 
-        # ===== KHUSUS IMSYAK =====
-        if [ "$salat_name" = "Imsyak" ]; then
-            # 1. KIRIM NOTIFIKASI TELEGRAM (sesuai kondisi)
-            if [ "$telegram_enabled" = "1" ]; then
-                local timezone_display=""
-                [ -n "$timezone" ] && timezone_display=" $timezone"
-
+        # ========== BAGIAN 1: KIRIM NOTIFIKASI TELEGRAM ==========
+        if [ "$telegram_enabled" = "1" ]; then
+            local timezone_display=""
+            [ -n "$timezone" ] && timezone_display=" $timezone"
+            
+            # Format pesan Telegram berdasarkan kondisi
+            local reminder_message=""
+            
+            # KHUSUS IMSYAK
+            if [ "$salat_name" = "Imsyak" ]; then
                 if is_ramadhan; then
-                    # 🌙 PESAN IMSYAK RAMADHAN
-                    local reminder_message="🌙 *PENGINGAT IMSYAK RAMADHAN* 🌙
+                    reminder_message="🌙 *PENGINGAT IMSYAK RAMADHAN* 🌙
                     
 Waktu *Imsyak* akan tiba dalam *$reminder_mins menit*!  
 🕒 Pukul: $prayer_time$timezone_display
-📍 Wilayah: *$LOKASI* dan sekitarnya.
+📍 Wilayah: *$LOKASI${PROVINCE:+, $PROVINCE}* dan sekitarnya.
 
 *Segera akhiri sahur*
 *Persiapkan diri untuk sholat Subuh*
@@ -3928,94 +4051,158 @@ Waktu *Imsyak* akan tiba dalam *$reminder_mins menit*!
 
 🤲 *Ramadhan Mubarak, semoga Allah menerima amal ibadah kita*"
                 else
-                    # 📅 PESAN IMSYAK BIASA
-                    local reminder_message="🔔 *PENGINGAT IMSYAK*
+                    reminder_message="🔔 *PENGINGAT IMSYAK*
                     
 Waktu *Imsyak* akan tiba dalam *$reminder_mins menit*!  
 🕒 Pukul: $prayer_time$timezone_display
-📍 Wilayah: *$LOKASI* dan sekitarnya.
+📍 Wilayah: *$LOKASI${PROVINCE:+, $PROVINCE}* dan sekitarnya.
 
 *Siapkan diri untuk sholat Subuh*
 *Jangan lupa wudhu* 💧"
                 fi
+            
+            # KHUSUS ISYA DI BULAN RAMADHAN (dengan notifikasi Tarawih)
+            elif [ "$salat_name" = "Isya" ] && is_ramadhan; then
+                reminder_message="🌙 *PENGINGAT SHOLAT ISYA & TARAWIH* 🌙
+                    
+Waktu *Sholat Isya* akan tiba dalam *$reminder_mins menit*!  
+🕒 Pukul: $prayer_time$timezone_display
+📍 Wilayah: *$LOKASI${PROVINCE:+, $PROVINCE}* dan sekitarnya.
 
-                # Kirim notifikasi reminder
-                send_telegram "$reminder_message" &
+*Marilah kita persiapkan diri untuk:*
+✅ Sholat Isya berjamaah
+✅ Sholat Tarawih
+✅ Sholat Witir
+
+*Keutamaan Sholat Tarawih:*
+\"Barangsiapa melaksanakan sholat malam (Tarawih) di bulan Ramadhan karena iman dan mengharap pahala, maka diampuni dosa-dosanya yang telah lalu.\" 
+(HR. Bukhari dan Muslim)
+
+🤲 *Semoga Allah menerima amal ibadah kita di bulan Ramadhan*"
+            
+            # SHOLAT WAJIB LAINNYA (termasuk Isya di luar Ramadhan)
             else
-                [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Notifikasi reminder dinonaktifkan"
-            fi
-            
-			# 2. ✅ TTS REMINDER HANYA UNTUK RAMADHAN
-			if is_ramadhan; then
-				log "INFO" "🔊 Memutar TTS reminder Imsyak (khusus Ramadhan)"
-				# PUTAR SUARA REMINDER IMSYAK (hanya saat Ramadhan)
-				play_tts_reminder "$salat_name" "$prayer_time" "$reminder_mins" "$timezone" "$LOKASI" "$PROVINCE" &
-			else
-				[ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📵 TTS reminder Imsyak tidak diputar (non-Ramadhan)"
-			fi
-            
-            # Tandai reminder sudah dikirim
-            REMINDER_IMSYAK=1
-            save_reminder_status
-            return 0
-        
-        else
-            # 🕋 PESAN REMINDER SHOLAT WAJIB (Subuh, Dzuhur, Ashar, Maghrib, Isya)
-            # 1. KIRIM NOTIFIKASI TELEGRAM
-            if [ "$telegram_enabled" = "1" ]; then
-                local timezone_display=""
-                [ -n "$timezone" ] && timezone_display=" $timezone"
-
-                # 🕋 PESAN REMINDER SHOLAT WAJIB
-                local reminder_message="🔔 *PENGINGAT SHOLAT*
-                
+                reminder_message="🔔 *PENGINGAT SHOLAT*
+                    
 Waktu *$salat_name* akan tiba dalam *$reminder_mins menit*!  
 🕒 Pukul: $prayer_time$timezone_display
-📍 Wilayah: *$LOKASI* dan sekitarnya.
+📍 Wilayah: *$LOKASI${PROVINCE:+, $PROVINCE}* dan sekitarnya.
 
 *Siapkan diri untuk sholat*
 *Jangan lupa wudhu* 💧"
-
-                # Kirim notifikasi reminder
-                send_telegram "$reminder_message" &
-
-                # Kirim ayat acak terpisah jika fitur aktif
-                if [ "$ayat_enabled" = "1" ] && [ "$salat_name" != "Imsyak" ]; then
-                    local random_ayat=$(get_random_ayat)
-                    if [ -n "$random_ayat" ]; then
-                        send_telegram "$(printf "💫 *Ayat Pilihan Hari Ini*\n%s" "$random_ayat")" &
-                    fi
-                fi
-            else
-                [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Notifikasi reminder dinonaktifkan"
             fi
             
-            # 2. PUTAR SUARA REMINDER UNTUK SHOLAT WAJIB            
-			play_tts_reminder "$salat_name" "$prayer_time" "$reminder_mins" "$timezone" "$LOKASI" "$PROVINCE" &
-            
-            # Tandai reminder sudah dikirim
-            case "$salat_name" in
-                "Subuh") REMINDER_SUBUH=1 ;;
-                "Jumat") REMINDER_DZUHUR=1 ;;
-                "Dzuhur") REMINDER_DZUHUR=1 ;;
-                "Ashar") REMINDER_ASHAR=1 ;;
-                "Maghrib") REMINDER_MAGHRIB=1 ;;
-                "Isya") REMINDER_ISYA=1 ;;
-            esac
-            save_reminder_status
-            return 0
+            # Kirim notifikasi Telegram (background process)
+            send_telegram "$reminder_message" &
+
+            # Kirim ayat acak jika fitur aktif (kecuali Imsyak)
+            if [ "$ayat_enabled" = "1" ] && [ "$salat_name" != "Imsyak" ]; then
+                local random_ayat=$(get_random_ayat)
+                if [ -n "$random_ayat" ]; then
+                    send_telegram "$(printf "💫 *Ayat Pilihan Hari Ini*\n%s" "$random_ayat")" &
+                fi
+            fi
         fi
+
+        # ========== BAGIAN 2: PUTAR SUARA REMINDER TTS ==========
+        if [ "$reminder_sound_enabled" = "1" ]; then
+            # Logika khusus Imsyak: hanya putar saat Ramadhan
+            if [ "$salat_name" = "Imsyak" ]; then
+                if is_ramadhan; then
+                    log "INFO" "🔊 Memutar TTS reminder Imsyak (khusus Ramadhan)"
+                    play_tts_reminder "$salat_name" "$prayer_time" "$reminder_mins" "$timezone" "$LOKASI" "$PROVINCE" &
+                else
+                    [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📵 TTS reminder Imsyak tidak diputar (non-Ramadhan)"
+                fi
+            
+            # SHOLAT WAJIB (termasuk Isya)
+            else
+                log "INFO" "🔊 Memutar TTS reminder $salat_name"
+                play_tts_reminder "$salat_name" "$prayer_time" "$reminder_mins" "$timezone" "$LOKASI" "$PROVINCE" &
+            fi
+        else
+            [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔇 Suara reminder dinonaktifkan untuk $salat_name"
+        fi
+
+        # ========== BAGIAN 3: NOTIFIKASI TAMBAHAN UNTUK ISYA RAMADHAN ==========
+        if [ "$salat_name" = "Isya" ] && is_ramadhan; then
+            log "INFO" "🌙 Memproses notifikasi tambahan untuk Sholat Tarawih"
+            
+            # Kirim notifikasi Tarawih tambahan via Telegram (jika diinginkan)
+            if [ "$telegram_enabled" = "1" ] && [ "$(uci -q get jsholat.service.tarawih_notification || echo "1")" = "1" ]; then
+                local tarawih_message="🌙 *SHOLAT TARAWIH* 🌙
+                    
+Setelah Sholat Isya berjamaah, 
+jangan lupa untuk melaksanakan *Sholat Tarawih* 
+dan *Sholat Witir* secara berjamaah.
+
+*Niat Sholat Tarawih:*
+اُصَلِّى سُنَّةَ التَّرَاوِيْحِ رَكْعَتَيْنِ مَأْمُوْمًا ِللهِ تَعَالَى
+\"Aku niat sholat sunnah Tarawih dua rakaat sebagai makmum karena Allah Ta'ala.\"
+
+*Niat Sholat Witir:*
+اُصَلِّى سُنَّةَ الْوِتْرِ رَكْعَةً مَأْمُوْمًا ِللهِ تَعَالَى
+\"Aku niat sholat sunnah Witir satu rakaat sebagai makmum karena Allah Ta'ala.\"
+
+🤲 *Selamat menunaikan ibadah sholat Tarawih*"
+                
+                send_telegram "$tarawih_message" &
+            fi
+            
+            # Putar TTS khusus untuk Tarawih jika fitur diaktifkan
+            if [ "$(uci -q get jsholat.sound.tarawih_tts_enabled || echo "0")" = "1" ]; then
+                local tarawih_text="🌙 Marhaban ya Ramadhan. Mari kita laksanakan sholat Isya berjamaah, dilanjutkan sholat Tarawih dan Witir. Semoga Allah menerima amal ibadah kita."
+                
+                # Gunakan metode TTS yang sama atau berbeda
+                local tarawih_tts_method=$(uci -q get jsholat.sound.tarawih_tts_method || echo "$tts_method")
+                
+                log "INFO" "🔊 Memutar TTS khusus untuk Tarawih"
+                
+                # Panggil fungsi TTS dengan teks khusus (background)
+                (
+                    case "$tarawih_tts_method" in
+                        "gemini") play_gemini_tts_with_repeat "$tarawih_text" "Tarawih" "$prayer_time" "$LOKASI" "$timezone" ;;
+                        "edge") play_edge_tts_with_repeat "$tarawih_text" "Tarawih" "$prayer_time" "$LOKASI" "$timezone" ;;
+                        "google") play_google_tts_with_repeat "$tarawih_text" "Tarawih" "$prayer_time" "$LOKASI" "$timezone" ;;
+                        "espeak") play_espeak_tts_with_repeat "$tarawih_text" "Tarawih" "$prayer_time" "$LOKASI" "$timezone" ;;
+                        "murf") play_murf_tts_with_repeat "$tarawih_text" "Tarawih" "$prayer_time" "$LOKASI" "$timezone" ;;
+                    esac
+                ) &
+            fi
+            
+            # Putar audio Tarawih jika file tersedia
+            local tarawih_audio_file=$(uci -q get jsholat.sound.tarawih_audio_file || echo "/usr/share/jsholat/sounds/tarawih.mp3")
+            if [ -f "$tarawih_audio_file" ] && [ "$(uci -q get jsholat.sound.tarawih_audio_enabled || echo "0")" = "1" ]; then
+                log "INFO" "🔊 Memutar audio Tarawih"
+                play_audio_file "$tarawih_audio_file" "Audio Tarawih" &
+            fi
+        fi
+
+        # ========== BAGIAN 4: TANDAI REMINDER SUDAH DIKIRIM ==========
+        case "$salat_name" in
+            "Imsyak") REMINDER_IMSYAK=1 ;;
+            "Subuh") REMINDER_SUBUH=1 ;;
+            "Jumat") REMINDER_DZUHUR=1 ;;
+            "Dzuhur") REMINDER_DZUHUR=1 ;;
+            "Ashar") REMINDER_ASHAR=1 ;;
+            "Maghrib") REMINDER_MAGHRIB=1 ;;
+            "Isya") REMINDER_ISYA=1 ;;
+        esac
+        save_reminder_status
+        
+        log "INFO" "✅ Reminder $salat_name berhasil diproses"
+        return 0
     fi
     
     # Reset status reminder jika sudah lewat waktu sholat
     if [ "$current_sec" -ge "$prayer_sec" ]; then
         case "$salat_name" in
-            "Imsyak") REMINDER_IMSYAK=0 ;;
-            "Subuh") REMINDER_SUBUH=0 ;;
-            "Dzuhur") REMINDER_DZUHUR=0 ;;
-            "Ashar") REMINDER_ASHAR=0 ;;
-            "Maghrib") REMINDER_MAGHRIB=0 ;;
-            "Isya") REMINDER_ISYA=0 ;;
+            "Imsyak") [ "$REMINDER_IMSYAK" -eq 1 ] && REMINDER_IMSYAK=0 ;;
+            "Subuh") [ "$REMINDER_SUBUH" -eq 1 ] && REMINDER_SUBUH=0 ;;
+            "Dzuhur") [ "$REMINDER_DZUHUR" -eq 1 ] && REMINDER_DZUHUR=0 ;;
+            "Ashar") [ "$REMINDER_ASHAR" -eq 1 ] && REMINDER_ASHAR=0 ;;
+            "Maghrib") [ "$REMINDER_MAGHRIB" -eq 1 ] && REMINDER_MAGHRIB=0 ;;
+            "Isya") [ "$REMINDER_ISYA" -eq 1 ] && REMINDER_ISYA=0 ;;
         esac
         save_reminder_status
     fi
@@ -4027,6 +4214,8 @@ Waktu *$salat_name* akan tiba dalam *$reminder_mins menit*!
 run_service() {
     init_log_system
     load_reminder_status
+	#Load global failed methods tts
+	load_global_failed_methods
     reset_reminder_status
     
     log "INFO" "=========== SERVICE JSHOLAT DIMULAI ==========="
@@ -4324,7 +4513,9 @@ run_service() {
         
         # Reset reminder status jika hari berganti
         if [ "$LAST_DATE" != "$TODAY" ]; then
-            reset_reminder_status
+            reset_reminder_status			
+			#Load global failed methods tts
+			load_global_failed_methods
             LAST_DATE="$TODAY"
             log "INFO" "📅 Hari berganti ke: $TODAY"
         fi
