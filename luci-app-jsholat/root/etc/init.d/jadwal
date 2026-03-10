@@ -58,9 +58,9 @@ setup_cron_job() {
             cleaned_cron=$(echo "$cleaned_cron"; echo "0 0 * * 0 /usr/bin/jadwal-update.sh")
             ;;
 		"monthly_special")
-			interval_desc="setiap awal bulan (01:05 WIB)"
+			interval_desc="setiap awal bulan (02:05 WIB)"
 			cleaned_cron=$(echo "$cleaned_cron"
-				echo "0 5 1 * * /usr/bin/jadwal-update.sh")
+				echo "5 2 1 * * /usr/bin/jadwal-update.sh")
 			;;
         "0")
             interval_desc="nonaktif"
@@ -86,7 +86,10 @@ start_service() {
     [ -f "$JADWAL_FILE" ] && cp "$JADWAL_FILE" "${JADWAL_FILE}.bak"
     
     setup_cron_job "$(uci -q get jsholat.setting.interval || echo "monthly_special")"
-
+    
+	# cek update saat boot
+    /usr/bin/jadwal-update.sh
+	
     procd_open_instance
     procd_set_param command /sbin/sleep infinity
     procd_set_param respawn

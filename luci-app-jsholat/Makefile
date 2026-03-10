@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-jsholat
-PKG_VERSION:=0.1.7
-PKG_RELEASE:=20260303
+PKG_VERSION:=0.1.8
+PKG_RELEASE:=20260310
 PKG_MAINTAINER:=Aji Setiawan <email@ajisetiawan.my.id>
 
 LUCI_TITLE:=LuCI app for JSholat (adzan & jadwal sholat)
@@ -56,11 +56,13 @@ chmod 0755 /usr/bin/jadwal 2>/dev/null || true
 chmod 0755 /usr/bin/jadwal-update.sh 2>/dev/null || true
 chmod 0755 /usr/bin/jsholat-bot 2>/dev/null || true
 chmod 0755 /usr/bin/jadwal-monthly 2>/dev/null || true
+chmod 0755 /usr/bin/fix-hda 2>/dev/null || true
 chmod 0755 /usr/share/jsholat/bot-checker.sh 2>/dev/null || true
 
 chmod 0755 /etc/init.d/jsholat 2>/dev/null || true
 chmod 0755 /etc/init.d/jadwal 2>/dev/null || true
 chmod 0755 /etc/init.d/jsholat-bot 2>/dev/null || true
+chmod 0755 /etc/init.d/fix-hda 2>/dev/null || true
 
 # Jalankan uci-defaults jika ada
 if [ -d /etc/uci-defaults ]; then
@@ -107,12 +109,14 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/jadwal-update.sh $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/jsholat-bot $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/jadwal-monthly $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/bin/fix-hda $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/usr/share/jsholat/bot-checker.sh $(1)/usr/share/jsholat
 
 	# init.d
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/jsholat $(1)/etc/init.d/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/jadwal $(1)/etc/init.d/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/jsholat-bot $(1)/etc/init.d/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/init.d/fix-hda $(1)/etc/init.d/
 
 	# uci-defaults
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/root/etc/uci-defaults/50-jsholat $(1)/etc/uci-defaults/

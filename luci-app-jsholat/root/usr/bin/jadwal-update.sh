@@ -127,7 +127,7 @@ is_jadwal_expired() {
         return 0
     fi
 
-    local last_updated=$(jq -r '.last_updated' "$LAST_UPDATED_FILE" 2>/dev/null)
+    local last_updated=$(jq -r '.last_updated // empty' "$LAST_UPDATED_FILE" 2>/dev/null)
     [ -z "$last_updated" ] && {
         output "Field last_updated tidak ditemukan"
         return 0
