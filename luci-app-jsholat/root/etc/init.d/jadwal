@@ -88,7 +88,7 @@ start_service() {
     setup_cron_job "$(uci -q get jsholat.setting.interval || echo "monthly_special")"
     
 	# cek update saat boot
-    /usr/bin/jadwal-update.sh
+    /usr/bin/jadwal-update.sh 1 >/dev/null
 	
     procd_open_instance
     procd_set_param command /sbin/sleep infinity
