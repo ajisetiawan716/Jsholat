@@ -39,35 +39,56 @@ start_service() {
     procd_set_param respawn 300 5 10
     procd_set_param env HOME=/tmp
     procd_set_param limits nofile="unlimited"
-    procd_set_param pidfile "$PID_FILE"  # Otomatis buat PID file
+    procd_set_param pidfile "$PID_FILE"
     procd_close_instance
+    
+    echo "✅ jsholat-bot started"
 }
 
 stop_service() {
-    if [ -f "$PID_FILE" ]; then
-        pid=$(cat "$PID_FILE")
-        if kill -0 "$pid" 2>/dev/null; then
-            echo "🔌 Menghentikan jsholat-bot dengan PID $pid..."
-            kill "$pid"
-            sleep 1
-        else
-            echo "⚠️ Proses dengan PID $pid tidak aktif"
-        fi
-        rm -f "$PID_FILE"
-    else
-        echo "ℹ️ Tidak ada file PID ditemukan"
-    fi
+    echo "🔌 Menghentikan jsholat-bot..."
+    
+    # Hanya matikan via procd (ini aman)
+    procd_kill jsholat-bot 2>/dev/null
+    
+    # Hapus file PID dan lock
+    rm -f "$PID_FILE" "/var/run/jsholat-bot.lock" 2>/dev/null
+    
+    # JANGAN pakai pgrep/kill karena bisa mematikan proses restart itu sendiri!
+    # Biarkan procd yang handle
     
     remove_bot_checker_cron
+    
+    echo "✅ jsholat-bot stopped"
 }
 
+# PERBAIKAN: Fungsi restart yang benar
 restart() {
     echo "♻️ Restarting jsholat-bot..."
-    stop_service
-    sleep 1
+    
+    # Stop service via procd (tanpa membunuh diri sendiri)
+    procd_kill jsholat-bot 2>/dev/null
+    
+    # Tunggu sebentar
+    sleep 2
+    
+    # Start service
     start_service
+    
+    echo "✅ jsholat-bot restarted"
 }
 
 service_triggers() {
     procd_add_reload_trigger "jsholat"
+}
+
+# Fungsi status sederhana
+status() {
+    if procd_running jsholat-bot; then
+        echo "running"
+        return 0
+    else
+        echo "inactive"
+        return 1
+    fi
 }

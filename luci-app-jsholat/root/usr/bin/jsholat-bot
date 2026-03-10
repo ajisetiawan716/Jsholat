@@ -240,6 +240,13 @@ load_uci_config
     exit 1
 }
 
+# ============ DEFAULT VALUES FOR BOT PROFILE ============
+DEFAULT_BOT_NAME="Jsholat Bot"
+DEFAULT_BOT_DESCRIPTION="Bot ini membantu Anda mengingat jadwal sholat harian, memutar adzan, dan memberikan pengingat otomatis untuk waktu sholat. Dilengkapi dengan berbagai pilihan suara TTS dan fitur ayat Al-Qur'an acak, serta pusat kontrol dan monitoring jadwal ibadah secara real-time. Cocok untuk digunakan di perangkat OpenWrt/Router."
+DEFAULT_BOT_BIO="🕌 Pengingat Sholat Otomatis | OpenWrt
+
+Created by @ajisetiawan716"
+
 # REGISTER COMMAND MENU 
 register_bot_commands_silent() {
     log "🤖 Mendaftarkan 21 command menu (silent mode)..."
@@ -1273,66 +1280,66 @@ set_hijri_adjust() {
     log "Adjustment Hijriyah diatur ke $adj_value untuk chat_id=$chat_id"
 }
 
-# Fungsi untuk mengirim pesan
+# Fungsi untuk mengirim pesan dengan dukungan Markdown dan fallback otomatis
 send_message() {
     local chat_id="$1"
     local text="$2"
-    local parse_mode="${3:-Markdown}"
+    local parse_mode="${3:-Markdown}"  # Default Markdown sesuai permintaan
     
-    # Escape karakter khusus JSON dan Markdown
-    # 1. Escape backslash
-    text=$(echo "$text" | sed 's/\\/\\\\/g')
-    # 2. Escape double quote
-    text=$(echo "$text" | sed 's/"/\\"/g')
-    # 3. Escape karakter kontrol
-    text=$(echo "$text" | sed 's/\r/\\r/g' | sed 's/\t/\\t/g')
-    
-    # Untuk Markdown, pastikan tidak ada karakter yang bermasalah
-    if [ "$parse_mode" = "Markdown" ]; then
-        # Escape karakter khusus Markdown jika diperlukan
-        # Tapi jangan escape yang sudah benar
-        text=$(echo "$text" | sed 's/\([_[\]()~>#+=|{}.!-]\)/\\\1/g')
+    # Validasi input
+    if [ -z "$chat_id" ] || [ -z "$text" ]; then
+        log "❌ ERROR: chat_id atau text kosong"
+        return 1
     fi
     
-    # Generate JSON payload dengan jq (lebih aman)
-    local json_payload=$(jq -n \
+    log "📤 Mengirim pesan ke chat_id=$chat_id (mode: $parse_mode)"
+    
+    # Untuk Markdown, pastikan newline tidak di-escape
+    local clean_text="$text"
+    
+    # Buat payload dengan jq
+    local base_payload=$(jq -n \
         --arg chat_id "$chat_id" \
-        --arg text "$text" \
-        --arg parse_mode "$parse_mode" \
+        --arg text "$clean_text" \
         '{
             chat_id: $chat_id,
-            text: $text,
-            parse_mode: $parse_mode
+            text: $text
         }')
     
-    log "📤 Mengirim pesan ke chat_id=$chat_id"
+    # Tambahkan parse_mode jika diminta
+    local json_payload
+    if [ "$parse_mode" = "Markdown" ] || [ "$parse_mode" = "HTML" ]; then
+        json_payload=$(echo "$base_payload" | jq --arg mode "$parse_mode" '. + {parse_mode: $mode}')
+    else
+        json_payload="$base_payload"
+    fi
     
-    # PERBAIKAN: Pindahkan opsi timeout ke tempat yang benar
+    # Kirim dengan timeout
     local response=$(curl -s -X POST \
         --connect-timeout 5 \
         --max-time 15 \
         "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
         -H "Content-Type: application/json" \
-        -d "$json_payload")
+        -d "$json_payload" 2>/dev/null)
     
     # Cek response
-    local ok=$(echo "$response" | jq -r '.ok // false')
+    local ok=$(echo "$response" | jq -r '.ok // false' 2>/dev/null)
     
     if [ "$ok" = "true" ]; then
-        log "✅ Pesan berhasil dikirim"
+        log "✅ Pesan berhasil dikirim (mode: $parse_mode)"
         echo "$response"
         return 0
     else
-        local error_code=$(echo "$response" | jq -r '.error_code // empty')
-        local description=$(echo "$response" | jq -r '.description // "Unknown error"')
+        local error_code=$(echo "$response" | jq -r '.error_code // empty' 2>/dev/null)
+        local description=$(echo "$response" | jq -r '.description // "Unknown error"' 2>/dev/null)
         
         log "❌ Gagal mengirim pesan: $error_code - $description"
         
-        # Coba kirim tanpa parse_mode jika error parsing
-        if [[ "$description" == *"can't parse entities"* ]] || [[ "$description" == *"Bad Request"* ]]; then
-            log "🔄 Mencoba mengirim tanpa parse_mode..."
+        # === FALLBACK 1: Jika error parsing, coba tanpa parse_mode dulu ===
+        if [[ "$description" == *"can't parse"* ]] || [[ "$description" == *"Bad Request"* ]]; then
+            log "🔄 Fallback 1: Mencoba tanpa parse_mode (plain text)..."
             
-            json_payload=$(jq -n \
+            local plain_payload=$(jq -n \
                 --arg chat_id "$chat_id" \
                 --arg text "$text" \
                 '{
@@ -1345,21 +1352,85 @@ send_message() {
                 --max-time 15 \
                 "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
                 -H "Content-Type: application/json" \
-                -d "$json_payload")
+                -d "$plain_payload" 2>/dev/null)
             
-            ok=$(echo "$response" | jq -r '.ok // false')
+            ok=$(echo "$response" | jq -r '.ok // false' 2>/dev/null)
             
             if [ "$ok" = "true" ]; then
-                log "✅ Pesan berhasil dikirim tanpa parse_mode"
+                log "✅ Pesan berhasil dikirim tanpa parse_mode (fallback 1)"
                 echo "$response"
                 return 0
-            else
-                log "❌ Masih gagal meski tanpa parse_mode"
-                echo "$response"
-                return 1
             fi
         fi
         
+        # === FALLBACK 2: Jika masih gagal, coba dengan HTML ===
+        if [ "$parse_mode" = "Markdown" ]; then
+            log "🔄 Fallback 2: Mencoba dengan HTML..."
+            
+            # Konversi Markdown ke HTML sederhana
+            local html_text="$text"
+            # Ganti *teks* dengan <b>teks</b>
+            html_text=$(echo "$html_text" | sed 's/\*\([^*]*\)\*/<b>\1<\/b>/g')
+            # Ganti _teks_ dengan <i>teks</i>
+            html_text=$(echo "$html_text" | sed 's/_\([^_]*\)_/<i>\1<\/i>/g')
+            
+            local html_payload=$(jq -n \
+                --arg chat_id "$chat_id" \
+                --arg text "$html_text" \
+                --arg mode "HTML" \
+                '{
+                    chat_id: $chat_id,
+                    text: $text,
+                    parse_mode: $mode
+                }')
+            
+            response=$(curl -s -X POST \
+                --connect-timeout 5 \
+                --max-time 15 \
+                "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+                -H "Content-Type: application/json" \
+                -d "$html_payload" 2>/dev/null)
+            
+            ok=$(echo "$response" | jq -r '.ok // false' 2>/dev/null)
+            
+            if [ "$ok" = "true" ]; then
+                log "✅ Pesan berhasil dikirim dengan HTML (fallback 2)"
+                echo "$response"
+                return 0
+            fi
+        fi
+        
+        # === FALLBACK 3: Kirim versi yang sudah dibersihkan ===
+        log "🔄 Fallback 3: Membersihkan karakter khusus..."
+        
+        # Hapus semua karakter formatting, tapi pertahankan newline
+        local clean_text=$(echo "$text" | sed 's/[*_`\[\]()~>#+=|{}.!-]//g')
+        
+        local clean_payload=$(jq -n \
+            --arg chat_id "$chat_id" \
+            --arg text "$clean_text" \
+            '{
+                chat_id: $chat_id,
+                text: $text
+            }')
+        
+        response=$(curl -s -X POST \
+            --connect-timeout 5 \
+            --max-time 15 \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "$clean_payload" 2>/dev/null)
+        
+        ok=$(echo "$response" | jq -r '.ok // false' 2>/dev/null)
+        
+        if [ "$ok" = "true" ]; then
+            log "✅ Pesan berhasil dikirim setelah dibersihkan (fallback 3)"
+            echo "$response"
+            return 0
+        fi
+        
+        # Semua fallback gagal
+        log "❌ Semua fallback gagal. Error terakhir: $description"
         echo "$response"
         return 1
     fi
@@ -4950,17 +5021,27 @@ get_random_ayat() {
     return 0
 }
 
-# FUNGSI HANDLER UNTUK COMMAND /start
+# FUNGSI HANDLER UNTUK COMMAND /starthandle_start_command() {
 handle_start_command() {
     local chat_id="$1"
     
     log "🚀 Menjalankan handler /start untuk chat_id=$chat_id"
     
-    local setup_flag="/tmp/jsholat_bot_setup_done"
-    local setup_version_file="/tmp/jsholat_bot_setup_version"
-    local current_version="2.8"  # Naikkan versi karena ada command baru
+    # ============ GUNAKAN LOKASI PERMANEN ============
+    local config_dir="/etc/jsholat"
+    local setup_flag="${config_dir}/.bot_setup_done"
+    local setup_version_file="${config_dir}/.bot_setup_version"
+    local default_init_file="${config_dir}/.bot_default_inited"
+    local current_version="2.8"
     local need_setup=0
     
+    # Buat direktori jika belum ada
+    if [ ! -d "$config_dir" ]; then
+        mkdir -p "$config_dir"
+        log "📁 Membuat direktori config: $config_dir"
+    fi
+    
+    # ============ CEK REGISTERED COMMANDS ============
     local registered_commands=$(curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getMyCommands")
     local cmd_count=$(echo "$registered_commands" | jq '.result | length')
     
@@ -4984,29 +5065,206 @@ handle_start_command() {
         fi
     fi
     
-    if [ "$need_setup" -eq 1 ]; then
-        log "🔄 Menjalankan setup command menu..."
+    # ============ CEK DAN INISIALISASI DEFAULT PROFIL ============
+    if [ ! -f "$default_init_file" ]; then
+        log "🔄 Inisialisasi profil bot ke default (first run EVER) untuk chat_id=$chat_id..."
         
-        local processing_msg=$(send_message "$chat_id" "⏳ *Mengaktifkan command menu...*" "Markdown")
-        local processing_msg_id=$(echo "$processing_msg" | jq -r '.result.message_id // empty')
+        # Kirim pesan progress
+        local init_msg=$(printf '⏳ <b>Menginisialisasi profil bot ke default...</b>')
+        local init_msg_result=$(send_message "$chat_id" "$init_msg" "HTML")
+        local init_msg_id=$(echo "$init_msg_result" | jq -r '.result.message_id // empty')
+        
+        # Update progress - Nama
+        sleep 1
+        if [ -n "$init_msg_id" ]; then
+            local progress_msg=$(printf '⏳ <b>Inisialisasi profil bot...</b> (1/3) Mengatur nama bot...')
+            curl -s -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+                -d chat_id="${chat_id}" \
+                -d message_id="${init_msg_id}" \
+                -d text="$progress_msg" \
+                -d parse_mode="HTML" \
+                > /dev/null 2>&1
+        fi
+        
+        # Set nama default
+        local name_response=$(curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setMyName" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\": \"$DEFAULT_BOT_NAME\"}")
+        
+        local name_ok=$(echo "$name_response" | jq -r '.ok // false')
+        local name_error=""
+        [ "$name_ok" != "true" ] && name_error=$(echo "$name_response" | jq -r '.description // "Unknown error"')
+        
+        # Update progress - Deskripsi
+        sleep 1
+        if [ -n "$init_msg_id" ]; then
+            local progress_msg=$(printf '⏳ <b>Inisialisasi profil bot...</b> (2/3) Mengatur deskripsi bot...')
+            curl -s -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+                -d chat_id="${chat_id}" \
+                -d message_id="${init_msg_id}" \
+                -d text="$progress_msg" \
+                -d parse_mode="HTML" \
+                > /dev/null 2>&1
+        fi
+        
+        # Set deskripsi default
+        local desc_response=$(curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setMyDescription" \
+            -H "Content-Type: application/json" \
+            -d "{\"description\": \"$DEFAULT_BOT_DESCRIPTION\"}")
+        
+        local desc_ok=$(echo "$desc_response" | jq -r '.ok // false')
+        local desc_error=""
+        [ "$desc_ok" != "true" ] && desc_error=$(echo "$desc_response" | jq -r '.description // "Unknown error"')
+        
+        # Update progress - Bio
+        sleep 1
+        if [ -n "$init_msg_id" ]; then
+            local progress_msg=$(printf '⏳ <b>Inisialisasi profil bot...</b> (3/3) Mengatur bio bot...')
+            curl -s -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+                -d chat_id="${chat_id}" \
+                -d message_id="${init_msg_id}" \
+                -d text="$progress_msg" \
+                -d parse_mode="HTML" \
+                > /dev/null 2>&1
+        fi
+        
+        # Set bio default
+        local bio_response=$(curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setMyShortDescription" \
+            -H "Content-Type: application/json" \
+            -d "{\"short_description\": \"$DEFAULT_BOT_BIO\"}")
+        
+        local bio_ok=$(echo "$bio_response" | jq -r '.ok // false')
+        local bio_error=""
+        [ "$bio_ok" != "true" ] && bio_error=$(echo "$bio_response" | jq -r '.description // "Unknown error"')
+        
+        # Buat file penanda
+        {
+            echo "init_date: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "init_by: chat_${chat_id}"
+            echo "bot_name: $DEFAULT_BOT_NAME"
+            echo "name_status: $([ "$name_ok" = "true" ] && echo "success" || echo "failed: $name_error")"
+            echo "description_status: $([ "$desc_ok" = "true" ] && echo "success" || echo "failed: $desc_error")"
+            echo "bio_status: $([ "$bio_ok" = "true" ] && echo "success" || echo "failed: $bio_error")"
+            echo "version: $current_version"
+        } > "$default_init_file"
+        
+        chmod 644 "$default_init_file"
+        
+        # Tampilkan hasil inisialisasi dengan HTML
+        if [ "$name_ok" = "true" ] && [ "$desc_ok" = "true" ] && [ "$bio_ok" = "true" ]; then
+            local init_result=$(printf '✅ <b>Profil bot berhasil diinisialisasi!</b>
+
+📝 <b>Nama:</b> %s
+📋 <b>Deskripsi:</b> %s...
+📌 <b>Bio:</b> %s
+
+💾 <b>Penyimpanan:</b> Permanen di %s
+🔄 <b>Catatan:</b> Inisialisasi hanya sekali seumur hidup bot
+🚀 Melanjutkan setup command menu...' \
+                "$DEFAULT_BOT_NAME" \
+                "${DEFAULT_BOT_DESCRIPTION:0:100}" \
+                "$DEFAULT_BOT_BIO" \
+                "$config_dir")
+            
+            if [ -n "$init_msg_id" ]; then
+                curl -s -X POST \
+                    "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+                    -d chat_id="${chat_id}" \
+                    -d message_id="${init_msg_id}" \
+                    -d text="$init_result" \
+                    -d parse_mode="HTML" \
+                    > /dev/null 2>&1
+            fi
+        else
+            local init_result=$(printf '⚠️ <b>Inisialisasi profil bot tidak sepenuhnya berhasil</b>
+
+%s%s%s
+📁 <b>File konfigurasi:</b> %s
+🚀 Tetap melanjutkan setup command menu...' \
+                "$([ "$name_ok" != "true" ] && printf "❌ Nama: %s\n" "$name_error")" \
+                "$([ "$desc_ok" != "true" ] && printf "❌ Deskripsi: %s\n" "$desc_error")" \
+                "$([ "$bio_ok" != "true" ] && printf "❌ Bio: %s\n" "$bio_error")" \
+                "$default_init_file")
+            
+            if [ -n "$init_msg_id" ]; then
+                curl -s -X POST \
+                    "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+                    -d chat_id="${chat_id}" \
+                    -d message_id="${init_msg_id}" \
+                    -d text="$init_result" \
+                    -d parse_mode="HTML" \
+                    > /dev/null 2>&1
+            fi
+        fi
+        
+        log "✅ Inisialisasi profil bot default selesai untuk chat_id=$chat_id"
+        sleep 2
+    fi
+    
+    # ============ SETUP COMMAND MENU ATAU TAMPILKAN STATUS ============
+    if [ "$need_setup" -eq 1 ]; then
+        log "🔄 Menjalankan setup command menu untuk chat_id=$chat_id..."
+        
+        # Tentukan message_id untuk update
+        local processing_msg_id=""
+        
+        if [ ! -f "$default_init_file" ] || [ -z "$init_msg_id" ]; then
+            local progress_msg=$(printf '⏳ <b>Mengaktifkan command menu...</b>')
+            local processing_msg=$(send_message "$chat_id" "$progress_msg" "HTML")
+            processing_msg_id=$(echo "$processing_msg" | jq -r '.result.message_id // empty')
+        else
+            processing_msg_id="$init_msg_id"
+            local progress_msg=$(printf '⏳ <b>Mengaktifkan command menu...</b>
+
+Mendaftarkan 21 perintah bot ke Telegram...')
+            curl -s -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+                -d chat_id="${chat_id}" \
+                -d message_id="${processing_msg_id}" \
+                -d text="$progress_msg" \
+                -d parse_mode="HTML" \
+                > /dev/null 2>&1
+        fi
         
         local register_result=$(register_bot_commands_silent)
         
         if [ "$register_result" = "success" ]; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$setup_flag"
-            echo "$current_version" > "$setup_version_file"
+            {
+                echo "setup_date: $(date '+%Y-%m-%d %H:%M:%S')"
+                echo "setup_by: chat_${chat_id}"
+                echo "commands_registered: 21"
+                echo "version: $current_version"
+            } > "$setup_flag"
             
-            local success_msg="✅ *Command menu berhasil diaktifkan!*
+            echo "$current_version" > "$setup_version_file"
+            chmod 644 "$setup_flag" "$setup_version_file"
+            
+            local success_msg=$(printf '✅ <b>🎉 SELAMAT! Setup Selesai!</b>
 
-Sekarang ketik / di kolom pesan untuk melihat semua perintah.
+🤖 <b>Jsholat Bot siap digunakan</b>
 
-📍 *Mulai sekarang:*
+📊 <b>Ringkasan Setup:</b>
+• ✅ Profil bot: Terinisialisasi (nama, deskripsi, bio)
+• ✅ Command menu: 21 perintah aktif
+• 💾 Penyimpanan: Permanen di %s
+• 🔄 Ketahanan: Setup tetap utuh meskipun reboot
+
+📍 <b>Mulai sekarang:</b>
 /setlokasi - Atur lokasi Anda
 /jadwal - Lihat jadwal hari ini
-/setupbot - Atur profil bot
+/setupbot - Atur profil bot (nama, foto, bio)
 /status - Cek semua pengaturan
 
-🌙 *Semoga ibadah makin khusyuk!*"
+🌙 <b>Semoga ibadah makin khusyuk!</b>
+
+📌 <b>Catatan:</b> Profil default hanya diatur SEKALI seumur hidup bot. Jika ingin reset ke default, gunakan menu /setupbot.' \
+                "$config_dir")
             
             if [ -n "$processing_msg_id" ]; then
                 curl -s -X POST \
@@ -5014,13 +5272,15 @@ Sekarang ketik / di kolom pesan untuk melihat semua perintah.
                     -d chat_id="${chat_id}" \
                     -d message_id="${processing_msg_id}" \
                     -d text="$success_msg" \
-                    -d parse_mode="Markdown" \
+                    -d parse_mode="HTML" \
                     > /dev/null 2>&1
             else
-                send_message "$chat_id" "$success_msg" "Markdown"
+                send_message "$chat_id" "$success_msg" "HTML"
             fi
         else
-            local failed_msg="❌ *Gagal mengaktifkan command menu*
+            local failed_msg=$(printf '❌ <b>Setup tidak selesai dengan sempurna</b>
+
+⚠️ Gagal mengaktifkan command menu.
 
 Silakan coba dengan perintah:
 /setup
@@ -5028,7 +5288,12 @@ Silakan coba dengan perintah:
 Atau gunakan perintah manual:
 /help - Lihat semua perintah
 
-🌙 *Terima kasih*"
+📁 <b>Status File:</b>
+• Profil bot: %s
+• Command menu: ❌ Gagal daftar
+
+🌙 <b>Terima kasih</b>' \
+                "$([ -f "$default_init_file" ] && echo "✅ Tersimpan" || echo "❌ Belum")")
             
             if [ -n "$processing_msg_id" ]; then
                 curl -s -X POST \
@@ -5036,33 +5301,62 @@ Atau gunakan perintah manual:
                     -d chat_id="${chat_id}" \
                     -d message_id="${processing_msg_id}" \
                     -d text="$failed_msg" \
-                    -d parse_mode="Markdown" \
+                    -d parse_mode="HTML" \
                     > /dev/null 2>&1
             else
-                send_message "$chat_id" "$failed_msg" "Markdown"
+                send_message "$chat_id" "$failed_msg" "HTML"
             fi
         fi
     else
+        # Tampilkan status untuk user existing
         local last_setup="Tidak diketahui"
-        [ -f "$setup_flag" ] && last_setup=$(cat "$setup_flag")
+        if [ -f "$setup_flag" ]; then
+            last_setup=$(grep "setup_date:" "$setup_flag" 2>/dev/null | cut -d' ' -f2-)
+            [ -z "$last_setup" ] && last_setup=$(cat "$setup_flag" 2>/dev/null | head -1)
+        fi
         
-        local normal_msg="Assalamu'alaikum! 
+        local last_init="Tidak diketahui"
+        if [ -f "$default_init_file" ]; then
+            last_init=$(grep "init_date:" "$default_init_file" 2>/dev/null | cut -d' ' -f2-)
+            [ -z "$last_init" ] && last_init=$(cat "$default_init_file" 2>/dev/null | head -1)
+        fi
+        
+        local bot_info=$(curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getMe")
+        local bot_name=$(echo "$bot_info" | jq -r '.result.first_name // "Tidak diketahui"')
+        local bot_username=$(echo "$bot_info" | jq -r '.result.username // "Tidak diketahui"')
+        
+        local normal_msg=$(printf 'Assalamualaikum! 
 
-🤖 *Jsholat Bot*
+🤖 <b>Jsholat Bot</b>
 
-✅ Command menu siap digunakan (*${cmd_count} perintah*)
-🕒 Terakhir setup: ${last_setup}
+✅ <b>Status Sistem:</b>
+• Command menu: <b>%s perintah</b>
+• Nama bot: <b>%s</b>
+• Username: @%s
+• Terakhir setup: %s
+• Profil diinisialisasi: %s
+• Penyimpanan: <b>Permanen</b> (%s)
 
-📌 *Perintah cepat:*
+📌 <b>Perintah cepat:</b>
 /jadwal - Jadwal hari ini
 /status - Status pengaturan
 /setupbot - Atur profil bot
 /help - Semua perintah
 
-🌙 *Selamat beribadah!*"
+🌙 <b>Selamat beribadah!</b>
+
+💡 <b>Info:</b> Profil default hanya diinisialisasi SEKALI. Untuk reset ke default, gunakan /setupbot → Reset ke Default.' \
+            "$cmd_count" \
+            "$bot_name" \
+            "$bot_username" \
+            "$last_setup" \
+            "$last_init" \
+            "$config_dir")
         
-        send_message "$chat_id" "$normal_msg" "Markdown"
+        send_message "$chat_id" "$normal_msg" "HTML"
     fi
+    
+    log "✅ Handler /start selesai untuk chat_id=$chat_id"
 }
 
 # FUNGSI KIRIM PESAN SELAMAT DATANG
@@ -5217,10 +5511,30 @@ Silakan coba lagi beberapa saat."
 }
 
 # FUNGSI SETUP BOT
-# Fungsi untuk mengecek rate limit sebelum mencoba
+# Fungsi untuk mengecek rate limit dengan humanize action
 check_rate_limit() {
     local action="$1"  # name, description, bio, photo
     local chat_id="$2"
+    
+    # Humanize action untuk tampilan yang lebih user-friendly
+    local action_display=""
+    case "$action" in
+        "name")
+            action_display="Nama Bot"
+            ;;
+        "description")
+            action_display="Deskripsi Bot"
+            ;;
+        "bio")
+            action_display="Bio Bot"
+            ;;
+        "photo")
+            action_display="Foto Profil"
+            ;;
+        *)
+            action_display="$action"
+            ;;
+    esac
     
     local rate_file="/tmp/jsholat_rate_limit_${action}"
     local current_time=$(date +%s)
@@ -5233,16 +5547,19 @@ check_rate_limit() {
             local minutes=$(( (wait_seconds % 3600) / 60 ))
             local seconds=$((wait_seconds % 60))
             
-            local wait_time=$(date -d "@$retry_after" "+%H:%M:%S %d/%m/%Y" 2>/dev/null || echo "Tidak dapat menentukan")
+            local wait_time=$(date -d "@$retry_after" "+%H:%M:%S %d/%m/%Y" 2>/dev/null)
+            [ -z "$wait_time" ] && wait_time="Tidak dapat menentukan"
             
-            send_message "$chat_id" "⏳ *Mohon tunggu*\n\nAnda sudah mencapai batas pengubahan *%s*.\n\n• Harap tunggu: *%d jam %d menit %d detik*\n• Dapat diubah setelah: %s\n\n💡 *Saran:* Gunakan fitur lain sambil menunggu." "Markdown" \
-                "$action" "$hours" "$minutes" "$seconds" "$wait_time"
-            return 1
+            local rate_msg=$(printf '⏳ <b>Mohon tunggu</b>\n\nAnda sudah mencapai batas pengubahan <b>%s</b>.\n\n• Harap tunggu: <b>%d jam %d menit %d detik</b>\n• Dapat diubah setelah: %s\n\n💡 <b>Saran:</b> Gunakan fitur lain sambil menunggu.' \
+                "$action_display" "$hours" "$minutes" "$seconds" "$wait_time")
+            
+            send_message "$chat_id" "$rate_msg" "HTML"
+            return 1  # KENA LIMIT
         else
             rm -f "$rate_file"
         fi
     fi
-    return 0
+    return 0  # TIDAK KENA LIMIT
 }
 
 # Fungsi untuk menyimpan rate limit
@@ -5253,7 +5570,293 @@ save_rate_limit() {
     if [ -n "$retry_after" ] && [ "$retry_after" -gt 0 ]; then
         local retry_time=$(( $(date +%s) + retry_after ))
         echo "$retry_time" > "/tmp/jsholat_rate_limit_${action}"
-        log "⚠️ Rate limit disimpan untuk $action: $retry_after detik (sampai $(date -d "@$retry_time" '+%H:%M:%S %d/%m/%Y'))"
+        
+        # Humanize untuk log
+        local action_display=""
+        case "$action" in
+            "name") action_display="Nama Bot" ;;
+            "description") action_display="Deskripsi Bot" ;;
+            "bio") action_display="Bio Bot" ;;
+            "photo") action_display="Foto Profil" ;;
+            *) action_display="$action" ;;
+        esac
+        
+        # Format waktu untuk log
+        local wait_until=$(date -d "@$retry_time" "+%H:%M:%S %d/%m/%Y" 2>/dev/null)
+        [ -z "$wait_until" ] && wait_until="Tidak dapat menentukan"
+        
+        log "⚠️ Rate limit untuk $action_display: $retry_after detik (sampai $wait_until)"
+    fi
+}
+# FUNGSI RESET PROFIL BOT KE DEFAULT 
+reset_bot_profile() {
+    local chat_id="$1"
+    local message_id="$2"
+    local start_time=$(date +%s)
+    
+    log "🔄 Memulai reset profil bot ke default untuk chat_id=$chat_id"
+    
+    # Kirim pesan progress
+    local progress_msg=$(printf '⏳ <b>Mereset profil bot ke default...</b>\n\n• Nama\n• Deskripsi\n• Bio\n\nMohon tunggu...')
+    
+    if [ -n "$message_id" ] && [ "$message_id" != "null" ]; then
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+            -d chat_id="${chat_id}" \
+            -d message_id="${message_id}" \
+            --data-urlencode "text=${progress_msg}" \
+            -d parse_mode="HTML" \
+            > /dev/null 2>&1
+    else
+        local sent_msg=$(send_message "$chat_id" "$progress_msg" "HTML")
+        message_id=$(echo "$sent_msg" | jq -r '.result.message_id // empty')
+    fi
+    
+    # Update progress - Nama
+    sleep 1
+    if [ -n "$message_id" ] && [ "$message_id" != "null" ]; then
+        local progress_msg2=$(printf '⏳ <b>Mereset profil bot...</b> (1/3) Mengatur nama bot...')
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+            -d chat_id="${chat_id}" \
+            -d message_id="${message_id}" \
+            --data-urlencode "text=${progress_msg2}" \
+            -d parse_mode="HTML" \
+            > /dev/null 2>&1
+    fi
+    
+    # Reset NAMA
+    local name_response=$(curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setMyName" \
+        -H "Content-Type: application/json" \
+        -d "{\"name\": \"$DEFAULT_BOT_NAME\"}")
+    
+    local name_ok=$(echo "$name_response" | jq -r '.ok // false')
+    local name_error=""
+    local name_retry_after=""
+    local name_error_code=""
+    
+    if [ "$name_ok" != "true" ]; then
+        name_error_code=$(echo "$name_response" | jq -r '.error_code // empty')
+        name_error=$(echo "$name_response" | jq -r '.description // "Unknown error"')
+        name_retry_after=$(echo "$name_response" | jq -r '.parameters.retry_after // empty')
+    fi
+    
+    # Update progress - Deskripsi
+    sleep 1
+    if [ -n "$message_id" ] && [ "$message_id" != "null" ]; then
+        local progress_msg3=$(printf '⏳ <b>Mereset profil bot...</b> (2/3) Mengatur deskripsi bot...')
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+            -d chat_id="${chat_id}" \
+            -d message_id="${message_id}" \
+            --data-urlencode "text=${progress_msg3}" \
+            -d parse_mode="HTML" \
+            > /dev/null 2>&1
+    fi
+    
+    # Reset DESKRIPSI
+    local desc_response=$(curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setMyDescription" \
+        -H "Content-Type: application/json" \
+        -d "{\"description\": \"$DEFAULT_BOT_DESCRIPTION\"}")
+    
+    local desc_ok=$(echo "$desc_response" | jq -r '.ok // false')
+    local desc_error=""
+    local desc_retry_after=""
+    local desc_error_code=""
+    
+    if [ "$desc_ok" != "true" ]; then
+        desc_error_code=$(echo "$desc_response" | jq -r '.error_code // empty')
+        desc_error=$(echo "$desc_response" | jq -r '.description // "Unknown error"')
+        desc_retry_after=$(echo "$desc_response" | jq -r '.parameters.retry_after // empty')
+    fi
+    
+    # Update progress - Bio
+    sleep 1
+    if [ -n "$message_id" ] && [ "$message_id" != "null" ]; then
+        local progress_msg4=$(printf '⏳ <b>Mereset profil bot...</b> (3/3) Mengatur bio bot...')
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+            -d chat_id="${chat_id}" \
+            -d message_id="${message_id}" \
+            --data-urlencode "text=${progress_msg4}" \
+            -d parse_mode="HTML" \
+            > /dev/null 2>&1
+    fi
+    
+    # Reset BIO
+    local bio_response=$(curl -s -X POST \
+        "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setMyShortDescription" \
+        -H "Content-Type: application/json" \
+        -d "{\"short_description\": \"$DEFAULT_BOT_BIO\"}")
+    
+    local bio_ok=$(echo "$bio_response" | jq -r '.ok // false')
+    local bio_error=""
+    local bio_retry_after=""
+    local bio_error_code=""
+    
+    if [ "$bio_ok" != "true" ]; then
+        bio_error_code=$(echo "$bio_response" | jq -r '.error_code // empty')
+        bio_error=$(echo "$bio_response" | jq -r '.description // "Unknown error"')
+        bio_retry_after=$(echo "$bio_response" | jq -r '.parameters.retry_after // empty')
+    fi
+    
+    local end_time=$(date +%s)
+    local elapsed=$((end_time - start_time))
+    
+    # === BANGUN PESAN DENGAN SATU PRINTF BESAR ===
+    local result_message=""
+    
+    if [ "$name_ok" = "true" ] && [ "$desc_ok" = "true" ] && [ "$bio_ok" = "true" ]; then
+        # SEMUA BERHASIL
+        result_message=$(printf '✅ <b>Profil bot berhasil direset ke default!</b>\n\n📝 <b>Nama:</b> %s\n📋 <b>Deskripsi:</b> %s...\n📌 <b>Bio:</b> %s\n\n⏱️ <b>Waktu proses:</b> %d detik' \
+            "$DEFAULT_BOT_NAME" \
+            "${DEFAULT_BOT_DESCRIPTION:0:100}" \
+            "$DEFAULT_BOT_BIO" \
+            "$elapsed")
+    else
+        # KOMPONEN YANG BERHASIL - GUNAKAN PRINTF
+        local success_part=""
+        local success_items=""
+        
+        if [ "$desc_ok" = "true" ]; then
+            success_items="${success_items}✅ <b>Deskripsi:</b> Berhasil direset\n"
+        fi
+        if [ "$bio_ok" = "true" ]; then
+            success_items="${success_items}✅ <b>Bio:</b> Berhasil direset\n"
+        fi
+        
+        if [ -n "$success_items" ]; then
+            # Hapus newline terakhir
+            success_items=$(echo -n "$success_items" | sed 's/\\n$//')
+            success_part=$(printf '%b' "$success_items")
+        fi
+        
+        # KOMPONEN YANG GAGAL (NAME)
+        local error_part=""
+        if [ "$name_ok" != "true" ] && [ "$name_error_code" = "429" ] && [ -n "$name_retry_after" ]; then
+            local hours=$((name_retry_after / 3600))
+            local minutes=$(( (name_retry_after % 3600) / 60 ))
+            local seconds=$((name_retry_after % 60))
+            
+            local retry_time=$(( $(date +%s) + name_retry_after ))
+            local retry_time_str=$(date -d "@$retry_time" "+%H:%M:%S %d/%m/%Y" 2>/dev/null)
+            [ -z "$retry_time_str" ] && retry_time_str="Tidak dapat ditentukan"
+            
+            error_part=$(printf '❌ <b>Nama:</b> RATE LIMIT TERDETEKSI!\n   • Harap tunggu: <b>%d jam %d menit %d detik</b>\n   • Bisa dicoba lagi setelah: %s' \
+                "$hours" "$minutes" "$seconds" "$retry_time_str")
+        elif [ "$name_ok" != "true" ]; then
+            error_part="❌ <b>Nama:</b> $name_error"
+        fi
+        
+        # GABUNGKAN SEMUA DENGAN SATU PRINTF
+        if [ -n "$success_part" ] && [ -n "$error_part" ]; then
+            result_message=$(printf '⚠️ <b>Reset profil bot tidak sepenuhnya berhasil</b>\n\n⏱️ <b>Waktu proses:</b> %d detik\n\n<b>✓ Komponen yang berhasil:</b>\n%b\n\n<b>✗ Komponen yang gagal:</b>\n%s\n\n💡 <b>Saran:</b>\n• Tunggu hingga batas waktu rate limit selesai\n• Coba reset lagi nanti\n• Atau reset manual satu per satu melalui menu yang sesuai' \
+                "$elapsed" "$success_part" "$error_part")
+        elif [ -n "$success_part" ]; then
+            result_message=$(printf '⚠️ <b>Reset profil bot tidak sepenuhnya berhasil</b>\n\n⏱️ <b>Waktu proses:</b> %d detik\n\n<b>✓ Komponen yang berhasil:</b>\n%b\n\n💡 <b>Saran:</b>\n• Tunggu hingga batas waktu rate limit selesai\n• Coba reset lagi nanti' \
+                "$elapsed" "$success_part")
+        elif [ -n "$error_part" ]; then
+            result_message=$(printf '⚠️ <b>Reset profil bot tidak sepenuhnya berhasil</b>\n\n⏱️ <b>Waktu proses:</b> %d detik\n\n<b>✗ Komponen yang gagal:</b>\n%s\n\n💡 <b>Saran:</b>\n• Tunggu hingga batas waktu rate limit selesai\n• Coba reset lagi nanti' \
+                "$elapsed" "$error_part")
+        fi
+    fi
+    
+    # Tampilkan hasil
+    if [ -n "$message_id" ] && [ "$message_id" != "null" ]; then
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+            -d chat_id="${chat_id}" \
+            -d message_id="${message_id}" \
+            --data-urlencode "text=${result_message}" \
+            -d parse_mode="HTML" \
+            > /dev/null 2>&1
+    fi
+    
+    # Tambahkan tombol kembali ke menu
+    local keyboard='[[{"text":"⬅️ Kembali ke Menu Setup","callback_data":"bot_profile_menu"}]]'
+    
+    if [ -n "$message_id" ] && [ "$message_id" != "null" ]; then
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageReplyMarkup" \
+            -d chat_id="${chat_id}" \
+            -d message_id="${message_id}" \
+            -d reply_markup="{\"inline_keyboard\":${keyboard}}" \
+            > /dev/null 2>&1
+    fi
+    
+    log "✅ Reset profil bot selesai dalam $elapsed detik untuk chat_id=$chat_id"
+}
+
+# FUNGSI UNTUK MELIHAT PROFIL DEFAULT 
+show_default_profile() {
+    local chat_id="$1"
+    local message_id="$2"
+    
+    local message=$(printf '📋 <b>PROFIL DEFAULT BOT</b>
+
+Berikut adalah nilai default yang akan diterapkan jika Anda mereset profil:
+
+📝 <b>Nama Default:</b>
+%s
+
+📋 <b>Deskripsi Default:</b>
+%s
+
+📌 <b>Bio Default:</b>
+%s
+
+💡 <b>Catatan:</b>
+• Foto profil tidak direset (harus manual)
+• Reset hanya mempengaruhi nama, deskripsi, dan bio
+• Proses reset akan memakan waktu beberapa detik' \
+        "$DEFAULT_BOT_NAME" \
+        "$DEFAULT_BOT_DESCRIPTION" \
+        "$DEFAULT_BOT_BIO")
+    
+    local keyboard='[[
+        {"text": "🔄 Reset ke Default", "callback_data": "bot_reset_profile"}
+    ],[
+        {"text": "⬅️ Kembali", "callback_data": "bot_profile_menu"}
+    ]]'
+    
+    if [ -z "$message_id" ] || [ "$message_id" = "null" ]; then
+        # Kirim pesan baru dengan HTML
+        local json_payload=$(jq -n \
+            --arg chat_id "$chat_id" \
+            --arg text "$message" \
+            --argjson keyboard "$keyboard" \
+            '{
+                chat_id: $chat_id,
+                text: $text,
+                parse_mode: "HTML",
+                reply_markup: {inline_keyboard: $keyboard}
+            }')
+        
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "$json_payload" > /dev/null 2>&1
+    else
+        # Edit pesan yang sudah ada
+        local json_payload=$(jq -n \
+            --arg chat_id "$chat_id" \
+            --arg message_id "$message_id" \
+            --arg text "$message" \
+            --argjson keyboard "$keyboard" \
+            '{
+                chat_id: $chat_id,
+                message_id: $message_id,
+                text: $text,
+                parse_mode: "HTML",
+                reply_markup: {inline_keyboard: $keyboard}
+            }')
+        
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+            -H "Content-Type: application/json" \
+            -d "$json_payload" > /dev/null 2>&1
     fi
 }
 
@@ -5268,7 +5871,7 @@ show_bot_profile_menu() {
     local bot_name=$(echo "$bot_info" | jq -r '.result.first_name // "Tidak diketahui"')
     local bot_username=$(echo "$bot_info" | jq -r '.result.username // "Tidak diketahui"')
     
-    # HAPUS menu "Kelola Deskripsi Foto"
+    # MENU YANG DIMODIFIKASI - MENAMBAHKAN TOMBOL RESET DAN LIHAT DEFAULT
     local keyboard='[[
         {"text": "📝 Ganti Nama Bot", "callback_data": "bot_set_name"}
     ],[
@@ -5280,22 +5883,29 @@ show_bot_profile_menu() {
     ],[
         {"text": "👁️ Lihat Profil", "callback_data": "bot_view_profile"}
     ],[
+        {"text": "📋 Lihat Info Default Bot", "callback_data": "bot_view_default"},
+        {"text": "🔄 Reset ke Default", "callback_data": "bot_reset_profile"}
+    ],[
         {"text": "❌ Batal", "callback_data": "cancel_update"}
     ]]'
     
-    local message="🤖 SETUP PROFIL BOT TELEGRAM
+    local message="🤖 *SETUP PROFIL BOT TELEGRAM*
 
+*Informasi Saat Ini:*
 Nama: $bot_name
 Username: @$bot_username
 
-📌 Pilih opsi yang ingin diubah:
+📌 *Pilih opsi:*
 • 📝 Ganti nama bot
 • 🖼️ Ganti foto profil
 • 📋 Ganti deskripsi/tentang bot
 • 📌 Ganti bio (maks 70 karakter)
+• 📋 Lihat nilai default
+• 🔄 Reset semua ke default (kecuali foto)
 
-⚠️ Catatan: 
-Perubahan akan langsung diterapkan di Telegram."
+⚠️ *Catatan:* 
+• Perubahan akan langsung diterapkan di Telegram
+• Reset hanya mempengaruhi nama, deskripsi, dan bio"
     
     if [ -z "$message_id" ]; then
         curl -s -X POST \
@@ -5314,10 +5924,10 @@ Perubahan akan langsung diterapkan di Telegram."
             > /dev/null 2>&1
     fi
     
-    log "📋 Menu setup profil bot ditampilkan"
+    log "📋 Menu setup profil bot ditampilkan (dengan fitur reset)"
 }
 
-# FUNGSI MELIHAT PROFIL BOT
+# FUNGSI MELIHAT PROFIL BOT (HTML VERSION)
 view_bot_profile() {
     local chat_id="$1"
     local message_id="$2"
@@ -5340,95 +5950,120 @@ view_bot_profile() {
     local has_photo="❌ Tidak ada"
     [ "$total_photos" -gt 0 ] && has_photo="✅ Ada ($total_photos foto)"
     
-    # HTML FORMAT - AMAN DARI MARKDOWN
-    local message="<b>👁️ INFORMASI PROFIL BOT</b>
+    local message=$(printf '<b>👁️ INFORMASI PROFIL BOT</b>
 
-<b>ID:</b> $bot_id
-<b>Username:</b> @$bot_username
-<b>Nama:</b> $bot_name
-<b>Foto Profil:</b> $has_photo
+<b>ID:</b> %s
+<b>Username:</b> @%s
+<b>Nama:</b> %s
+<b>Foto Profil:</b> %s
 
 <b>📋 Deskripsi:</b>
-$description
+%s
 
 <b>📌 Bio:</b>
-$bio"
+%s' \
+        "$bot_id" \
+        "$bot_username" \
+        "$bot_name" \
+        "$has_photo" \
+        "$description" \
+        "$bio")
     
     local keyboard='[[
-        {"text": "🔄 Refresh", "callback_data": "bot_view_profile"}
-    ],[
+        {"text": "🔄 Refresh", "callback_data": "bot_view_profile"},
         {"text": "⬅️ Kembali", "callback_data": "bot_profile_menu"}
     ]]'
     
-    local payload=$(jq -n \
-        --arg chat_id "$chat_id" \
-        --arg text "$message" \
-        --argjson keyboard "$keyboard" \
-        '{
-            chat_id: $chat_id,
-            text: $text,
-            parse_mode: "HTML",
-            reply_markup: {inline_keyboard: $keyboard}
-        }')
-    
-    if [ -n "$message_id" ]; then
-        payload=$(echo "$payload" | jq --arg msg_id "$message_id" '. + {message_id: $msg_id}')
-        curl -s -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
-            -H "Content-Type: application/json" \
-            -d "$payload" > /dev/null 2>&1
-    else
+    if [ -z "$message_id" ] || [ "$message_id" = "null" ]; then
+        local json_payload=$(jq -n \
+            --arg chat_id "$chat_id" \
+            --arg text "$message" \
+            --argjson keyboard "$keyboard" \
+            '{
+                chat_id: $chat_id,
+                text: $text,
+                parse_mode: "HTML",
+                reply_markup: {inline_keyboard: $keyboard}
+            }')
+        
         curl -s -X POST \
             "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
             -H "Content-Type: application/json" \
-            -d "$payload" > /dev/null 2>&1
+            -d "$json_payload" > /dev/null 2>&1
+    else
+        local json_payload=$(jq -n \
+            --arg chat_id "$chat_id" \
+            --arg message_id "$message_id" \
+            --arg text "$message" \
+            --argjson keyboard "$keyboard" \
+            '{
+                chat_id: $chat_id,
+                message_id: $message_id,
+                text: $text,
+                parse_mode: "HTML",
+                reply_markup: {inline_keyboard: $keyboard}
+            }')
+        
+        curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
+            -H "Content-Type: application/json" \
+            -d "$json_payload" > /dev/null 2>&1
     fi
     
     log "✅ Informasi profil bot ditampilkan (HTML)"
 }
 
-# FUNGSI GANTI NAMA BOT
+# FUNGSI GANTI NAMA BOT - PROMPT
 bot_set_name_prompt() {
     local chat_id="$1"
     local message_id="$2"
     
-    # ✅ CEK RATE LIMIT DULU!
-    if ! check_rate_limit "name" "$chat_id"; then
-        return 1
+    # CEK RATE LIMIT
+    check_rate_limit "name" "$chat_id"
+    local rate_limit_result=$?
+    
+    # Jika kena limit (return 1), check_rate_limit sudah kirim pesan
+    # Kita langsung return tanpa membuat flag
+    if [ $rate_limit_result -eq 1 ]; then
+        log "⏳ User $chat_id kena rate limit untuk ganti nama"
+        return 0
     fi
     
-    local message="📝 *GANTI NAMA BOT*
+    # Jika tidak kena limit (return 0), lanjut ke prompt
+    local message=$(printf '📝 <b>GANTI NAMA BOT</b>
 
 Masukkan nama baru untuk bot Anda.
 
-*Contoh:* Jadwal Sholat Bot
+<b>Contoh:</b> Jadwal Sholat Bot
 
-⚠️ *Batasan Telegram:*
+⚠️ <b>Batasan Telegram:</b>
 • Maksimal 64 karakter
 • Bisa menggunakan emoji
 • Maksimal 20x perubahan per menit
 • Jika kena limit, tunggu ~23 jam
 
-❌ Ketik / untuk membatalkan."
+❌ Ketik / untuk membatalkan.')
     
     mkdir -p "/tmp/jsholat_bot_setup"
     echo "waiting_bot_name" > "/tmp/jsholat_bot_setup/${chat_id}.flag"
     
-    if [ -n "$message_id" ]; then
+    if [ -n "$message_id" ] && [ "$message_id" != "null" ]; then
         curl -s -X POST \
             "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
             -d chat_id="${chat_id}" \
             -d message_id="${message_id}" \
             --data-urlencode "text=${message}" \
-            -d parse_mode="Markdown" \
+            -d parse_mode="HTML" \
             > /dev/null 2>&1
     else
-        send_message "$chat_id" "%s" "Markdown" "$message"
+        send_message "$chat_id" "$message" "HTML"
     fi
     
     log "📋 Meminta nama baru dari chat_id=$chat_id"
+    return 0
 }
 
+# FUNGSI GANTI NAMA BOT - PROSES
 bot_set_name_process() {
     local chat_id="$1"
     local new_name="$2"
@@ -5436,7 +6071,7 @@ bot_set_name_process() {
     
     log "📝 Mengganti nama bot menjadi: $new_name"
     
-    # ✅ CEK LAGI SEBELUM EKSEKUSI (antisipasi jika prompt sudah lama)
+    # CEK RATE LIMIT
     if ! check_rate_limit "name" "$chat_id"; then
         rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
         return 1
@@ -5456,47 +6091,50 @@ bot_set_name_process() {
     local end_time=$(date +%s)
     local elapsed=$((end_time - start_time))
     
-    # ✅ SIMPAN RATE LIMIT JIKA ADA
+    # SIMPAN RATE LIMIT JIKA ADA
     if [ "$error_code" = "429" ] && [ -n "$retry_after" ]; then
         save_rate_limit "name" "$retry_after"
     fi
     
+    # HAPUS FLAG SETELAH PROSES (APAPUN HASILNYA)
+    rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
+    
     if [ "$ok" = "true" ]; then
-        send_message "$chat_id" "✅ *Nama bot berhasil diubah!*\n\n*Nama baru:* %s\n⏱️ *Waktu proses:* %d detik" "Markdown" "$new_name" "$elapsed"
+        local success_msg=$(printf '✅ <b>Nama bot berhasil diubah!</b>\n\n📝 <b>Nama baru:</b> %s\n⏱️ <b>Waktu proses:</b> %d detik' \
+            "$new_name" "$elapsed")
+        send_message "$chat_id" "$success_msg" "HTML"
         log "✅ Nama bot berhasil diubah dalam $elapsed detik"
-        rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
         return 0
     else
-        local error_msg="❌ *Gagal mengubah nama bot*\n\n"
-        error_msg+="📋 *Detail Error:*\n"
-        error_msg+="• Kode: %s\n"
-        error_msg+="• Pesan: %s\n"
-        error_msg+="⏱️ *Waktu respon:* %d detik\n"
+        # Bangun pesan error dengan HTML
+        local error_msg=""
         
         if [ "$error_code" = "429" ] && [ -n "$retry_after" ]; then
             local hours=$((retry_after / 3600))
             local minutes=$(( (retry_after % 3600) / 60 ))
             local seconds=$((retry_after % 60))
             
-            error_msg+="\n⚠️ *RATE LIMIT TERDETEKSI!*\n"
-            error_msg+="• Harap tunggu: *%d jam %d menit %d detik*\n"
-            error_msg+="• Coba lagi setelah: %s\n"
-            error_msg+="\n📌 *Penyebab:* Terlalu sering mengubah nama dalam waktu singkat.\n"
-            error_msg+="💡 *Saran:* Gunakan fitur lain atau istirahat dulu."
+            # Format waktu retry
+            local retry_time=$(date -d "@$(( $(date +%s) + retry_after ))" "+%H:%M:%S %d/%m/%Y" 2>/dev/null)
+            [ -z "$retry_time" ] && retry_time="Tidak dapat menentukan"
             
-            local retry_time=$(date -d "@$(( $(date +%s) + retry_after ))" "+%H:%M:%S %d/%m/%Y" 2>/dev/null || echo "Tidak dapat menentukan")
-            
-            send_message "$chat_id" "$error_msg" "Markdown" \
-                "$error_code" "$description" "$elapsed" \
-                "$hours" "$minutes" "$seconds" "$retry_time"
+            error_msg=$(printf '❌ <b>Gagal mengubah nama bot</b>\n\n📋 <b>Detail Error:</b>\n• Kode: %s\n• Pesan: %s\n⏱️ <b>Waktu respon:</b> %d detik\n\n⚠️ <b>RATE LIMIT TERDETEKSI!</b>\n• Harap tunggu: <b>%d jam %d menit %d detik</b>\n• Bisa dicoba lagi setelah: %s\n\n📌 <b>Penyebab:</b> Terlalu sering mengubah nama dalam waktu singkat.\n💡 <b>Saran:</b> Gunakan fitur lain atau istirahat dulu.' \
+                "$error_code" \
+                "$description" \
+                "$elapsed" \
+                "$hours" \
+                "$minutes" \
+                "$seconds" \
+                "$retry_time")
         else
-            error_msg+="\n📌 *Saran:* Periksa koneksi internet dan coba lagi."
-            send_message "$chat_id" "$error_msg" "Markdown" \
-                "$error_code" "$description" "$elapsed"
+            error_msg=$(printf '❌ <b>Gagal mengubah nama bot</b>\n\n📋 <b>Detail Error:</b>\n• Kode: %s\n• Pesan: %s\n⏱️ <b>Waktu respon:</b> %d detik\n\n📌 <b>Saran:</b> Periksa koneksi internet dan coba lagi.' \
+                "$error_code" \
+                "$description" \
+                "$elapsed")
         fi
         
+        send_message "$chat_id" "$error_msg" "HTML"
         log "❌ Gagal mengubah nama bot: Kode=$error_code, Pesan=$description, Waktu=$elapsed detik, RetryAfter=$retry_after"
-        # FLAG TIDAK DIHAPUS - user bisa coba lagi nanti
         return 1
     fi
 }
@@ -5682,43 +6320,50 @@ bot_set_description_prompt() {
     local chat_id="$1"
     local message_id="$2"
     
-    # ✅ CEK RATE LIMIT
-    if ! check_rate_limit "description" "$chat_id"; then
-        return 1
+    # CEK RATE LIMIT
+    check_rate_limit "description" "$chat_id"
+    local rate_limit_result=$?
+    
+    # Jika kena limit (return 1), check_rate_limit sudah kirim pesan
+    if [ $rate_limit_result -eq 1 ]; then
+        log "⏳ User $chat_id kena rate limit untuk ganti deskripsi"
+        return 0
     fi
     
-    local message="📋 *GANTI DESKRIPSI BOT*
+    local message=$(printf '📋 <b>GANTI DESKRIPSI BOT</b>
 
 Masukkan deskripsi/tentang bot Anda.
 
-*Contoh:* 
+<b>Contoh:</b> 
 Bot ini membantu Anda mengingat jadwal sholat harian.
 
-⚠️ *Batasan Telegram:*
+⚠️ <b>Batasan Telegram:</b>
 • Maksimal 512 karakter
 • Maksimal 20x perubahan per menit
 • Jika kena limit, tunggu ~23 jam
 
-❌ Ketik / untuk membatalkan."
+❌ Ketik / untuk membatalkan.')
     
     mkdir -p "/tmp/jsholat_bot_setup"
     echo "waiting_bot_description" > "/tmp/jsholat_bot_setup/${chat_id}.flag"
     
-    if [ -n "$message_id" ]; then
+    if [ -n "$message_id" ] && [ "$message_id" != "null" ]; then
         curl -s -X POST \
             "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
             -d chat_id="${chat_id}" \
             -d message_id="${message_id}" \
             --data-urlencode "text=${message}" \
-            -d parse_mode="Markdown" \
+            -d parse_mode="HTML" \
             > /dev/null 2>&1
     else
-        send_message "$chat_id" "%s" "Markdown" "$message"
+        send_message "$chat_id" "$message" "HTML"
     fi
     
     log "📋 Meminta deskripsi baru dari chat_id=$chat_id"
+    return 0
 }
 
+# FUNGSI GANTI DESKRIPSI BOT - PROSES 
 bot_set_description_process() {
     local chat_id="$1"
     local description="$2"
@@ -5726,7 +6371,7 @@ bot_set_description_process() {
     
     log "📋 Mengganti deskripsi bot..."
     
-    # ✅ CEK RATE LIMIT
+    # CEK RATE LIMIT
     if ! check_rate_limit "description" "$chat_id"; then
         rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
         return 1
@@ -5746,22 +6391,23 @@ bot_set_description_process() {
     local end_time=$(date +%s)
     local elapsed=$((end_time - start_time))
     
-    # ✅ SIMPAN RATE LIMIT
+    # SIMPAN RATE LIMIT JIKA ADA
     if [ "$error_code" = "429" ] && [ -n "$retry_after" ]; then
         save_rate_limit "description" "$retry_after"
     fi
     
+    # HAPUS FLAG SETELAH PROSES (APAPUN HASILNYA)
+    rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
+    
     if [ "$ok" = "true" ]; then
-        send_message "$chat_id" "✅ *Deskripsi bot berhasil diubah!*\n\n*Deskripsi baru:* %s\n⏱️ *Waktu proses:* %d detik" "Markdown" "$description" "$elapsed"
+        local success_msg=$(printf '✅ <b>Deskripsi bot berhasil diubah!</b>\n\n📋 <b>Deskripsi baru:</b> %s\n⏱️ <b>Waktu proses:</b> %d detik' \
+            "$description" "$elapsed")
+        send_message "$chat_id" "$success_msg" "HTML"
         log "✅ Deskripsi bot berhasil diubah dalam $elapsed detik"
-        rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
         return 0
     else
-        local error_msg="❌ *Gagal mengubah deskripsi bot*\n\n"
-        error_msg+="📋 *Detail Error:*\n"
-        error_msg+="• Kode: %s\n"
-        error_msg+="• Pesan: %s\n"
-        error_msg+="⏱️ *Waktu respon:* %d detik\n"
+        # Bangun pesan error
+        local error_msg=""
         
         if [ "$error_code" = "429" ] && [ -n "$retry_after" ]; then
             local hours=$((retry_after / 3600))
@@ -5769,21 +6415,14 @@ bot_set_description_process() {
             local seconds=$((retry_after % 60))
             local retry_time=$(date -d "@$(( $(date +%s) + retry_after ))" "+%H:%M:%S %d/%m/%Y" 2>/dev/null || echo "Tidak dapat menentukan")
             
-            error_msg+="\n⚠️ *RATE LIMIT TERDETEKSI!*\n"
-            error_msg+="• Harap tunggu: *%d jam %d menit %d detik*\n"
-            error_msg+="• Coba lagi setelah: %s\n"
-            error_msg+="\n📌 *Penyebab:* Terlalu sering mengubah deskripsi.\n"
-            error_msg+="💡 *Saran:* Tunggu hingga batas waktu selesai."
-            
-            send_message "$chat_id" "$error_msg" "Markdown" \
-                "$error_code" "$description_err" "$elapsed" \
-                "$hours" "$minutes" "$seconds" "$retry_time"
+            error_msg=$(printf '❌ <b>Gagal mengubah deskripsi bot</b>\n\n📋 <b>Detail Error:</b>\n• Kode: %s\n• Pesan: %s\n⏱️ <b>Waktu respon:</b> %d detik\n\n⚠️ <b>RATE LIMIT TERDETEKSI!</b>\n• Harap tunggu: <b>%d jam %d menit %d detik</b>\n• Coba lagi setelah: %s' \
+                "$error_code" "$description_err" "$elapsed" "$hours" "$minutes" "$seconds" "$retry_time")
         else
-            error_msg+="\n📌 *Saran:* Periksa koneksi dan coba lagi."
-            send_message "$chat_id" "$error_msg" "Markdown" \
-                "$error_code" "$description_err" "$elapsed"
+            error_msg=$(printf '❌ <b>Gagal mengubah deskripsi bot</b>\n\n📋 <b>Detail Error:</b>\n• Kode: %s\n• Pesan: %s\n⏱️ <b>Waktu respon:</b> %d detik\n\n📌 <b>Saran:</b> Periksa koneksi dan coba lagi.' \
+                "$error_code" "$description_err" "$elapsed")
         fi
         
+        send_message "$chat_id" "$error_msg" "HTML"
         log "❌ Gagal mengubah deskripsi bot: Kode=$error_code, Pesan=$description_err, Waktu=$elapsed detik"
         return 1
     fi
@@ -5794,57 +6433,64 @@ bot_set_bio_prompt() {
     local chat_id="$1"
     local message_id="$2"
     
-    # ✅ CEK RATE LIMIT
-    if ! check_rate_limit "bio" "$chat_id"; then
-        return 1
+    # CEK RATE LIMIT
+    check_rate_limit "bio" "$chat_id"
+    local rate_limit_result=$?
+    
+    # Jika kena limit (return 1), check_rate_limit sudah kirim pesan
+    if [ $rate_limit_result -eq 1 ]; then
+        log "⏳ User $chat_id kena rate limit untuk ganti bio"
+        return 0
     fi
     
-    local message="📌 *GANTI BIO BOT*
+    local message=$(printf '📌 <b>GANTI BIO BOT</b>
 
 Masukkan bio singkat untuk bot Anda.
 
-*Contoh:* 
+<b>Contoh:</b> 
 🕌 Jadwal Sholat Otomatis | OpenWrt
 
-⚠️ *Batasan Telegram:*
+⚠️ <b>Batasan Telegram:</b>
 • Maksimal 70 karakter
 • Akan muncul di profil bot
 • Maksimal 20x perubahan per menit
 • Jika kena limit, tunggu ~23 jam
 
-❌ Ketik / untuk membatalkan."
+❌ Ketik / untuk membatalkan.')
     
     mkdir -p "/tmp/jsholat_bot_setup"
     echo "waiting_bot_bio" > "/tmp/jsholat_bot_setup/${chat_id}.flag"
     
-    if [ -n "$message_id" ]; then
+    if [ -n "$message_id" ] && [ "$message_id" != "null" ]; then
         curl -s -X POST \
             "https://api.telegram.org/bot${TELEGRAM_TOKEN}/editMessageText" \
             -d chat_id="${chat_id}" \
             -d message_id="${message_id}" \
             --data-urlencode "text=${message}" \
-            -d parse_mode="Markdown" \
+            -d parse_mode="HTML" \
             > /dev/null 2>&1
     else
-        send_message "$chat_id" "%s" "Markdown" "$message"
+        send_message "$chat_id" "$message" "HTML"
     fi
     
     log "📋 Meminta bio baru dari chat_id=$chat_id"
+    return 0
 }
 
+# FUNGSI GANTI BIO BOT - PROSES 
 bot_set_bio_process() {
     local chat_id="$1"
     local bio="$2"
     local start_time=$(date +%s)
     
-    # ✅ CEK RATE LIMIT
+    # CEK RATE LIMIT
     if ! check_rate_limit "bio" "$chat_id"; then
         rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
         return 1
     fi
     
     if [ ${#bio} -gt 70 ]; then
-        send_message "$chat_id" "❌ *Bio terlalu panjang!*\n\nMaksimal 70 karakter.\nAnda menggunakan: %d karakter\n⏱️ *Waktu proses:* %d detik" "Markdown" "${#bio}" "$(( $(date +%s) - start_time ))"
+        send_message "$chat_id" "❌ <b>Bio terlalu panjang!</b>\n\nMaksimal 70 karakter.\nAnda menggunakan: %d karakter\n⏱️ <b>Waktu proses:</b> %d detik" "HTML" "${#bio}" "$(( $(date +%s) - start_time ))"
         rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
         return 1
     fi
@@ -5865,22 +6511,22 @@ bot_set_bio_process() {
     local end_time=$(date +%s)
     local elapsed=$((end_time - start_time))
     
-    # ✅ SIMPAN RATE LIMIT
+    # SIMPAN RATE LIMIT JIKA ADA
     if [ "$error_code" = "429" ] && [ -n "$retry_after" ]; then
         save_rate_limit "bio" "$retry_after"
     fi
     
+    # HAPUS FLAG SETELAH PROSES (APAPUN HASILNYA)
+    rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
+    
     if [ "$ok" = "true" ]; then
-        send_message "$chat_id" "✅ *Bio bot berhasil diubah!*\n\n*Bio baru:* %s\n⏱️ *Waktu proses:* %d detik" "Markdown" "$bio" "$elapsed"
+        local success_msg=$(printf '✅ <b>Bio bot berhasil diubah!</b>\n\n📌 <b>Bio baru:</b> %s\n⏱️ <b>Waktu proses:</b> %d detik' \
+            "$bio" "$elapsed")
+        send_message "$chat_id" "$success_msg" "HTML"
         log "✅ Bio bot berhasil diubah dalam $elapsed detik"
-        rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
         return 0
     else
-        local error_msg="❌ *Gagal mengubah bio bot*\n\n"
-        error_msg+="📋 *Detail Error:*\n"
-        error_msg+="• Kode: %s\n"
-        error_msg+="• Pesan: %s\n"
-        error_msg+="⏱️ *Waktu respon:* %d detik\n"
+        local error_msg=""
         
         if [ "$error_code" = "429" ] && [ -n "$retry_after" ]; then
             local hours=$((retry_after / 3600))
@@ -5888,21 +6534,14 @@ bot_set_bio_process() {
             local seconds=$((retry_after % 60))
             local retry_time=$(date -d "@$(( $(date +%s) + retry_after ))" "+%H:%M:%S %d/%m/%Y" 2>/dev/null || echo "Tidak dapat menentukan")
             
-            error_msg+="\n⚠️ *RATE LIMIT TERDETEKSI!*\n"
-            error_msg+="• Harap tunggu: *%d jam %d menit %d detik*\n"
-            error_msg+="• Coba lagi setelah: %s\n"
-            error_msg+="\n📌 *Penyebab:* Terlalu sering mengubah bio.\n"
-            error_msg+="💡 *Saran:* Tunggu hingga batas waktu selesai."
-            
-            send_message "$chat_id" "$error_msg" "Markdown" \
-                "$error_code" "$description_err" "$elapsed" \
-                "$hours" "$minutes" "$seconds" "$retry_time"
+            error_msg=$(printf '❌ <b>Gagal mengubah bio bot</b>\n\n📋 <b>Detail Error:</b>\n• Kode: %s\n• Pesan: %s\n⏱️ <b>Waktu respon:</b> %d detik\n\n⚠️ <b>RATE LIMIT TERDETEKSI!</b>\n• Harap tunggu: <b>%d jam %d menit %d detik</b>\n• Coba lagi setelah: %s' \
+                "$error_code" "$description_err" "$elapsed" "$hours" "$minutes" "$seconds" "$retry_time")
         else
-            error_msg+="\n📌 *Saran:* Periksa koneksi dan coba lagi."
-            send_message "$chat_id" "$error_msg" "Markdown" \
-                "$error_code" "$description_err" "$elapsed"
+            error_msg=$(printf '❌ <b>Gagal mengubah bio bot</b>\n\n📋 <b>Detail Error:</b>\n• Kode: %s\n• Pesan: %s\n⏱️ <b>Waktu respon:</b> %d detik\n\n📌 <b>Saran:</b> Periksa koneksi dan coba lagi.' \
+                "$error_code" "$description_err" "$elapsed")
         fi
         
+        send_message "$chat_id" "$error_msg" "HTML"
         log "❌ Gagal mengubah bio bot: Kode=$error_code, Pesan=$description_err, Waktu=$elapsed detik"
         return 1
     fi
@@ -7132,7 +7771,7 @@ run_update_background() {
     ) &
 }
 
-# Fungsi proses pesan
+# Fungsi proses pesan 
 process_message() {
     local chat_id="$1"
     local text="$2"
@@ -7145,11 +7784,62 @@ process_message() {
         log "⛔ Percobaan akses dari chat ID tidak terdaftar: $chat_id"
         return 1
     fi
-	
-    # HANDLER KHUSUS UNTUK FOTO - PRIORITAS UTAMA!
+    
+    # ============ CEK PEMBATALAN DULU (PALING PRIORITAS) ============
+    # Cek apakah user ingin membatalkan proses yang sedang berlangsung
+    if [ "$text" = "/" ] || [ "$text" = "/cancel" ] || [ "$text" = "batal" ] || [ "$text" = "Batal" ] || [ "$text" = "/batal" ]; then
+        log "🚫 User $chat_id membatalkan proses dengan perintah: $text"
+        
+        # Cek flag pencarian lokasi
+        if [ -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag" ]; then
+            rm -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag"
+            send_message "$chat_id" "❌ *Pencarian lokasi dibatalkan.*" "Markdown"
+            return 0
+        fi
+        
+        # Cek flag setup bot
+        if [ -f "/tmp/jsholat_bot_setup/${chat_id}.flag" ]; then
+            local current_flag=$(cat "/tmp/jsholat_bot_setup/${chat_id}.flag")
+            rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
+            
+            case "$current_flag" in
+                "waiting_bot_name")
+                    send_message "$chat_id" "❌ *Penggantian nama bot dibatalkan.*" "Markdown"
+                    ;;
+                "waiting_bot_description")
+                    send_message "$chat_id" "❌ *Penggantian deskripsi bot dibatalkan.*" "Markdown"
+                    ;;
+                "waiting_bot_bio")
+                    send_message "$chat_id" "❌ *Penggantian bio bot dibatalkan.*" "Markdown"
+                    ;;
+                "waiting_bot_photo")
+                    send_message "$chat_id" "❌ *Penggantian foto profil dibatalkan.*" "Markdown"
+                    ;;
+                "waiting_gemini_api_key")
+                    send_message "$chat_id" "❌ *Pengaturan API Key Gemini dibatalkan.*" "Markdown"
+                    ;;
+                "waiting_sahur_time")
+                    send_message "$chat_id" "❌ *Pengaturan waktu sahur dibatalkan.*" "Markdown"
+                    ;;
+                "waiting_sahur_text")
+                    send_message "$chat_id" "❌ *Pengaturan teks sahur dibatalkan.*" "Markdown"
+                    ;;
+                *)
+                    send_message "$chat_id" "❌ *Proses dibatalkan.*" "Markdown"
+                    ;;
+            esac
+            return 0
+        fi
+        
+        # Tidak ada proses aktif
+        send_message "$chat_id" "❌ Tidak ada proses aktif yang bisa dibatalkan." "Markdown"
+        return 0
+    fi
+    
+    # ============ HANDLER KHUSUS UNTUK FOTO DAN INPUT LAINNYA ============
     if [ -f "/tmp/jsholat_bot_setup/${chat_id}.flag" ]; then
         local flag=$(cat "/tmp/jsholat_bot_setup/${chat_id}.flag" 2>/dev/null)
-		
+        
         # Handler untuk Gemini API key
         if [ "$flag" = "waiting_gemini_api_key" ]; then
             if [ -n "$text" ]; then
@@ -7161,16 +7851,18 @@ process_message() {
         
         # Handler untuk input waktu sahur
         if [ "$flag" = "waiting_sahur_time" ]; then
-            if [ "$text" = "/" ] || [ "$text" = "/cancel" ] || [ "$text" = "batal" ] || [ "$text" = "Batal" ]; then
-                rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
-                send_message "$chat_id" "❌ *Pengaturan waktu sahur dibatalkan.*" "Markdown"
-                log "❌ Pengaturan waktu sahur dibatalkan oleh user $chat_id"
-                return 0
-            fi
-            
             if [ -n "$text" ]; then
                 sahur_set_time_process "$chat_id" "$text"
                 log "Waktu sahur diproses untuk chat_id=$chat_id"
+                return 0
+            fi
+        fi
+        
+        # Handler untuk input teks sahur
+        if [ "$flag" = "waiting_sahur_text" ]; then
+            if [ -n "$text" ]; then
+                sahur_edit_text_process "$chat_id" "$text"
+                log "Teks sahur diproses untuk chat_id=$chat_id"
                 return 0
             fi
         fi
@@ -7202,18 +7894,9 @@ process_message() {
                 fi
             fi
             
-            # BUKAN FOTO - CEK APAKAH PERINTAH BATAL
-            if [ "$text" = "/" ] || [ "$text" = "/cancel" ] || [ "$text" = "batal" ] || [ "$text" = "Batal" ]; then
-                rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
-                send_message "$chat_id" "❌ *Proses ganti foto dibatalkan.*" "Markdown"
-                log "❌ Proses ganti foto dibatalkan oleh user $chat_id"
-                return 0
-            else
-                # KIRIM PESAN ERROR
-                send_message "$chat_id" "❌ *Bukan foto!* Silakan kirim file gambar (JPG/PNG).\n\nKetik / untuk membatalkan." "Markdown"
-                log "❌ User $chat_id mengirim bukan foto saat mode waiting_bot_photo"
-                return 0
-            fi
+            # BUKAN FOTO - kirim pesan error
+            send_message "$chat_id" "❌ *Bukan foto!* Silakan kirim file gambar (JPG/PNG).\n\nKetik / untuk membatalkan." "Markdown"
+            return 0
         fi
         
         # Handler untuk mode setup lainnya (nama, deskripsi, bio)
@@ -7244,7 +7927,7 @@ process_message() {
 
     log "Menerima pesan dari chat_id=$chat_id: $text"
 
-	# Pengecekan umur flag lokasi
+    # ============ PENGECEKAN UMUR FLAG LOKASI ============
     if [ -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag" ]; then
         local flag_time=$(stat -c %Y "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag" 2>/dev/null)
         local now=$(date +%s)
@@ -7256,24 +7939,23 @@ process_message() {
             send_message "$chat_id" "⏰ Sesi pencarian lokasi telah expired. Silakan kirim /setlokasi lagi." "Markdown"
         fi
     fi
-	
+    
+    # ============ HANDLE COMMANDS ============
     case "$text" in
-		"/start")
-			handle_start_command "$chat_id"
-			success=$?
-			log "✅ Command /start diproses untuk chat_id=$chat_id (status: $success)"
-			;;			
-		"/jadwal")
-			show_daily_schedule "$chat_id"
-			success=$?
-			if [ $success -ne 0 ]; then
-				log "❌ Command /jadwal gagal untuk chat_id=$chat_id"
-				# JANGAN pakai continue di sini!
-				# Cukup return dengan status error
-				return 1
-			fi
-			log "✅ Command /jadwal diproses untuk chat_id=$chat_id (status: $success)"
-			;;
+        "/start")
+            handle_start_command "$chat_id"
+            success=$?
+            log "✅ Command /start diproses untuk chat_id=$chat_id (status: $success)"
+            ;;          
+        "/jadwal")
+            show_daily_schedule "$chat_id"
+            success=$?
+            if [ $success -ne 0 ]; then
+                log "❌ Command /jadwal gagal untuk chat_id=$chat_id"
+                return 1
+            fi
+            log "✅ Command /jadwal diproses untuk chat_id=$chat_id (status: $success)"
+            ;;
         "/jdwlbulan")
             send_monthly_schedule "$chat_id"
             success=$?
@@ -7282,7 +7964,7 @@ process_message() {
         "/lokasi")
             local lokasi="$SCHEDULE_CITY_LABEL"
             local provinsi="$SCHEDULE_PROVINCE"
-            send_message "$chat_id" "📍 Lokasi jadwal saat ini: *$lokasi, $provinsi*"
+            send_message "$chat_id" "📍 Lokasi jadwal saat ini: *$lokasi, $provinsi*" "Markdown"
             success=$?
             log "✅ Command /lokasi diproses untuk chat_id=$chat_id (status: $success)"
             ;;
@@ -7296,21 +7978,21 @@ process_message() {
             success=$?
             log "✅ Command /setvolume diproses untuk chat_id=$chat_id (status: $success)"
             ;;
-		"/detectaudio")
-			detect_audio "$chat_id" ""
-			success=$?
-			log "✅ Command /detectaudio diproses untuk chat_id=$chat_id (status: $success)"
-			;;	
-		"/statusbot")
-			show_bot_status "$chat_id"
-			success=$?
-			log "✅ Command /statusbot diproses untuk chat_id=$chat_id (status: $success)"
-        	;;	
-		"/status")
-			show_short_status "$chat_id"
-			success=$?
-			log "✅ Command /status diproses untuk chat_id=$chat_id (status: $success)"
-			;;
+        "/detectaudio")
+            detect_audio "$chat_id" ""
+            success=$?
+            log "✅ Command /detectaudio diproses untuk chat_id=$chat_id (status: $success)"
+            ;;  
+        "/statusbot")
+            show_bot_status "$chat_id"
+            success=$?
+            log "✅ Command /statusbot diproses untuk chat_id=$chat_id (status: $success)"
+            ;;  
+        "/status")
+            show_short_status "$chat_id"
+            success=$?
+            log "✅ Command /status diproses untuk chat_id=$chat_id (status: $success)"
+            ;;
         "/update")
             # Create confirmation keyboard
             local keyboard='[[
@@ -7319,26 +8001,26 @@ process_message() {
             ]]'
             
             local update_message=$(printf '⚠️ *Update Jadwal Sholat*\n\nAnda yakin ingin mengupdate jadwal sholat?\n\nProses ini akan menjalankan update dan mungkin memakan waktu beberapa detik.')
-			send_inline_keyboard "$chat_id" "$update_message" "$keyboard"
-			success=$?
-			log "✅ Command /update diproses untuk chat_id=$chat_id (status: $success)"
+            send_inline_keyboard "$chat_id" "$update_message" "$keyboard"
+            success=$?
+            log "✅ Command /update diproses untuk chat_id=$chat_id (status: $success)"
             ;;
         "/setjadwal")
             show_source_menu "$chat_id"
             success=$?
             log "✅ Command /setjadwal diproses untuk chat_id=$chat_id (status: $success)"
             ;;
-		"/reminder")
-			show_reminder_menu "$chat_id"
-			success=$?
-			log "✅ Command /reminder diproses untuk chat_id=$chat_id (status: $success)"
-			;;	
+        "/reminder")
+            show_reminder_menu "$chat_id"
+            success=$?
+            log "✅ Command /reminder diproses untuk chat_id=$chat_id (status: $success)"
+            ;;  
         "/setlokasi")
-			# HAPUS FLAG LAMA
+            # HAPUS FLAG LAMA
             rm -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag"
             mkdir -p "$LOCATION_SEARCH_FLAG_DIR"
             touch "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag"
-            send_message "$chat_id" "$(printf '🔍 *CARI LOKASI*\n\nMasukkan nama kota/kabupaten yang ingin dicari:\nContoh: *%s* atau *%s*\n\n❌ Ketik *batal* untuk membatalkan.' "Bandung" "Aceh Barat")"
+            send_message "$chat_id" "$(printf '🔍 *CARI LOKASI*\n\nMasukkan nama kota/kabupaten yang ingin dicari:\nContoh: *%s* atau *%s*\n\n❌ Ketik *batal* untuk membatalkan.' "Bandung" "Aceh Barat")" "Markdown"
             success=$?
             log "📍 Command /setlokasi diproses untuk chat_id=$chat_id (status: $success)"
             ;;
@@ -7352,76 +8034,59 @@ process_message() {
             success=$?
             log "✅ Command /sethijri diproses untuk chat_id=$chat_id (status: $success)"
             ;;
-		"/settts")
-			show_tts_method_menu "$chat_id"
-			success=$?
-			log "✅ Command /settts diproses untuk chat_id=$chat_id (status: $success)"
-			;;
-		"/tarhim")
-			show_tarhim_menu "$chat_id"
-			success=$?
-			log "✅ Command /tarhim diproses untuk chat_id=$chat_id (status: $success)"
-			;;
-		"/ayat")
-			show_ayat_menu "$chat_id"
-			success=$?
-			log "✅ Command /ayat diproses untuk chat_id=$chat_id (status: $success)"
-			;;
-		"/setup")
-			register_bot_commands "$chat_id"
-			success=$?
-			log "✅ Command /setup diproses untuk chat_id=$chat_id (status: $success)"
-			;;
-		"/setupbot")
-			handle_setupbot_command "$chat_id"
-			success=$?
-			log "✅ Command /setupbot diproses untuk chat_id=$chat_id (status: $success)"
-			;;
+        "/settts")
+            show_tts_method_menu "$chat_id"
+            success=$?
+            log "✅ Command /settts diproses untuk chat_id=$chat_id (status: $success)"
+            ;;
+        "/tarhim")
+            show_tarhim_menu "$chat_id"
+            success=$?
+            log "✅ Command /tarhim diproses untuk chat_id=$chat_id (status: $success)"
+            ;;
+        "/ayat")
+            show_ayat_menu "$chat_id"
+            success=$?
+            log "✅ Command /ayat diproses untuk chat_id=$chat_id (status: $success)"
+            ;;
+        "/setup")
+            register_bot_commands "$chat_id"
+            success=$?
+            log "✅ Command /setup diproses untuk chat_id=$chat_id (status: $success)"
+            ;;
+        "/setupbot")
+            handle_setupbot_command "$chat_id"
+            success=$?
+            log "✅ Command /setupbot diproses untuk chat_id=$chat_id (status: $success)"
+            ;;
         "/gemini")
             show_gemini_config_menu "$chat_id"
             success=$?
             log "✅ Command /gemini diproses untuk chat_id=$chat_id (status: $success)"
             ;;
-		"/sahur")
-			show_sahur_menu "$chat_id"
-			success=$?
-			log "✅ Command /sahur diproses untuk chat_id=$chat_id (status: $success)"
-			;;			
-		"/"|"/cancel"|"batal"|"Batal"|"/batal")
-			# Perintah pembatalan universal
-			# Cek flag pencarian lokasi (prioritas setelah flag setup)
-			if [ -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag" ]; then
-				rm -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag"
-				send_message "$chat_id" "❌ *Pencarian lokasi dibatalkan.*"
-				log "❌ User $chat_id membatalkan pencarian lokasi dengan $text"
-			elif [ -f "/tmp/jsholat_bot_setup/${chat_id}.flag" ]; then
-				rm -f "/tmp/jsholat_bot_setup/${chat_id}.flag"
-				send_message "$chat_id" "❌ *Proses setup dibatalkan.*" "Markdown"
-				log "❌ User $chat_id membatalkan proses setup"
-			else
-				send_message "$chat_id" "❌ Tidak ada proses aktif yang bisa dibatalkan."
-			fi
-			success=0
-			;;
-		
-		*)
-			# Cek flag pencarian lokasi
-			if [ -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag" ]; then
-				# Hapus flag
-				rm -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag"
-				
-				# Tampilkan hasil dengan pagination
-				show_location_results_paginated "$chat_id" "" "$text" "1"
-				success=$?
-				log "📍 Hasil pencarian lokasi ditampilkan untuk chat_id=$chat_id (status: $success)"
-			else
-				# Kirim pesan error untuk perintah tidak dikenal
-				send_message "$chat_id" "❌ Perintah tidak dikenali. Gunakan /start untuk melihat menu"
-				send_help_message "$chat_id"
-				log "⚠️ Perintah tidak dikenal dari chat_id=$chat_id: $text"
-				success=0
-			fi
-			;;
+        "/sahur")
+            show_sahur_menu "$chat_id"
+            success=$?
+            log "✅ Command /sahur diproses untuk chat_id=$chat_id (status: $success)"
+            ;;          
+        *)
+            # Cek flag pencarian lokasi
+            if [ -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag" ]; then
+                # Hapus flag
+                rm -f "$LOCATION_SEARCH_FLAG_DIR/${chat_id}.flag"
+                
+                # Tampilkan hasil dengan pagination
+                show_location_results_paginated "$chat_id" "" "$text" "1"
+                success=$?
+                log "📍 Hasil pencarian lokasi ditampilkan untuk chat_id=$chat_id (status: $success)"
+            else
+                # Kirim pesan error untuk perintah tidak dikenal
+                send_message "$chat_id" "❌ Perintah tidak dikenali. Gunakan /start untuk melihat menu" "Markdown"
+                send_help_message "$chat_id"
+                log "⚠️ Perintah tidak dikenal dari chat_id=$chat_id: $text"
+                success=0
+            fi
+            ;;
     esac
     
     return $success
@@ -7705,6 +8370,14 @@ process_callback() {
 		"bot_view_photo_descriptions")
 			bot_view_photo_descriptions "$chat_id" "$message_id"
 			;;
+        "bot_view_default")
+            show_default_profile "$chat_id" "$message_id"
+            ;;
+            
+        "bot_reset_profile")
+            reset_bot_profile "$chat_id" "$message_id"
+            ;;
+			
 		"back_to_settings")
 			show_settings_menu "$chat_id" "$message_id"
 			;;

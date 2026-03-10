@@ -1,0 +1,47 @@
+#!/bin/sh /etc/rc.common
+# /etc/init.d/fix-hda - Fix HDA Audio Configuration
+
+START=98
+STOP=   # Tidak perlu stop (kosongkan)
+
+# Tambahkan deskripsi (opsional)
+DESCRIPTION="Fix HDA Audio Configuration"
+
+# Cek apakah sudah pernah dijalankan (gunakan file flag)
+check_lock() {
+    local lockfile="/var/run/fix-hda.lock"
+    
+    if [ -f "$lockfile" ]; then
+        logger -t fix-hda-init "fix-hda sudah pernah dijalankan, skip"
+        return 1
+    fi
+    return 0
+}
+
+start() {
+    # Cek apakah sudah pernah dijalankan
+    check_lock || return 0
+    
+    # Cek apakah script ada
+    if [ ! -x /usr/bin/fix-hda ]; then
+        logger -t fix-hda-init "❌ /usr/bin/fix-hda tidak ditemukan"
+        return 1
+    fi
+    
+    logger -t fix-hda-init "Menjalankan fix-hda saat boot..."
+    
+    # Jalankan script
+    /usr/bin/fix-hda >/var/log/fix-hda.log 2>&1
+    local rc=$?
+    
+    # Buat lock file
+    touch /var/run/fix-hda.lock
+    
+    if [ $rc -eq 0 ]; then
+        logger -t fix-hda-init "✅ fix-hda selesai dengan sukses"
+    else
+        logger -t fix-hda-init "❌ fix-hda gagal (exit code: $rc)"
+    fi
+    
+    return $rc
+}

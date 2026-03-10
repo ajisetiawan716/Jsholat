@@ -1,0 +1,411 @@
+#!/bin/sh
+set -e
+
+# ============================================
+# fix-hda - Audio fix script with auto-detection
+# Support for internal/PCI and USB sound cards
+# Optimized: skip if already configured
+# ============================================
+
+# Add logging for debugging
+logger -t fix-hda "Starting audio fix script"
+
+# Flag file to mark already configured
+FLAG_FILE="/etc/alsa/fix-hda-configured"
+ASOUND_CONF="/etc/asound.conf"
+
+# Logging functions
+log() {
+    logger -t fix-hda "$1"
+    echo "[INFO] $1" >&2
+}
+
+warn() {
+    logger -t fix-hda "WARNING: $1"
+    echo "[WARNING] $1" >&2
+}
+
+error() {
+    logger -t fix-hda "ERROR: $1"
+    echo "[ERROR] $1" >&2
+}
+
+# Check if reconfiguration is needed
+need_reconfigure() {
+    # If flag file doesn't exist, need configuration
+    if [ ! -f "$FLAG_FILE" ]; then
+        log "First run - needs configuration"
+        return 0
+    fi
+    
+    # If asound.conf doesn't exist, need configuration
+    if [ ! -f "$ASOUND_CONF" ]; then
+        log "asound.conf missing - needs reconfiguration"
+        return 0
+    fi
+    
+    # Check if sound card has changed
+    if command -v aplay >/dev/null 2>&1; then
+        local current_card="$(aplay -l 2>/dev/null | grep -i 'card [0-9]' | head -n1 | md5sum 2>/dev/null | cut -d' ' -f1)"
+        local saved_card="$(cat "$FLAG_FILE" 2>/dev/null | grep "CARD_HASH=" | cut -d= -f2)"
+        
+        if [ "$current_card" != "$saved_card" ] && [ -n "$current_card" ] && [ -n "$saved_card" ]; then
+            log "Sound card changed - needs reconfiguration"
+            return 0
+        fi
+    fi
+    
+    # All checks passed, no need to reconfigure
+    log "Configuration exists and valid - skipping"
+    return 1
+}
+
+# Save configuration status
+save_config_status() {
+    mkdir -p /etc/alsa
+    
+    {
+        echo "# fix-hda configuration status"
+        echo "CONFIG_DATE=$(date +%s)"
+        echo "CONFIG_TIME=$(date)"
+        echo "CARD_NAME=${CARD_NAME}"
+        echo "CARD_NUM=${CARD_NUM}"
+        echo "DEV_NUM=${DEV_NUM}"
+        echo "IS_USB=${IS_USB}"
+        
+        # Save sound card hash for change detection
+        if command -v aplay >/dev/null 2>&1; then
+            CARD_HASH="$(aplay -l 2>/dev/null | grep -i 'card [0-9]' | md5sum 2>/dev/null | cut -d' ' -f1)"
+            echo "CARD_HASH=${CARD_HASH}"
+        fi
+    } > "$FLAG_FILE"
+    
+    log "Configuration status saved to $FLAG_FILE"
+}
+
+# Load configuration from flag file
+load_config_status() {
+    if [ -f "$FLAG_FILE" ]; then
+        CARD_NAME=$(grep "CARD_NAME=" "$FLAG_FILE" | cut -d= -f2)
+        CARD_NUM=$(grep "CARD_NUM=" "$FLAG_FILE" | cut -d= -f2)
+        DEV_NUM=$(grep "DEV_NUM=" "$FLAG_FILE" | cut -d= -f2)
+        IS_USB=$(grep "IS_USB=" "$FLAG_FILE" | cut -d= -f2)
+        
+        log "Loaded configuration: $CARD_NAME (card=$CARD_NUM, device=$DEV_NUM)"
+    fi
+}
+
+# Auto-detect sound card
+detect_audio_device() {
+    local list pick cardname cardnum devnum
+    
+    # Get audio device list
+    if ! command -v aplay >/dev/null 2>&1; then
+        error "aplay not available"
+        return 1
+    fi
+    
+    list="$(aplay -l 2>/dev/null | grep -i 'card [0-9].*device [0-9]' 2>/dev/null || true)"
+    
+    if [ -z "$list" ]; then
+        error "No audio device detected"
+        return 1
+    fi
+    
+    # Detect if this is a USB sound card
+    if echo "$list" | grep -qi "USB"; then
+        IS_USB=true
+        log "USB sound card detected"
+    else
+        IS_USB=false
+        log "Internal/PCI sound card detected"
+    fi
+    
+    # Priority 1: non-HDMI with Analog/Headphone/Speaker keywords
+    pick="$(printf '%s\n' "$list" \
+        | grep -viE 'HDMI|DP|S/PDIF|SPDIF|Digital' \
+        | grep -iE 'Analog|Headphone|Speaker' \
+        | sed -n 's/^card \([0-9][0-9]*\): \([^ ]\+\) .* device \([0-9][0-9]*\):.*/\2 \1 \3/p' \
+        | head -n1)"
+    
+    # Priority 2: first non-HDMI device
+    if [ -z "$pick" ]; then
+        pick="$(printf '%s\n' "$list" \
+            | grep -viE 'HDMI|DP|S/PDIF|SPDIF|Digital' \
+            | sed -n 's/^card \([0-9][0-9]*\): \([^ ]\+\) .* device \([0-9][0-9]*\):.*/\2 \1 \3/p' \
+            | head -n1)"
+        
+        if [ -n "$pick" ]; then
+            log "Using first non-HDMI device"
+        fi
+    fi
+    
+    # Priority 3: first device (including HDMI)
+    if [ -z "$pick" ]; then
+        pick="$(printf '%s\n' "$list" \
+            | sed -n 's/^card \([0-9][0-9]*\): \([^ ]\+\) .* device \([0-9][0-9]*\):.*/\2 \1 \3/p' \
+            | head -n1)"
+        
+        if [ -n "$pick" ]; then
+            warn "Only HDMI devices detected, using first device"
+        fi
+    fi
+    
+    # If still empty, failed
+    if [ -z "$pick" ]; then
+        error "Failed to detect audio device"
+        return 1
+    fi
+    
+    # Parse detection result
+    set -- $pick
+    cardname="$1"
+    cardnum="$2"
+    devnum="$3"
+    
+    # Set global variables
+    CARD_NAME="$cardname"
+    CARD_NUM="$cardnum"
+    DEV_NUM="$devnum"
+    PLAY_NODE="/dev/snd/pcmC${cardnum}D${devnum}p"
+    
+    log "Detected audio device: $CARD_NAME (card=$CARD_NUM, device=$DEV_NUM)"
+    log "Playback node: $PLAY_NODE"
+    
+    return 0
+}
+
+# Set volume without repeating if already correct
+set_volume_if_needed() {
+    # For USB: check if volume already correct
+    if [ "$IS_USB" = true ]; then
+        # Check current Speaker volume
+        local current_vol=$(amixer -c "${CARD_NUM}" sget Speaker 2>/dev/null | grep -o '[0-9]\+%' | head -n1 | tr -d '%')
+        if [ "$current_vol" = "80" ]; then
+            log "Volume already at 80%, skipping"
+            return 0
+        fi
+    fi
+    
+    # Proceed with volume setting
+    log "Applying mixer settings for card ${CARD_NUM} (${CARD_NAME})"
+    
+    if [ "$IS_USB" = true ]; then
+        log "Using USB sound card optimized settings"
+        
+        USB_CONTROL_SET=false
+        for control in "Speaker" "PCM" "Master" "Headphone" "Digital" "Playback"; do
+            if amixer -c "${CARD_NUM}" sget "$control" >/dev/null 2>&1; then
+                if amixer -c "${CARD_NUM}" set "$control" 80% unmute >/dev/null 2>&1; then
+                    log "Successfully set $control to 80%"
+                    USB_CONTROL_SET=true
+                    break
+                fi
+            fi
+        done
+        
+        # Fallback: try all common controls
+        if [ "$USB_CONTROL_SET" = false ]; then
+            log "No standard control found, trying all possible controls"
+            amixer -c "${CARD_NUM}" set 'Speaker' 80% unmute >/dev/null 2>&1 || true
+            amixer -c "${CARD_NUM}" set 'PCM' 100% unmute >/dev/null 2>&1 || true
+            amixer -c "${CARD_NUM}" set 'Master' 80% unmute >/dev/null 2>&1 || true
+            amixer -c "${CARD_NUM}" set 'Headphone' 80% unmute >/dev/null 2>&1 || true
+            amixer -c "${CARD_NUM}" set 'Digital' 80% unmute >/dev/null 2>&1 || true
+        fi
+        
+    else
+        # Internal/PCI sound card settings
+        log "Using internal/PCI sound card settings"
+        
+        amixer -c "${CARD_NUM}" set 'Master' 80% unmute >/dev/null 2>&1 || \
+            warn "Failed to set Master volume (non-critical)"
+        
+        amixer -c "${CARD_NUM}" set 'PCM' 100% unmute >/dev/null 2>&1 || \
+            warn "Failed to set PCM volume (non-critical)"
+        
+        amixer -c "${CARD_NUM}" set 'Headphone' 80% unmute >/dev/null 2>&1 || \
+            warn "Failed to set Headphone volume (non-critical)"
+        
+        amixer -c "${CARD_NUM}" set 'Speaker' 80% unmute >/dev/null 2>&1 || \
+            warn "Failed to set Speaker volume (non-critical)"
+        
+        amixer -c "${CARD_NUM}" set 'Front' 80% unmute >/dev/null 2>&1 || \
+            warn "Failed to set Front volume (non-critical)"
+        
+        amixer -c "${CARD_NUM}" set 'Auto-Mute Mode' Disabled >/dev/null 2>&1 || \
+            warn "Failed to disable Auto-Mute Mode (non-critical)"
+        
+        # Save ALSA state for internal sound card
+        if command -v alsactl >/dev/null 2>&1; then
+            mkdir -p /etc/alsa
+            alsactl -f /etc/alsa/asound.state store
+            log "Saved ALSA state to /etc/alsa/asound.state for internal sound card"
+        fi
+    fi
+    
+    log "Audio mixer settings applied successfully for card ${CARD_NUM}"
+}
+
+# ============================================
+# Main Execution
+# ============================================
+
+# Initialize variables
+IS_USB=false
+CARD_NAME=""
+CARD_NUM=""
+DEV_NUM=""
+PLAY_NODE=""
+
+# Check if reconfiguration is needed
+if need_reconfigure; then
+    # Detect sound card
+    if ! detect_audio_device; then
+        error "Failed to detect sound card, using default values"
+        CARD_NAME="Generic"
+        CARD_NUM="0"
+        DEV_NUM="0"
+        PLAY_NODE="/dev/snd/pcmC0D0p"
+        IS_USB=false
+    fi
+    
+    # Wait for playback device to appear (max ~10s)
+    i=0
+    while [ $i -lt 50 ]; do
+        if [ -e "$PLAY_NODE" ]; then
+            log "Playback device $PLAY_NODE found after $((i * 2))ms"
+            break
+        fi
+        sleep 0.2
+        i=$((i + 1))
+    done
+    
+    if [ ! -e "$PLAY_NODE" ]; then
+        warn "Playback device $PLAY_NODE not found after 10s"
+    fi
+    
+    # Create ALSA configuration
+    cat > "$ASOUND_CONF" <<ASND
+# Auto-generated by fix-hda script at $(date)
+# Detected device: ${CARD_NAME} (card=${CARD_NUM}, device=${DEV_NUM})
+# Type: $([ "$IS_USB" = true ] && echo "USB" || echo "Internal/PCI")
+
+pcm.dmixer {
+    type dmix
+    ipc_key 1024
+    slave {
+        pcm "hw:CARD=${CARD_NAME},DEV=${DEV_NUM}"
+        rate 48000
+        period_time 0
+        period_size 1024
+        buffer_size 4096
+    }
+    bindings {
+        0 0
+        1 1
+    }
+}
+
+pcm.dsnooped {
+    type dsnoop
+    ipc_key 2048
+    slave {
+        pcm "hw:CARD=${CARD_NAME},DEV=${DEV_NUM}"
+        rate 48000
+        period_time 0
+        period_size 1024
+        buffer_size 4096
+    }
+    bindings {
+        0 0
+        1 1
+    }
+}
+
+pcm.duplex {
+    type asym
+    playback.pcm "dmixer"
+    capture.pcm "dsnooped"
+}
+
+pcm.!default {
+    type plug
+    slave.pcm "dmixer"
+    slave.rate 48000
+    slave.channels 2
+}
+
+ctl.!default {
+    type hw
+    card ${CARD_NUM}
+}
+ASND
+
+    log "Created $ASOUND_CONF with device ${CARD_NAME} (${CARD_NUM},${DEV_NUM})"
+    
+    # Restore ALSA state (if exists)
+    if command -v alsactl >/dev/null 2>&1; then
+        mkdir -p /etc/alsa
+        if [ -f /etc/alsa/asound.state ]; then
+            alsactl -f /etc/alsa/asound.state restore
+            log "Restored ALSA state from /etc/alsa/asound.state"
+        fi
+    fi
+    
+    # Set volume
+    if command -v amixer >/dev/null 2>&1; then
+        set_volume_if_needed
+    else
+        warn "amixer not found, skipping volume settings"
+    fi
+    
+    # Save configuration status
+    save_config_status
+    
+else
+    log "Using existing configuration"
+    
+    # Load configuration from flag file
+    load_config_status
+    
+    # Still set volume if needed (without remaking config)
+    if command -v amixer >/dev/null 2>&1 && [ -n "$CARD_NUM" ]; then
+        set_volume_if_needed
+    fi
+fi
+
+# Quick audio test (only if needed)
+if command -v speaker-test >/dev/null 2>&1; then
+    # Check if already tested
+    if [ ! -f "$FLAG_FILE" ] || [ ! -f /tmp/fix-hda-tested ]; then
+        log "Running quick audio test (1 second)..."
+        speaker-test -D default -t sine -f 1000 -l 1 >/dev/null 2>&1 || \
+            warn "Speaker test failed, but may be normal if no speakers connected"
+        touch /tmp/fix-hda-tested
+        log "Audio test completed"
+    else
+        log "Skipping audio test (already tested)"
+    fi
+fi
+
+# Final information
+log "=========================================="
+log "Audio fix script completed successfully"
+log "Default audio device: ${CARD_NAME:-Unknown} (card=${CARD_NUM:-?}, device=${DEV_NUM:-?})"
+# Determine sound type
+if [ "$IS_USB" = true ]; then
+    SOUND_TYPE="USB"
+elif [ "$IS_USB" = false ] && [ -n "$CARD_NAME" ]; then
+    SOUND_TYPE="Internal/PCI"
+else
+    SOUND_TYPE="Unknown"
+fi
+log "Sound card type: $SOUND_TYPE"
+log "Configuration file: $ASOUND_CONF"
+CONFIG_STATUS="new"
+[ -f "$FLAG_FILE" ] && CONFIG_STATUS="saved"
+log "Config status: $CONFIG_STATUS"
+log "=========================================="
+
+exit 0

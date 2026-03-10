@@ -63,7 +63,54 @@ validate_file() {
     [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "File $file_desc valid: $file_path"
     return 0
 }
+# FUNGSI PENDUKUNG PESAN TELEGRAM
+# Fungsi escape HTML
+escape_html() {
+    local string="$1"
+    
+    # Gunakan pendekatan yang lebih aman dengan awk
+    printf '%s' "$string" | awk '{
+        gsub(/&/, "\\&amp;")
+        gsub(/</, "\\&lt;")
+        gsub(/>/, "\\&gt;")
+        gsub(/"/, "\\&quot;")
+        gsub(/'\''/, "\\&#39;")
+        print
+    }'
+}
 
+# Fungsi untuk mendeteksi apakah pesan mengandung tag HTML
+contains_html_tags() {
+    local message="$1"
+    # Cek pola tag HTML yang lebih akurat
+    if echo "$message" | grep -qE '<[a-zA-Z][a-zA-Z0-9]*(\s[^>]*)?>.*?</[a-zA-Z][a-zA-Z0-9]*>'; then
+        return 0  # Punya tag pembuka dan penutup
+    elif echo "$message" | grep -qE '<[a-zA-Z][a-zA-Z0-9]*(\s[^>]*)?/>'; then
+        return 0  # Punya self-closing tag
+    elif echo "$message" | grep -qE '<[a-zA-Z][a-zA-Z0-9]*(\s[^>]*)?>'; then
+        return 0  # Punya tag pembuka saja
+    else
+        return 1  # Tidak ada tag HTML
+    fi
+}
+
+# Fungsi untuk validasi dan sanitasi input sebelum dikirim ke Telegram
+sanitize_telegram_input() {
+    local input="$1"
+    local max_length="${2:-4096}"  # Default limit Telegram
+    
+    # Trim whitespace
+    input=$(echo "$input" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    
+    # Batasi panjang pesan
+    if [ ${#input} -gt $max_length ]; then
+        log "WARNING" "⚠️ Pesan terlalu panjang (${#input} chars), akan dipotong menjadi ${max_length} chars"
+        input="${input:0:$((max_length-3))}..."
+    fi
+    
+    echo "$input"
+}
+# Akhir Fungsi pendukung pesan telegram
 
 # Fungsi untuk info Hijriyah
 HIJRI_CACHE_FILE="/tmp/jsholat_cache/hijri_date_cache.json"
@@ -180,26 +227,38 @@ is_ramadhan() {
 
 # Fungsi atur teks sahur
 SAHUR_REMINDER_FILE="/usr/share/jsholat/sahur-reminder.txt"
-SAHUR_REMINDER_DEFAULT="Assalamu'alaikum. Bangunlah untuk sahur di bulan Ramadhan yang penuh berkah. Waktu sekarang menunjukkan {time} {timezone}. Untuk wilayah {location} dan sekitarnya. Segera bangun dan persiapkan sahur. Jangan lewatkan keberkahan sahur. Marhaban ya Ramadhan."
+SAHUR_REMINDER_DEFAULT="Assalamu'alaikum. Bangunlah untuk sahur di bulan Ramadhan yang penuh berkah. Waktu sekarang menunjukkan jam {time} {timezone}. Untuk wilayah {location} dan sekitarnya. Segera bangun dan persiapkan sahur. Jangan lewatkan keberkahan sahur. Marhaban ya Ramadhan."
 
+# Fungsi untuk mendapatkan teks reminder sahur
 get_sahur_reminder_text() {
+    local template=""
+    
     if [ -f "$SAHUR_REMINDER_FILE" ] && [ -s "$SAHUR_REMINDER_FILE" ]; then
-        cat "$SAHUR_REMINDER_FILE" 2>/dev/null | head -c 500
+        template=$(cat "$SAHUR_REMINDER_FILE" 2>/dev/null | head -c 500)
     else
-        echo "$SAHUR_REMINDER_DEFAULT"
+        template="$SAHUR_REMINDER_DEFAULT"
     fi
+    
+    # Escape template untuk keamanan (jika mengandung karakter HTML)
+    echo "$(escape_html "$template")"
 }
 
+# Fungsi untuk format teks reminder sahur
 format_sahur_reminder() {
     local template="$1"
     local time="$2"
     local timezone="$3"
     local location="$4"
     
+    # Escape semua parameter sebelum dimasukkan ke template
+    local safe_time=$(escape_html "$time")
+    local safe_timezone=$(escape_html "$timezone")
+    local safe_location=$(escape_html "$location")
+    
     local formatted_text="$template"
-    formatted_text="${formatted_text//\{time\}/$time}"
-    formatted_text="${formatted_text//\{timezone\}/$timezone}"
-    formatted_text="${formatted_text//\{location\}/$location}"
+    formatted_text="${formatted_text//\{time\}/$safe_time}"
+    formatted_text="${formatted_text//\{timezone\}/$safe_timezone}"
+    formatted_text="${formatted_text//\{location\}/$safe_location}"
     
     echo "$formatted_text"
 }
@@ -1731,35 +1790,240 @@ get_salat_name() {
 }
 
 # Fungsi bot telegram
+# Fungsi bot telegram dengan perbaikan debugging dan retry mechanism
+# Mendukung 3 mode: HTML, Markdown biasa, Plain Text
+# FUNGSI PENDUKUNG PESAN TELEGRAM - DIPERBAIKI dengan fallback wget
+# Fungsi escape HTML yang lebih portable dan aman
+escape_html() {
+    local string="$1"
+    
+    # Gunakan sed yang lebih portable dari pada awk
+    # Urutan escape: & -> < -> > -> " -> '
+    echo "$string" | sed \
+        -e 's/&/\&amp;/g' \
+        -e 's/</\&lt;/g' \
+        -e 's/>/\&gt;/g' \
+        -e 's/"/\&quot;/g' \
+        -e "s/'/\&#39;/g"
+}
+
+# Fungsi untuk validasi dan sanitasi input sebelum dikirim ke Telegram
+sanitize_telegram_input() {
+    local input="$1"
+    local max_length="${2:-4096}"  # Default limit Telegram
+    
+    # Trim whitespace
+    input=$(echo "$input" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    
+    # Batasi panjang pesan
+    if [ ${#input} -gt $max_length ]; then
+        log "WARNING" "⚠️ Pesan terlalu panjang (${#input} chars), akan dipotong menjadi ${max_length} chars"
+        input="${input:0:$((max_length-3))}..."
+    fi
+    
+    echo "$input"
+}
+
+# Fungsi send Telegram
 send_telegram() {
+    local message="$1"
+    local parse_mode="${2:-HTML}"  # Default HTML
+    
+    # Validasi pesan tidak kosong
+    if [ -z "$message" ]; then
+        log "ERROR" "❌ Pesan Telegram kosong!"
+        return 1
+    fi
+    
+    # Cek apakah Telegram diaktifkan
     local telegram_enabled=$(uci -q get jsholat.service.telegram_enabled || echo "1")
     if [ "$telegram_enabled" = "0" ]; then
         log "INFO" "🔕 Notifikasi Telegram dinonaktifkan"
-		[ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🔕 Notifikasi Telegram dinonaktifkan"
-        return
+        return 0
     fi
 
-    local message="$1"
+    # Ambil konfigurasi token dan chat ID
     local telegram_token=$(uci get jsholat.service.telegram_bot_token 2>/dev/null)
     local chat_id=$(uci get jsholat.service.telegram_chat_id 2>/dev/null)
     
     if [ -z "$telegram_token" ] || [ -z "$chat_id" ]; then
         log "ERROR" "❌ Telegram token/chat ID belum diatur!"
-        return
+        return 1
     fi
 
-    curl -s --connect-timeout 10 --max-time 15 -X POST \
-        "https://api.telegram.org/bot${telegram_token}/sendMessage" \
-        -d chat_id="${chat_id}" \
-        -d text="${message}" \
-        -d parse_mode="Markdown" \
-        > /dev/null 2>&1
-        
-    if [ $? -ne 0 ]; then
-        log "ERROR" "❌ Gagal mengirim notifikasi Telegram"
+    # 🔧 PASTIKAN PATH LENGKAP UNTUK CHILD PROCESS
+    export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:$PATH"
+    
+    # 🔧 CEK KETERSEDIAAN CURL/WGET
+    local CURL_CMD=""
+    local WGET_CMD=""
+    
+    # Cek curl dengan berbagai metode
+    if command -v curl >/dev/null 2>&1; then
+        CURL_CMD="curl"
     else
-        log "INFO" "📢 Notifikasi Telegram terkirim"
+        for path in /usr/bin/curl /bin/curl /usr/sbin/curl /sbin/curl /usr/local/bin/curl; do
+            if [ -x "$path" ]; then
+                CURL_CMD="$path"
+                break
+            fi
+        done
     fi
+    
+    # Jika curl tidak ada, cek wget
+    if [ -z "$CURL_CMD" ]; then
+        if command -v wget >/dev/null 2>&1; then
+            WGET_CMD="wget"
+        else
+            for path in /usr/bin/wget /bin/wget /usr/sbin/wget /sbin/wget /usr/local/bin/wget; do
+                if [ -x "$path" ]; then
+                    WGET_CMD="$path"
+                    break
+                fi
+            done
+        fi
+    fi
+    
+    # Jika tidak ada http client sama sekali
+    if [ -z "$CURL_CMD" ] && [ -z "$WGET_CMD" ]; then
+        log "ERROR" "❌ Tidak ada curl atau wget terinstall!"
+        return 1
+    fi
+
+    # Mask token untuk log
+    local masked_token="${telegram_token:0:4}...${telegram_token: -4}"
+    log "INFO" "📤 Mengirim notifikasi ke $chat_id (token: $masked_token) mode: $parse_mode"
+    
+    # Rate limiting
+    local last_sent_file="/tmp/jsholat_cache/telegram_last_sent"
+    mkdir -p "$(dirname "$last_sent_file")" 2>/dev/null
+    
+    if [ -f "$last_sent_file" ]; then
+        local last_sent=$(cat "$last_sent_file" 2>/dev/null)
+        local now=$(date +%s)
+        local elapsed=$((now - last_sent))
+        if [ $elapsed -lt 2 ]; then  # Minimal 2 detik
+            sleep $((2 - elapsed))
+        fi
+    fi
+    date +%s > "$last_sent_file" 2>/dev/null
+
+    # Parameter retry
+    local max_retries=3
+    local retry_delay=2
+    local attempt=1
+    local success=0
+    
+    # Siapkan data POST
+    local api_url="https://api.telegram.org/bot${telegram_token}/sendMessage"
+    local temp_file="/tmp/telegram_$$.tmp"
+    
+    while [ $attempt -le $max_retries ] && [ $success -eq 0 ]; do
+        local current_parse_mode=""
+        local current_message="$message"
+        
+        # Tentukan mode untuk setiap attempt
+        case $attempt in
+            1) 
+                current_parse_mode="$parse_mode"
+                log "INFO" "🔄 Attempt $attempt: Mengirim dengan mode $current_parse_mode"
+                ;;
+            2)
+                current_parse_mode=""  # Plain text
+                # Bersihkan tag HTML untuk plain text
+                current_message=$(echo "$message" | sed 's/<[^>]*>//g')
+                log "INFO" "🔄 Attempt $attempt: Fallback ke Plain Text"
+                ;;
+            3)
+                current_parse_mode=""
+                # Pesan minimal tanpa formatting
+                current_message="🕌 Notifikasi JSholat - $(date '+%H:%M')"
+                log "INFO" "🔄 Attempt $attempt: Fallback ke pesan minimal"
+                ;;
+        esac
+        
+        # Escape untuk POST data
+        local encoded_message=$(echo "$current_message" | sed 's/&/%26/g; s/=/%3D/g')
+        
+        local exit_code=0
+        local http_code=""
+        
+        # Kirim dengan curl jika tersedia
+        if [ -n "$CURL_CMD" ]; then
+            if [ "$CURL_CMD" = "curl" ]; then
+                http_code=$(curl -s -w "%{http_code}" \
+                    --connect-timeout 10 \
+                    --max-time 15 \
+                    -X POST \
+                    -d "chat_id=$chat_id" \
+                    -d "text=$encoded_message" \
+                    ${current_parse_mode:+-d "parse_mode=$current_parse_mode"} \
+                    -d "disable_web_page_preview=true" \
+                    "$api_url" \
+                    -o "$temp_file" 2>/dev/null)
+            else
+                http_code=$($CURL_CMD -s -w "%{http_code}" \
+                    --connect-timeout 10 \
+                    --max-time 15 \
+                    -X POST \
+                    -d "chat_id=$chat_id" \
+                    -d "text=$encoded_message" \
+                    ${current_parse_mode:+-d "parse_mode=$current_parse_mode"} \
+                    -d "disable_web_page_preview=true" \
+                    "$api_url" \
+                    -o "$temp_file" 2>/dev/null)
+            fi
+            exit_code=$?
+        else
+            # Kirim dengan wget
+            local post_data="chat_id=$chat_id&text=$encoded_message"
+            [ -n "$current_parse_mode" ] && post_data="$post_data&parse_mode=$current_parse_mode"
+            post_data="$post_data&disable_web_page_preview=true"
+            
+            $WGET_CMD -q --timeout=15 --tries=1 \
+                --post-data "$post_data" \
+                -O "$temp_file" \
+                "$api_url" 2>/dev/null
+            exit_code=$?
+            [ $exit_code -eq 0 ] && http_code="200"
+        fi
+        
+        # Cek response
+        local response=""
+        if [ -f "$temp_file" ]; then
+            response=$(cat "$temp_file" 2>/dev/null)
+            rm -f "$temp_file"
+        fi
+        
+        # Debug log
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "Attempt $attempt: exit=$exit_code, http=$http_code"
+        
+        # Cek sukses
+        if [ $exit_code -eq 0 ] && { [ "$http_code" = "200" ] || [ "$http_code" = "" ]; }; then
+            if echo "$response" | grep -q '"ok":true'; then
+                log "INFO" "✅ Telegram terkirim (attempt $attempt)"
+                success=1
+                return 0
+            fi
+        fi
+        
+        # Jika gagal dan ini attempt terakhir
+        if [ $attempt -eq $max_retries ]; then
+            log "ERROR" "❌ Gagal mengirim Telegram setelah $max_retries attempts"
+            [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "Response: $response"
+            return 1
+        fi
+        
+        # Tunggu sebelum retry
+        log "INFO" "⏳ Menunggu $retry_delay detik sebelum retry..."
+        sleep $retry_delay
+        retry_delay=$((retry_delay * 2))
+        [ $retry_delay -gt 10 ] && retry_delay=10
+        
+        attempt=$((attempt + 1))
+    done
+    
+    return 1
 }
 
 # Fungsi untuk mendapatkan ayat acak dari API myquran
@@ -1843,7 +2107,7 @@ play_audio_ayat() {
 # Fungsi Pemutar Adzan dengan Fallback
 play_adzan() {
     if [ $# -lt 3 ]; then
-        log "ERROR" "Parameter kurang untuk play_adzan: file_path=$1, salat_name=$2, prayer_time=$3"
+        log "ERROR" "❌ Parameter kurang untuk play_adzan: file_path=$1, salat_name=$2, prayer_time=$3"
         return 1
     fi
 
@@ -1854,6 +2118,11 @@ play_adzan() {
     local timezone_display=""
     [ -n "$timezone" ] && timezone_display=" $timezone"
     local LOKASI=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Wilayah Tidak Diketahui")
+    local PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null || echo "Jawa Tengah")
+    
+    # Escape lokasi dan province untuk keamanan
+    local safe_lokasi=$(escape_html "$LOKASI")
+    local safe_province=$(escape_html "$PROVINCE")
     
     # ========== KONTROL TARHIM IMSYAK ==========
     # 🔧 Baca tarhim_enabled dan tarhim_mode
@@ -1897,23 +2166,25 @@ play_adzan() {
                 log "INFO" "📤 Mengirim notifikasi Imsyak (tarhim disabled)"
                 (
                     if is_ramadhan; then
-                        send_telegram "🌙 *SAATNYA WAKTU IMSYAK*
+                        local message="<b>🌙 SAATNYA WAKTU IMSYAK</b>
 
 Di bulan Ramadhan yang mulia ini, marilah kita persiapkan diri.
 
-⏰ *Imsyak*: $prayer_time$timezone_display
-📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
+⏰ <b>Imsyak</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
 
-*Semoga Allah menerima amal ibadah kita* 🤲"
+<b>Semoga Allah menerima amal ibadah kita</b> 🤲"
+                        send_telegram "$message"
                         [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📤 Notifikasi Imsyak Ramadhan dikirim (tarhim off)"
                     else
-                        send_telegram "🕌 *WAKTU IMSYAK*
+                        local message="<b>🕌 WAKTU IMSYAK</b>
 
-⏰ *Imsyak*: $prayer_time$timezone_display
-📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
+⏰ <b>Imsyak</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
 
-*Siapkan diri untuk sholat Subuh*
-*Jangan lupa wudhu* 💧"
+<i>Siapkan diri untuk sholat Subuh</i>
+<i>Jangan lupa wudhu</i> 💧"
+                        send_telegram "$message"
                         [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📤 Notifikasi Imsyak biasa dikirim (tarhim off)"
                     fi
                 ) &
@@ -1932,21 +2203,23 @@ Di bulan Ramadhan yang mulia ini, marilah kita persiapkan diri.
                     log "INFO" "📤 Mengirim notifikasi Imsyak - Mode Harian"
                     (
                         if is_ramadhan; then
-                            send_telegram "🌙 *SAATNYA WAKTU IMSYAK*
+                            local message="<b>🌙 SAATNYA WAKTU IMSYAK</b>
 
-⏰ *Imsyak*: $prayer_time$timezone_display
-📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
+⏰ <b>Imsyak</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
 
-*Semoga Allah menerima amal ibadah kita* 🤲"
+<b>Semoga Allah menerima amal ibadah kita</b> 🤲"
+                            send_telegram "$message"
                             [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📤 Notifikasi Imsyak Ramadhan - Mode Harian"
                         else
-                            send_telegram "🕌 *WAKTU IMSYAK*
+                            local message="<b>🕌 SAATNYA WAKTU IMSYAK</b>
 
-⏰ *Imsyak*: $prayer_time$timezone_display
-📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
+⏰ <b>Imsyak</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi</b> dan sekitarnya.
 
-*Siapkan diri untuk sholat Subuh*
-*Jangan lupa wudhu* 💧"
+<i>Siapkan diri untuk sholat Subuh</i>
+<i>Jangan lupa wudhu</i> 💧"
+                            send_telegram "$message"
                             [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📤 Notifikasi Imsyak biasa - Mode Harian"
                         fi
                     ) &
@@ -1969,23 +2242,25 @@ Di bulan Ramadhan yang mulia ini, marilah kita persiapkan diri.
                 if [ "$telegram_enabled" = "1" ]; then
                     (
                         if is_ramadhan; then
-                            send_telegram "🌙 *SAATNYA WAKTU IMSYAK*
+                            local message="<b>🌙 SAATNYA WAKTU IMSYAK</b>
 
-Di bulan Ramadhan ${hijri_year} yang mulia ini, marilah kita persiapkan diri.
+Di bulan Ramadhan yang mulia ini, marilah kita persiapkan diri.
 
-⏰ *Imsyak*: $prayer_time$timezone_display
-📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
+⏰ <b>Imsyak</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
 
-*Semoga Allah menerima amal ibadah kita* 🤲"
+<b>Semoga Allah menerima amal ibadah kita</b> 🤲"
+                            send_telegram "$message"
                             [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📤 Notifikasi Imsyak Ramadhan - Mode Ramadhan Only"
                         else
-                            send_telegram "🕌 *WAKTU IMSYAK*
+                            local message="<b>🕌 WAKTU IMSYAK</b>
 
-⏰ *Imsyak*: $prayer_time$timezone_display
-📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
+⏰ <b>Imsyak</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
 
-*Siapkan diri untuk sholat Subuh*
-*Jangan lupa wudhu* 💧"
+<i>Siapkan diri untuk sholat Subuh</i>
+<i>Jangan lupa wudhu</i> 💧"
+                            send_telegram "$message"
                             [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📤 Notifikasi Imsyak biasa - Mode Ramadhan Only"
                         fi
                     ) &
@@ -2013,20 +2288,22 @@ Di bulan Ramadhan ${hijri_year} yang mulia ini, marilah kita persiapkan diri.
                 if [ "$telegram_enabled" = "1" ]; then
                     (
                         if is_ramadhan; then
-                            send_telegram "🌙 *SAATNYA WAKTU IMSYAK*
+                            local message="<b>🌙 SAATNYA WAKTU IMSYAK</b>
 
-⏰ *Imsyak*: $prayer_time$timezone_display
-📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
+⏰ <b>Imsyak</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
 
-*Semoga Allah menerima amal ibadah kita* 🤲"
+<b>Semoga Allah menerima amal ibadah kita</b> 🤲"
+                            send_telegram "$message"
                         else
-                            send_telegram "🕌 *WAKTU IMSYAK*
+                            local message="<b>🕌 WAKTU IMSYAK</b>
 
-⏰ *Imsyak*: $prayer_time$timezone_display
-📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
+⏰ <b>Imsyak</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
 
-*Siapkan diri untuk sholat Subuh*
-*Jangan lupa wudhu* 💧"
+<i>Siapkan diri untuk sholat Subuh</i>
+<i>Jangan lupa wudhu</i> 💧"
+                            send_telegram "$message"
                         fi
                     ) &
                 fi
@@ -2047,7 +2324,6 @@ Di bulan Ramadhan ${hijri_year} yang mulia ini, marilah kita persiapkan diri.
         
     else
         # ===== SHOLAT WAJIB (Subuh, Dzuhur, Ashar, Maghrib, Isya) =====
-        # (kode untuk sholat wajib tetap sama seperti aslinya)
         # Cek apakah pemutar suara secara umum aktif
         if [ "$sound_enabled" = "0" ]; then
             log "INFO" "🔇 Pemutaran suara dinonaktifkan untuk $salat_name"
@@ -2056,13 +2332,80 @@ Di bulan Ramadhan ${hijri_year} yang mulia ini, marilah kita persiapkan diri.
             if [ "$telegram_enabled" = "1" ]; then
                 log "INFO" "📤 Mengirim notifikasi $salat_name (sound disabled)"
                 (
-                    send_telegram "🕌 *SAATNYA WAKTU SHOLAT ${salat_name}*
+                    # ===== KHUSUS ISYA DI BULAN RAMADHAN =====
+                    if [ "$salat_name" = "Isya" ] && is_ramadhan; then
+                        local message="<b>🌙 SAATNYA WAKTU SHOLAT ISYA & TARAWIH</b> 🌙
 
-⏰ *$salat_name*: $prayer_time$timezone_display
-📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
+⏰ <b>Isya</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
 
-Selamat menunaikan sholat *$salat_name*.
-*Semoga Allah menerima ibadah kita* 🤲"
+<i>Marilah kita sholat Isya berjamaah</i>
+<i>dilanjutkan Sholat Tarawih dan Witir</i>
+
+<b>🌙 Keutamaan Sholat Tarawih:</b>
+Rasulullah ﷺ bersabda:
+<code>مَنْ قَامَ رَمَضَانَ إِيمَانًا وَاحْتِسَابًا غُفِرَ لَهُ مَا تَقَدَّمَ مِنْ ذَنْبِهِ</code>
+<code>\"Barangsiapa melaksanakan sholat malam (Tarawih) di bulan Ramadhan karena iman dan mengharap pahala, maka diampuni dosa-dosanya yang telah lalu.\"</code>
+(HR. Bukhari dan Muslim)
+
+<b>🤲 Selamat menunaikan ibadah sholat Tarawih</b>"
+                        send_telegram "$message"
+                    
+                    # ===== KHUSUS SUBUH DI BULAN RAMADHAN =====
+                    elif [ "$salat_name" = "Subuh" ] && is_ramadhan; then
+                        local message="<b>🌙 SAATNYA WAKTU SHOLAT SUBUH RAMADHAN</b> 🌙
+
+⏰ <b>Subuh</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
+
+<code>الصَّلَاةُ خَيْرٌ مِنَ النَّوْمِ</code>
+<i>\"Ash-shalatu khairum minan-naum\"</i>
+(Sholat itu lebih baik dari pada tidur)
+
+<i>Marilah kita sholat Subuh berjamaah</i>
+<i>Lanjutkan puasa dengan penuh semangat</i>
+
+<b>🤲 Semoga Allah menerima puasa dan ibadah kita</b>"
+                        send_telegram "$message"
+                    
+                    # ===== KHUSUS MAGHRIB DI BULAN RAMADHAN =====
+                    elif [ "$salat_name" = "Maghrib" ] && is_ramadhan; then
+                        local message="<b>🌙 SAATNYA WAKTU BERBUKA PUASA & SHOLAT MAGHRIB</b> 🌙
+
+⏰ <b>Maghrib</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
+
+<b>Doa Berbuka Puasa:</b>
+<code>اللَّهُمَّ لَكَ صُمْتُ وَعَلَى رِزْقِكَ أَفْطَرْتُ</code>
+<code>\"Allahumma laka shumtu wa 'ala rizqika afthartu\"</code>
+(Ya Allah, untuk-Mu aku berpuasa dan dengan rezeki-Mu aku berbuka)
+
+<b>Doa Lengkap:</b>
+<code>ذَهَبَ الظَّمَأُ وَابْتَلَّتِ الْعُرُوقُ وَثَبَتَ الْأَجْرُ إِنْ شَاءَ اللَّهُ</code>
+<code>\"Dzahabazh zhama'u wabtallatil 'uruqu wa tsabatal ajru insya Allah\"</code>
+(Telah hilang dahaga, urat-urat telah basah, dan pahala telah tetap, insya Allah)
+
+<i>Marilah kita sholat Maghrib berjamaah</i>
+<i>Segera berbuka dengan yang manis</i>
+
+<b>🤲 Selamat berbuka puasa</b>"
+                        send_telegram "$message"
+                    
+                    # ===== SHOLAT WAJIB BIASA (NON-RAMADHAN ATAU SELAIN ISYA/SUBUH/MAGHRIB) =====
+                    else
+                        local message="<b>🕌 SAATNYA WAKTU SHOLAT ${salat_name}</b>
+
+⏰ <b>$salat_name</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
+
+<code>حَيَّ عَلَى الصَّلَاةِ حَيَّ عَلَى الْفَلَاحِ</code>
+<i>\"Hayya 'alash shalah, hayya 'alal falah\"</i>
+(Marilah sholat, marilah meraih kemenangan)
+
+Selamat menunaikan sholat <b>$salat_name</b>.
+<b>Semoga Allah menerima ibadah kita</b> 🤲"
+                        send_telegram "$message"
+                    fi
                 ) &
                 [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📤 Notifikasi Telegram ${salat_name} dikirim (sound disabled)"
             fi
@@ -2075,22 +2418,277 @@ Selamat menunaikan sholat *$salat_name*.
         if [ "$telegram_enabled" = "1" ]; then
             log "INFO" "📤 Mengirim notifikasi $salat_name"
             (
-                send_telegram "🕌 *SAATNYA WAKTU SHOLAT ${salat_name}*
+                # ===== KHUSUS ISYA DI BULAN RAMADHAN =====
+                if [ "$salat_name" = "Isya" ] && is_ramadhan; then
+                    local message="<b>🌙 SAATNYA WAKTU SHOLAT ISYA & TARAWIH</b> 🌙
 
-⏰ *$salat_name*: $prayer_time$timezone_display
-📍 Untuk Wilayah: *$LOKASI* dan sekitarnya.
+⏰ <b>Isya</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
 
-Selamat menunaikan sholat *$salat_name*.
-*Semoga Allah menerima ibadah kita* 🤲"
+<i>Marilah kita sholat Isya berjamaah</i>
+<i>dilanjutkan Sholat Tarawih dan Witir, serta niat berpuasa untuk esok harinya.</i>
+
+<b>🌙 Keutamaan Sholat Tarawih:</b>
+Rasulullah ﷺ bersabda:
+<code>مَنْ قَامَ رَمَضَانَ إِيمَانًا وَاحْتِسَابًا غُفِرَ لَهُ مَا تَقَدَّمَ مِنْ ذَنْبِهِ</code>
+<code>\"Barangsiapa melaksanakan sholat malam (Tarawih) di bulan Ramadhan karena iman dan mengharap pahala, maka diampuni dosa-dosanya yang telah lalu.\"</code>
+(HR. Bukhari dan Muslim)
+
+<b>Niat Sholat Tarawih:</b>
+<code>أُصَلِّي سُنَّةَ التَّرَاوِيحِ رَكْعَتَيْنِ مُسْتَقْبِلَ الْقِبْلَةِ أَدَاءً لِلَّهِ تَعَالَى</code>
+<code>\"Ushalli sunnatat tarawihi rak'ataini mustaqbilal qiblati ada'an lillahi ta'ala\"</code>
+(Aku niat sholat sunnah Tarawih dua rakaat menghadap kiblat karena Allah Ta'ala)
+
+<b>Niat Sholat Witir:</b>
+<code>أُصَلِّي سُنَّةَ الْوِتْرِ رَكْعَةً مُسْتَقْبِلَ الْقِبْلَةِ أَدَاءً لِلَّهِ تَعَالَى</code>
+<code>\"Ushalli sunnatal witri rak'atan mustaqbilal qiblati ada'an lillahi ta'ala\"</code>
+(Aku niat sholat sunnah Witir satu rakaat menghadap kiblat karena Allah Ta'ala)
+
+<b>Keutamaan Puasa:</b>
+Rasulullah ﷺ bersabda:
+<code>مَنْ صَامَ رَمَضَانَ إِيمَانًا وَاحْتِسَابًا غُفِرَ لَهُ مَا تَقَدَّمَ مِنْ ذَنْبِهِ</code>
+<code>\"Barangsiapa berpuasa Ramadhan karena iman dan mengharap pahala, maka diampuni dosa-dosanya yang telah lalu\"</code>
+(HR. Bukhari dan Muslim)
+
+<b>Doa Niat Puasa:</b>
+<code>نَوَيْتُ صَوْمَ غَدٍ عَنْ أَدَاءِ فَرْضِ شَهْرِ رَمَضَانَ هَذِهِ السَّنَةِ لِلَّهِ تَعَالَى</code>
+<code>\"Nawaitu shauma ghadin 'an ada'i fardhi syahri ramadhana hadzihis sanati lillahi ta'ala\"</code>
+(Aku niat berpuasa esok hari untuk menunaikan kewajiban bulan Ramadhan tahun ini karena Allah Ta'ala)
+
+<b>🤲 Selamat menunaikan ibadah sholat Tarawih</b>
+<b>Semoga Allah menerima amal ibadah kita di bulan suci ini</b>"
+                    send_telegram "$message"
+                    
+                    # ===== KHUSUS SUBUH DI BULAN RAMADHAN =====
+                    elif [ "$salat_name" = "Subuh" ] && is_ramadhan; then
+                        local message="<b>🌙 SAATNYA WAKTU SHOLAT SUBUH RAMADHAN</b> 🌙
+
+⏰ <b>Subuh</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
+
+<code>الصَّلَاةُ خَيْرٌ مِنَ النَّوْمِ</code>
+<i>\"Ash-shalatu khairum minan-naum\"</i>
+(Sholat itu lebih baik dari pada tidur)
+
+<i>Marilah kita sholat Subuh berjamaah</i>
+<i>Lanjutkan puasa dengan penuh semangat</i>
+
+<b>Keutamaan Puasa:</b>
+Rasulullah ﷺ bersabda:
+<code>مَنْ صَامَ رَمَضَانَ إِيمَانًا وَاحْتِسَابًا غُفِرَ لَهُ مَا تَقَدَّمَ مِنْ ذَنْبِهِ</code>
+<code>\"Barangsiapa berpuasa Ramadhan karena iman dan mengharap pahala, maka diampuni dosa-dosanya yang telah lalu\"</code>
+(HR. Bukhari dan Muslim)
+
+<b>Doa Niat Puasa:</b>
+<code>نَوَيْتُ صَوْمَ غَدٍ عَنْ أَدَاءِ فَرْضِ شَهْرِ رَمَضَانَ هَذِهِ السَّنَةِ لِلَّهِ تَعَالَى</code>
+<code>\"Nawaitu shauma ghadin 'an ada'i fardhi syahri ramadhana hadzihis sanati lillahi ta'ala\"</code>
+(Aku niat berpuasa esok hari untuk menunaikan kewajiban bulan Ramadhan tahun ini karena Allah Ta'ala)
+
+<b>🤲 Semoga Allah menerima puasa dan ibadah kita</b>"
+                        send_telegram "$message"
+                    
+                    # ===== KHUSUS MAGHRIB DI BULAN RAMADHAN =====
+                    elif [ "$salat_name" = "Maghrib" ] && is_ramadhan; then
+                        local message="<b>🌙 SAATNYA WAKTU BERBUKA PUASA & SHOLAT MAGHRIB</b> 🌙
+
+⏰ <b>Maghrib</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
+
+<b>Doa Berbuka Puasa:</b>
+<code>اللَّهُمَّ لَكَ صُمْتُ وَعَلَى رِزْقِكَ أَفْطَرْتُ</code>
+<code>\"Allahumma laka shumtu wa 'ala rizqika afthartu\"</code>
+(Ya Allah, untuk-Mu aku berpuasa dan dengan rezeki-Mu aku berbuka)
+
+<b>Doa Lengkap:</b>
+<code>ذَهَبَ الظَّمَأُ وَابْتَلَّتِ الْعُرُوقُ وَثَبَتَ الْأَجْرُ إِنْ شَاءَ اللَّهُ</code>
+<code>\"Dzahabazh zhama'u wabtallatil 'uruqu wa tsabatal ajru insya Allah\"</code>
+(Telah hilang dahaga, urat-urat telah basah, dan pahala telah tetap, insya Allah)
+
+<i>Marilah kita sholat Maghrib berjamaah</i>
+<i>Segera berbuka dengan yang manis</i>
+
+<b>Waktu Mustajab Berdoa:</b>
+Saat berbuka puasa adalah waktu yang mustajab untuk berdoa
+
+Rasulullah ﷺ bersabda:
+<code>إِنَّ لِلصَّائِمِ عِنْدَ فِطْرِهِ دَعْوَةً مَا تُرَدُّ</code>
+<code>\"Sesungguhnya orang yang berpuasa memiliki doa yang tidak tertolak saat berbuka.\"</code>
+(HR. Ibnu Majah)
+
+<b>🤲 Selamat berbuka puasa, semoga ibadah kita diterima Allah</b>"
+                        send_telegram "$message"
+                    
+                    # ===== KHUSUS JUMAT =====
+                    elif [ "$salat_name" = "Jumat" ]; then
+                        local message="<b>🕌 SAATNYA WAKTU SHOLAT JUMAT</b> 🕌
+
+⏰ <b>Jumat</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province dan sekitarnya.</b>
+
+<code>يَا أَيُّهَا الَّذِينَ آمَنُوا إِذَا نُودِيَ لِلصَّلَاةِ مِنْ يَوْمِ الْجُمُعَةِ فَاسْعَوْا إِلَىٰ ذِكْرِ اللَّهِ وَذَرُوا الْبَيْعَ ۚ ذَٰلِكُمْ خَيْرٌ لَكُمْ إِنْ كُنْتُمْ تَعْلَمُونَ</code>
+<code>\"Yaa ayyuhalladziina aamanuu idzaa nuudiya lish shalaati min yawmil jumu'ati fas'au ilaa dzikrillaahi wa dzarul bai' dzalikum khairul lakum in kuntum ta'lamuun\"</code>
+<i>\"Hai orang-orang beriman, apabila diseru untuk menunaikan sholat pada hari Jumat, maka bersegeralah kamu kepada mengingat Allah dan tinggalkanlah jual beli. Yang demikian itu lebih baik bagimu jika kamu mengetahui.\"</i>
+(QS. Al-Jumu'ah: 9)
+
+<i>Marilah kita bersegera menuju masjid</i>
+<i>Mendengarkan khutbah</i>
+<i>Melaksanakan sholat Jumat berjamaah</i>
+
+<b>Keutamaan Hari Jumat:</b>
+Rasulullah ﷺ bersabda:
+<code>خَيْرُ يَوْمٍ طَلَعَتْ عَلَيْهِ الشَّمْسُ يَوْمُ الْجُمُعَةِ</code>
+<code>\"Sebaik-baik hari yang matahari terbit padanya adalah hari Jumat.\"</code>
+(HR. Muslim)
+
+<b>🤲 Semoga Allah menerima ibadah Jumat kita</b>"
+                        send_telegram "$message"
+                    
+                    # ===== SHOLAT WAJIB BIASA (NON-RAMADHAN) =====
+                    else
+                        local message="<b>🕌 SAATNYA WAKTU SHOLAT ${salat_name}</b>
+
+⏰ <b>$salat_name</b>: $prayer_time$timezone_display
+📍 Untuk Wilayah: <b>$safe_lokasi, $safe_province</b> dan sekitarnya.
+
+<code>حَيَّ عَلَى الصَّلَاةِ حَيَّ عَلَى الْفَلَاحِ</code>
+<i>\"Hayya 'alash shalah, hayya 'alal falah\"</i>
+(Marilah sholat, marilah meraih kemenangan)
+
+<code>أَشْهَدُ أَنْ لَا إِلَهَ إِلَّا اللَّهُ وَأَشْهَدُ أَنَّ مُحَمَّدًا رَسُولُ اللَّهِ</code>
+<i>\"Asyhadu an laa ilaaha illallah, wa asyhadu anna Muhammadar rasulullah\"</i>
+(Aku bersaksi bahwa tiada Tuhan selain Allah, dan aku bersaksi bahwa Muhammad adalah utusan Allah)
+
+Selamat menunaikan sholat <b>$salat_name</b>.
+<b>Semoga Allah menerima ibadah kita</b> 🤲"
+                        send_telegram "$message"
+                    fi
             ) &
             [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📤 Notifikasi Telegram ${salat_name} dikirim di background"
         fi
         
         # ✅ PUTAR AUDIO
         play_audio_file "$file_path" "Adzan $salat_name"
+        
+        # ===== NOTIFIKASI TAMBAHAN UNTUK TARAWIH (khusus Isya Ramadhan) =====
+        if [ "$salat_name" = "Isya" ] && is_ramadhan && [ "$telegram_enabled" = "1" ]; then
+            # Tunda beberapa detik agar tidak bersamaan dengan notifikasi adzan
+            (
+                sleep 3
+                
+                # Kirim panduan sholat Tarawih singkat - VERSI DIPERBAIKI dengan quote yang di-escape
+                local tarawih_guide="<b>🌙 PANDUAN SHOLAT TARAWIH</b> 🌙
+
+<b>Niat Sholat Tarawih (sendiri/berjamaah sebagai imam):</b>
+<code>أُصَلِّي سُنَّةَ التَّرَاوِيحِ رَكْعَتَيْنِ مُسْتَقْبِلَ الْقِبْلَةِ أَدَاءً لِلَّهِ تَعَالَى</code>
+<code>Ushalli sunnatat tarawihi rak'ataini mustaqbilal qiblati ada'an lillahi ta'ala</code>
+(Aku niat sholat sunnah Tarawih dua rakaat menghadap kiblat karena Allah Ta'ala)
+
+<b>Niat Sholat Tarawih (sebagai makmum):</b>
+<code>أُصَلِّي سُنَّةَ التَّرَاوِيحِ رَكْعَتَيْنِ مَأْمُومًا لِلَّهِ تَعَالَى</code>
+<code>Ushalli sunnatat tarawihi rak'ataini ma'muman lillahi ta'ala</code>
+(Aku niat sholat sunnah Tarawih dua rakaat sebagai makmum karena Allah Ta'ala)
+
+<b>Tata Cara:</b>
+• Dilakukan setelah sholat Isya
+• 2 rakaat sekali salam
+• Bisa 8 rakaat + 3 witir
+• Atau 20 rakaat + 3 witir
+
+<b>Doa Setelah Sholat Tarawih:</b>
+<code>اللَّهُمَّ إِنَّكَ عَفُوٌّ تُحِبُّ الْعَفْوَ فَاعْفُ عَنِّي</code>
+<code>Allahumma innaka 'afuwwun tuhibbul 'afwa fa'fu 'anni</code>
+(Ya Allah, Engkau Maha Pengampun dan menyukai pengampunan, maka ampunilah aku)
+
+<b>Doa Witir:</b>
+<code>اللَّهُمَّ إِنِّي أَعُوذُ بِرِضَاكَ مِنْ سَخَطِكَ وَبِمُعَافَاتِكَ مِنْ عُقُوبَتِكَ وَأَعُوذُ بِكَ مِنْكَ لَا أُحْصِي ثَنَاءً عَلَيْكَ أَنْتَ كَمَا أَثْنَيْتَ عَلَى نَفْسِكَ</code>
+<code>Allahumma inni a'udzu bi ridhaaka min sakhathika wa bi mu'aafaatika min 'uquubatika wa a'udzu bika minka la uhsiy tsanaa'an 'alaika anta kamaa atsnaita 'alaa nafsika</code>
+
+<b>🤲 Semoga sholat Tarawih dan Witir kita diterima Allah SWT</b>"
+                
+                send_telegram "$tarawih_guide"
+                log "INFO" "📤 Mengirim panduan Sholat Tarawih untuk waktu Isya"
+            ) &
+        fi
+        
+        # ===== TAMBAHKAN NOTIFIKASI KHUSUS MALAM LAILATUL QADR (10 MALAM TERAKHIR) =====
+        if is_ramadhan && [ "$salat_name" = "Isya" ] && is_last_10_days && [ "$telegram_enabled" = "1" ]; then
+            # Cek apakah notifikasi Lailatul Qadr diaktifkan (default 1)
+            local lailatul_qadr_notification=$(uci -q get jsholat.service.lailatul_qadr_notification || echo "1")
+            
+            if [ "$lailatul_qadr_notification" = "1" ]; then
+                (
+                    sleep 5
+                    
+                    local lailatul_qadr_message="<b>🌟 10 MALAM TERAKHIR RAMADHAN</b> 🌟
+
+✨ <b>CARILAH LAILATUL QADR</b> ✨
+
+<code>إِنَّا أَنْزَلْنَاهُ فِي لَيْلَةِ الْقَدْرِ - وَمَا أَدْرَاكَ مَا لَيْلَةُ الْقَدْرِ - لَيْلَةُ الْقَدْرِ خَيْرٌ مِنْ أَلْفِ شَهْرٍ</code>
+<code>Inna anzalnahu fi lailatil qadr. Wa ma adraka ma lailatul qadr. Lailatul qadri khairum min alfi syahr.</code>
+<i>\"Sesungguhnya Kami telah menurunkannya (Al-Qur'an) pada malam Lailatul Qadar. Dan tahukah kamu apakah malam Lailatul Qadar itu? Malam Lailatul Qadar itu lebih baik dari seribu bulan.\"</i>
+(QS. Al-Qadr: 1-3)
+
+Rasulullah ﷺ bersabda:
+<code>تَحَرَّوْا لَيْلَةَ الْقَدْرِ فِي الْوِتْرِ مِنَ الْعَشْرِ الْأَوَاخِرِ مِنْ رَمَضَانَ</code>
+<code>Carilah Lailatul Qadar di malam ganjil pada 10 malam terakhir bulan Ramadhan.</code>
+(HR. Bukhari)
+
+<b>Tanda-tanda Lailatul Qadar:</b>
+• Udara yang tenang dan sejuk
+• Matahari terbit putih tidak menyilaukan
+• Malam yang terang, tidak panas tidak dingin
+
+<b>Amalan yang dianjurkan:</b>
+• Perbanyak sholat malam
+• Perbanyak membaca Al-Qur'an
+• Perbanyak istigfar dan doa
+
+<b>Doa yang diajarkan Aisyah:</b>
+<code>اللَّهُمَّ إِنَّكَ عَفُوٌّ تُحِبُّ الْعَفْوَ فَاعْفُ عَنِّي</code>
+<code>Allahumma innaka 'afuwwun tuhibbul 'afwa fa'fu 'anni</code>
+(Ya Allah, Engkau Maha Pengampun dan menyukai pengampunan, maka ampunilah aku)
+
+✨ <b>Jangan sia-siakan malam-malam ini</b> ✨
+🌙 <b>Malam ke-21, 23, 25, 27, 29</b> 🌙"
+                    
+                    send_telegram "$lailatul_qadr_message"
+                    log "INFO" "🌟 Mengirim notifikasi 10 malam terakhir Ramadhan"
+                ) &
+            fi
+        fi
     fi
 
     log "INFO" "✅ Selesai memainkan adzan untuk $salat_name"
+}
+
+# FUNGSI BANTUAN UNTUK RAMADHAN
+# Fungsi untuk cek apakah 10 malam terakhir Ramadhan
+is_last_10_days() {
+    local today=$(date +%d)
+    local month=$(date +%m)
+    local year=$(date +%Y)
+    
+    # Cek apakah bulan Ramadhan
+    if is_ramadhan; then
+        # Asumsikan Ramadhan 30 hari, cek apakah tanggal >= 21 (malam ke-21 dimulai dari malam ke-20)
+        # Dalam Islam, malam dimulai setelah Maghrib, jadi malam ke-21 adalah malam setelah tanggal 20
+        if [ "$today" -ge 21 ] 2>/dev/null; then
+            return 0
+        elif [ "$today" -eq 20 ] 2>/dev/null; then
+            # Setelah Maghrib tanggal 20 sudah masuk malam ke-21
+            # Cek apakah waktu sekarang sudah lewat Maghrib
+            local current_hour=$(date +%H)
+            local current_min=$(date +%M)
+            local maghrib_time=$(get_prayer_time "Maghrib")
+            local maghrib_sec=$(time_to_seconds "$maghrib_time")
+            local current_sec=$((10#$current_hour * 60 + 10#$current_min))
+            
+            if [ "$current_sec" -ge "$maghrib_sec" ]; then
+                return 0
+            fi
+        fi
+    fi
+    return 1
 }
 
 # Fungsi untuk mengecek koneksi internet
@@ -2122,6 +2720,17 @@ check_internet_connection() {
     done
     
     log "WARNING" "⚠️ Tidak ada koneksi internet terdeteksi"
+    return 1
+}
+
+check_telegram_connectivity() {
+    local token=$(uci get jsholat.service.telegram_bot_token 2>/dev/null)
+    [ -z "$token" ] && return 1
+    
+    # Cek koneksi ke API Telegram
+    if curl -s --connect-timeout 5 "https://api.telegram.org/bot$token/getMe" >/dev/null 2>&1; then
+        return 0
+    fi
     return 1
 }
 
@@ -2559,14 +3168,22 @@ play_sahur_alarm() {
     local timezone=$(uci -q get jsholat.schedule.timezone_value || echo "")
     local LOKASI=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Wilayah Tidak Diketahui")
     local PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null || echo "")
+    local telegram_enabled=$(uci -q get jsholat.service.telegram_enabled || echo "1")
+    local sound_enabled=$(uci -q get jsholat.sound.sound_enabled || echo "1")
+    
+    # Escape lokasi dan province untuk keamanan
+    local safe_lokasi=$(escape_html "$LOKASI")
+    local safe_province=$(escape_html "$PROVINCE")
     
     # Cek apakah alarm diaktifkan
     if [ "$sahur_enabled" = "0" ]; then
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "⏰ Alarm sahur dinonaktifkan (sahur_enabled=0)"
         return 1
     fi
     
     # Cek apakah Ramadhan
     if ! is_ramadhan; then
+        [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "📅 Alarm sahur hanya aktif saat Ramadhan"
         return 1
     fi
     
@@ -2579,6 +3196,9 @@ play_sahur_alarm() {
     local SAHUR_STATUS_FILE="/var/lib/jsholat/sahur_today"
     local TODAY=$(date +"%d-%m-%Y")
     
+    # Buat direktori jika belum ada
+    mkdir -p "/var/lib/jsholat" 2>/dev/null
+    
     # Cek apakah alarm sahur sudah diputar hari ini
     if [ -f "$SAHUR_STATUS_FILE" ]; then
         local last_date=$(cat "$SAHUR_STATUS_FILE" 2>/dev/null)
@@ -2590,72 +3210,390 @@ play_sahur_alarm() {
     
     log "INFO" "🌙⏰ ALARM SAHUR RAMADHAN: Waktunya sahur pada $alarm_time $timezone"
 
-    # Baca teks custom
-    local template_text=$(get_sahur_reminder_text)    
-    
-    # Format waktu dan zona waktu menggunakan fungsi yang sudah ada
+    # ========== BAGIAN 1: FORMAT WAKTU UNTUK TTS ==========
     local formatted_time=$(format_time_for_tts "$alarm_time")
     local formatted_timezone=$(format_timezone_for_tts "$timezone")
     
-    # Format lokasi dengan provinsi
+    # Format lokasi dengan provinsi untuk TTS (tanpa escape HTML karena untuk TTS)
     local lokasi_text="$LOKASI"
     if [ -n "$PROVINCE" ] && [ "$PROVINCE" != " " ] && [ "$PROVINCE" != "null" ] && [ "$PROVINCE" != "None" ]; then
         lokasi_text="$LOKASI, $PROVINCE"
     fi
     
-    # Buat teks TTS dengan format custom
+    # Baca teks custom untuk TTS
+    local template_text=$(get_sahur_reminder_text)
+    
+    # Buat teks TTS dengan format custom (untuk TTS, tidak perlu escape HTML)
     local tts_text=$(format_sahur_reminder \
         "$template_text" \
         "$formatted_time" \
         "$formatted_timezone" \
         "$lokasi_text")
     
-    log "INFO" "🔊 Memutar alarm sahur dengan teks custom: $tts_text"
+    log "INFO" "🔊 Memutar alarm sahur dengan teks TTS: $tts_text"
     
-    # Gunakan TTS yang sudah ada
-    local tts_method=$(uci -q get jsholat.sound.tts_method || echo "google")
-    
-    # Panggil fungsi TTS yang sesuai
-    case "$tts_method" in
-        "murf")
-            play_murf_tts_with_repeat "$tts_text" "Sahur" "$alarm_time" "$LOKASI" "$timezone"
-            ;;
-        "google")
-            play_google_tts_with_repeat "$tts_text" "Sahur" "$alarm_time" "$LOKASI" "$timezone"
-            ;;
-        "edge")
-            play_edge_tts_with_repeat "$tts_text" "Sahur" "$alarm_time" "$LOKASI" "$timezone"
-            ;;
-        "espeak")
-            play_espeak_tts_with_repeat "$tts_text" "Sahur" "$alarm_time" "$LOKASI" "$timezone"
-            ;;
-        "gemini")
-            play_gemini_tts_with_repeat "$tts_text" "Sahur" "$alarm_time" "$LOKASI" "$timezone"
-            ;;
-    esac
-    
-    # Kirim notifikasi Telegram juga jika diaktifkan
-    local telegram_enabled=$(uci -q get jsholat.service.telegram_enabled || echo "1")
-    if [ "$telegram_enabled" = "1" ]; then
-        local reminder_message="🌙 *ALARM SAHUR RAMADHAN* 🌙
-
-⏰ *Waktu Sahur*: $alarm_time $timezone
-📍 Wilayah: *$LOKASI${PROVINCE:+, $PROVINCE}* dan sekitarnya.
-
-*Bangunlah untuk sahur, karena di dalam sahur terdapat keberkahan.*
-(Rasulullah ﷺ)
-
-*Marhaban ya Ramadhan* 🤲"
+    # ========== BAGIAN 2: PUTAR SUARA TTS ==========
+    if [ "$sound_enabled" = "1" ]; then
+        local tts_method=$(uci -q get jsholat.sound.tts_method || echo "google")
         
-        send_telegram "$reminder_message" &
+        # Panggil fungsi TTS yang sesuai
+        case "$tts_method" in
+            "murf")
+                play_murf_tts_with_repeat "$tts_text" "Sahur" "$alarm_time" "$LOKASI" "$timezone" &
+                ;;
+            "google")
+                play_google_tts_with_repeat "$tts_text" "Sahur" "$alarm_time" "$LOKASI" "$timezone" &
+                ;;
+            "edge")
+                play_edge_tts_with_repeat "$tts_text" "Sahur" "$alarm_time" "$LOKASI" "$timezone" &
+                ;;
+            "espeak")
+                play_espeak_tts_with_repeat "$tts_text" "Sahur" "$alarm_time" "$LOKASI" "$timezone" &
+                ;;
+            "gemini")
+                play_gemini_tts_with_repeat "$tts_text" "Sahur" "$alarm_time" "$LOKASI" "$timezone" &
+                ;;
+            *)
+                log "WARNING" "⚠️ Metode TTS tidak dikenal: $tts_method, menggunakan Google TTS"
+                play_google_tts_with_repeat "$tts_text" "Sahur" "$alarm_time" "$LOKASI" "$timezone" &
+                ;;
+        esac
+    else
+        log "INFO" "🔇 Suara alarm sahur dinonaktifkan (sound_enabled=0)"
+    fi
+    
+    # ========== BAGIAN 3: KIRIM NOTIFIKASI TELEGRAM ==========
+    if [ "$telegram_enabled" = "1" ]; then
+        (
+            # Buat pesan Telegram dengan format HTML yang aman
+            local reminder_message=""
+            
+            # Format waktu untuk display
+            local timezone_display=""
+            [ -n "$timezone" ] && timezone_display=" $timezone"
+            
+            # Ambil tanggal Hijriyah untuk informasi tambahan
+            local hijri_date=$(get_hijri_date)
+            local hijri_day=$(echo "$hijri_date" | awk '{print $1}')
+            local hijri_month=$(echo "$hijri_date" | awk '{print $2}')
+            local hijri_year=$(echo "$hijri_date" | awk '{print $3}')
+            
+            # Format lokasi dengan provinsi untuk display (sudah di-escape)
+            local lokasi_display="$safe_lokasi"
+            if [ -n "$safe_province" ] && [ "$safe_province" != " " ] && [ "$safe_province" != "null" ]; then
+                lokasi_display="$safe_lokasi, $safe_province"
+            fi
+            
+            # Bangun pesan dengan struktur yang jelas
+            reminder_message="<b>🌙 ALARM SAHUR RAMADHAN</b> 🌙
+
+⏰ <b>Waktu Sahur</b>: $alarm_time$timezone_display
+📍 <b>Wilayah</b>: $lokasi_display dan sekitarnya.
+📅 <b>Hari ke-$hijri_day Ramadhan $hijri_year</b>
+
+<code>تَسَحَّرُوا فَإِنَّ فِي السَّحُورِ بَرَكَةً</code>
+<i>\"Tasahharu fa inna fis sahuri barakah\"</i>
+\"Bersahurlah kalian, karena di dalam sahur terdapat keberkahan.\"
+(HR. Bukhari dan Muslim)
+
+✨ <b>Keutamaan Sahur:</b>
+• Mendapatkan keberkahan
+• Mengikuti sunnah Rasulullah ﷺ
+• Membantu kekuatan berpuasa
+• Waktu mustajab untuk berdoa
+
+🤲 <b>Doa Niat Puasa:</b>
+<code>نَوَيْتُ صَوْمَ غَدٍ عَنْ أَدَاءِ فَرْضِ شَهْرِ رَمَضَانَ هَذِهِ السَّنَةِ لِلَّهِ تَعَالَى</code>
+<code>Nawaitu shauma ghadin 'an ada'i fardhi syahri ramadhana hadzihis sanati lillahi ta'ala</code>
+(Aku niat berpuasa esok hari untuk menunaikan kewajiban bulan Ramadhan tahun ini karena Allah Ta'ala)
+
+<i>Semoga Allah memudahkan kita menjalankan ibadah puasa hari ini.</i>
+<b>Marhaban ya Ramadhan</b> 🤲"
+            
+            # Kirim pesan utama
+            send_telegram "$reminder_message"
+            
+            # Tunggu sebentar untuk rate limiting
+            sleep 2
+            
+            # Kirim pesan tambahan dengan tips sahur (opsional)
+            local sahur_tips_enabled=$(uci -q get jsholat.service.sahur_tips || echo "1")
+            if [ "$sahur_tips_enabled" = "1" ]; then
+                local tips_message="<b>🍽️ TIPS SAHUR SEHAT</b>
+
+✅ <b>Makanan:</b>
+• Karbohidrat kompleks (nasi merah, oatmeal)
+• Protein (telur, daging, ikan)
+• Serat (sayur dan buah)
+• Kurma (sumber energi instan)
+
+✅ <b>Minuman:</b>
+• Air putih minimal 2 gelas
+• Hindari kafein berlebihan
+• Kurangi minuman manis
+
+✅ <b>Yang Perlu Dihindari:</b>
+• Makanan terlalu asin
+• Makanan pedas berlebihan
+• Makan terlalu kenyang
+
+✅ <b>Sunnah Sahur:</b>
+• Mengakhirkan sahur
+• Membaca doa niat puasa
+• Menyegerakan berbuka
+
+<i>Semoga puasa hari ini lancar dan penuh berkah</i> 🌙"
+                
+                send_telegram "$tips_message"
+            fi
+            
+            log "INFO" "📤 Notifikasi Telegram alarm sahur telah dikirim"
+        ) &
     fi
     
     # Tandai sudah diputar hari ini
     echo "$TODAY" > "$SAHUR_STATUS_FILE"
     
-    log "INFO" "✅ Alarm sahur selesai diputar"
+    log "INFO" "✅ Alarm sahur selesai diproses"
     sleep 61  # Hindari pengulangan di menit yang sama
     return 0
+}
+
+# Fungsi tambahan untuk mengaktifkan/menonaktifkan alarm sahur via UCI
+sahur_config() {
+    echo "============================================="
+    echo "   KONFIGURASI ALARM SAHUR - JSHOLAT"
+    echo "============================================="
+    echo ""
+    
+    local sahur_enabled=$(uci -q get jsholat.sound.sahur_enabled || echo "0")
+    local sahur_time=$(uci -q get jsholat.sound.sahur_time || echo "02:30")
+    local sahur_tips=$(uci -q get jsholat.service.sahur_tips || echo "1")
+    
+    echo "📋 STATUS SAAT INI:"
+    echo "  • Alarm Sahur: $([ "$sahur_enabled" = "1" ] && echo "✅ AKTIF" || echo "❌ NONAKTIF")"
+    echo "  • Waktu Sahur: $sahur_time"
+    echo "  • Tips Sahur: $([ "$sahur_tips" = "1" ] && echo "✅ AKTIF" || echo "❌ NONAKTIF")"
+    echo ""
+    
+    echo "🔧 CARA KONFIGURASI:"
+    echo ""
+    echo "  1. Aktifkan alarm sahur:"
+    echo "     uci set jsholat.sound.sahur_enabled=1"
+    echo "     uci commit jsholat"
+    echo ""
+    echo "  2. Ubah waktu sahur (format HH:MM):"
+    echo "     uci set jsholat.sound.sahur_time=\"02:30\""
+    echo "     uci commit jsholat"
+    echo ""
+    echo "  3. Nonaktifkan tips sahur (opsional):"
+    echo "     uci set jsholat.service.sahur_tips=0"
+    echo "     uci commit jsholat"
+    echo ""
+    echo "  4. Restart service setelah konfigurasi:"
+    echo "     /etc/init.d/jsholat restart"
+    echo ""
+    echo "============================================="
+    echo ""
+    echo "📝 CATATAN:"
+    echo "  • Alarm sahur hanya aktif saat Ramadhan"
+    echo "  • File teks custom: $SAHUR_REMINDER_FILE"
+    echo "  • Default teks: \"$SAHUR_REMINDER_DEFAULT\""
+    echo "============================================="
+}
+
+# Fungsi untuk test alarm sahur (tanpa menunggu waktu) - VERSI ASYNCHRONOUS
+test_sahur_alarm() {
+    log "INFO" "🔊 TESTING: Menjalankan test alarm sahur..."
+    
+    # Set PATH lengkap untuk child processes
+    export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+    
+    local LOKASI=$(uci get jsholat.schedule.city_label 2>/dev/null || echo "Wilayah Tidak Diketahui")
+    local PROVINCE=$(uci get jsholat.schedule.province 2>/dev/null || echo "")
+    local timezone=$(uci -q get jsholat.schedule.timezone_value || echo "WIB")
+    local alarm_time=$(uci -q get jsholat.sound.sahur_time || echo "02:30")
+    local sound_enabled=$(uci -q get jsholat.sound.sound_enabled || echo "1")
+    local telegram_enabled=$(uci -q get jsholat.service.telegram_enabled || echo "1")
+    
+    # Escape untuk display
+    local safe_lokasi=$(echo "$LOKASI" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+    local safe_province=$(echo "$PROVINCE" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+    
+    echo "============================================="
+    echo "   TEST ALARM SAHUR - JSHOLAT"
+    echo "============================================="
+    echo ""
+    echo "📋 Informasi:"
+    echo "  • Wilayah: $LOKASI, $PROVINCE"
+    echo "  • Zona Waktu: $timezone"
+    echo "  • Waktu Sahur: $alarm_time"
+    echo ""
+    
+    # Format teks TTS
+    local formatted_time=$(format_time_for_tts "$alarm_time")
+    local formatted_timezone=$(format_timezone_for_tts "$timezone")
+    
+    local lokasi_text="$LOKASI"
+    if [ -n "$PROVINCE" ] && [ "$PROVINCE" != " " ] && [ "$PROVINCE" != "null" ]; then
+        lokasi_text="$LOKASI, $PROVINCE"
+    fi
+    
+    local template_text=$(get_sahur_reminder_text)
+    local tts_text=$(format_sahur_reminder "$template_text" "$formatted_time" "$formatted_timezone" "$lokasi_text")
+    
+    echo "📝 Teks TTS: $tts_text"
+    echo ""
+    
+    # Buat direktori temporary
+    local test_dir="/tmp/jsholat_test_$$"
+    mkdir -p "$test_dir" 2>/dev/null
+    
+    # PROSES AUDIO (BACKGROUND)
+    if [ "$sound_enabled" = "1" ]; then
+        (
+            # Set PATH untuk child process
+            export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+            
+            echo "🔊 [PID $$] Memulai proses audio..."
+            
+            local tts_method=$(uci -q get jsholat.sound.tts_method || echo "google")
+            echo "🔊 Metode TTS: $tts_method"
+            
+            case "$tts_method" in
+                "murf") play_murf_tts_with_repeat "$tts_text" "Test Sahur" "$alarm_time" "$LOKASI" "$timezone" ;;
+                "google") play_google_tts_with_repeat "$tts_text" "Test Sahur" "$alarm_time" "$LOKASI" "$timezone" ;;
+                "edge") play_edge_tts_with_repeat "$tts_text" "Test Sahur" "$alarm_time" "$LOKASI" "$timezone" ;;
+                "espeak") play_espeak_tts_with_repeat "$tts_text" "Test Sahur" "$alarm_time" "$LOKASI" "$timezone" ;;
+                "gemini") play_gemini_tts_with_repeat "$tts_text" "Test Sahur" "$alarm_time" "$LOKASI" "$timezone" ;;
+                *) play_google_tts_with_repeat "$tts_text" "Test Sahur" "$alarm_time" "$LOKASI" "$timezone" ;;
+            esac
+            
+            echo "✅ Audio selesai" > "$test_dir/audio.done"
+        ) &
+        
+        local audio_pid=$!
+        echo "$audio_pid" > "$test_dir/audio.pid"
+        echo "  ▶️ Proses audio dimulai dengan PID: $audio_pid (background)"
+    fi
+    
+    # PROSES TELEGRAM (BACKGROUND)
+    if [ "$telegram_enabled" = "1" ]; then
+        (
+            # Set PATH untuk child process
+            export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+            
+            echo "📤 [PID $$] Memulai proses pengiriman Telegram..."
+            
+            local timezone_display=""
+            [ -n "$timezone" ] && timezone_display=" $timezone"
+            
+            local lokasi_display="$safe_lokasi"
+            if [ -n "$safe_province" ] && [ "$safe_province" != " " ] && [ "$safe_province" != "null" ]; then
+                lokasi_display="$safe_lokasi, $safe_province"
+            fi
+            
+            # Buat pesan HTML sederhana
+            local test_message="<b>🔔 TEST ALARM SAHUR</b>
+
+⏰ <b>Waktu Sahur</b>: $alarm_time$timezone_display
+📍 <b>Wilayah</b>: $lokasi_display dan sekitarnya.
+📅 <b>Bulan Ramadhan</b>: $(is_ramadhan && echo "✅ Ya" || echo "❌ Bukan")
+
+📝 <b>Teks TTS</b>:
+<code>$tts_text</code>"
+            
+            # Kirim dengan fungsi send_telegram
+            if send_telegram "$test_message"; then
+                echo "✅ Telegram sukses" > "$test_dir/telegram.done"
+            else
+                echo "❌ Telegram gagal" > "$test_dir/telegram.done"
+            fi
+            
+            echo "📤 [PID $$] Proses Telegram selesai"
+        ) &
+        
+        local telegram_pid=$!
+        echo "$telegram_pid" > "$test_dir/telegram.pid"
+        echo "  ▶️ Proses Telegram dimulai dengan PID: $telegram_pid (background)"
+    fi
+    
+    echo ""
+    echo "⏳ Menunggu proses-proses selesai..."
+    echo ""
+    
+    # Monitor proses
+    local audio_running=0
+    local telegram_running=0
+    
+    [ -f "$test_dir/audio.pid" ] && audio_running=1
+    [ -f "$test_dir/telegram.pid" ] && telegram_running=1
+    
+    local spinner=0
+    while [ $audio_running -eq 1 ] || [ $telegram_running -eq 1 ]; do
+        
+        # Cek status audio
+        if [ $audio_running -eq 1 ]; then
+            if [ -f "$test_dir/audio.done" ] || ! kill -0 $(cat "$test_dir/audio.pid" 2>/dev/null) 2>/dev/null; then
+                audio_running=0
+                echo -e "\r  ✅ Audio selesai"
+            fi
+        fi
+        
+        # Cek status telegram
+        if [ $telegram_running -eq 1 ]; then
+            if [ -f "$test_dir/telegram.done" ] || ! kill -0 $(cat "$test_dir/telegram.pid" 2>/dev/null) 2>/dev/null; then
+                telegram_running=0
+                echo -e "\r  ✅ Telegram selesai"
+            fi
+        fi
+        
+        # Spinner
+        if [ $audio_running -eq 1 ] || [ $telegram_running -eq 1 ]; then
+            local spin_chars='\|/-'
+            echo -ne "\r  ${spin_chars:$spinner:1} Menunggu proses... "
+            spinner=$(( (spinner + 1) % 4 ))
+            sleep 0.5
+        fi
+    done
+    
+    echo ""
+    echo ""
+    
+    # Tampilkan hasil
+    echo "📊 HASIL TEST:"
+    echo "  ─────────────────────"
+    
+    if [ -f "$test_dir/telegram.done" ]; then
+        if grep -q "sukses" "$test_dir/telegram.done" 2>/dev/null; then
+            echo "  ✅ Telegram: Berhasil dikirim"
+        else
+            echo "  ❌ Telegram: Gagal dikirim"
+        fi
+    elif [ "$telegram_enabled" = "1" ]; then
+        echo "  ❌ Telegram: Gagal (tidak ada response)"
+    else
+        echo "  ⏭️  Telegram: Dilewati"
+    fi
+    
+    if [ "$sound_enabled" = "1" ]; then
+        if [ -f "$test_dir/audio.done" ]; then
+            echo "  ✅ Audio: Berhasil diputar"
+        else
+            echo "  ✅ Audio: Proses selesai"
+        fi
+    else
+        echo "  ⏭️  Audio: Dilewati"
+    fi
+    
+    echo "  ─────────────────────"
+    echo ""
+    
+    # Cleanup
+    rm -rf "$test_dir" 2>/dev/null
+    
+    echo "✅ Test alarm sahur selesai"
+    echo "============================================="
 }
 
 # Fungsi untuk memutar audio file dengan deteksi format otomatis
@@ -3414,7 +4352,144 @@ play_murf_tts_with_repeat() {
     return 1
 }
 
+# FUNGSI PENDUKUNG UNTUK GEMINI TTS
+# File untuk tracking performance Gemini
+GEMINI_STATS_DIR="/tmp/jsholat_cache/gemini_stats"
+GEMINI_FAILURE_COUNTER="$GEMINI_STATS_DIR/failure_counter"
+GEMINI_SUCCESS_COUNTER="$GEMINI_STATS_DIR/success_counter"
+GEMINI_LAST_FAILURE="$GEMINI_STATS_DIR/last_failure"
+
+# Inisialisasi direktori stats
+init_gemini_stats() {
+    mkdir -p "$GEMINI_STATS_DIR"
+    [ ! -f "$GEMINI_FAILURE_COUNTER" ] && echo "0" > "$GEMINI_FAILURE_COUNTER"
+    [ ! -f "$GEMINI_SUCCESS_COUNTER" ] && echo "0" > "$GEMINI_SUCCESS_COUNTER"
+}
+
+# Fungsi untuk mendeteksi jam sibuk (peak hours)
+detect_peak_hours() {
+    local current_hour=$(date +%H)
+    local current_min=$(date +%M)
+    local current_total=$((10#$current_hour * 60 + 10#$current_min))
+    
+    # Subuh: 04:00 - 04:30 (banyak orang bangun sahur)
+    if [ $current_total -ge 240 ] && [ $current_total -le 270 ]; then
+        echo "subuh_peak"
+        return 0
+    # Maghrib: 17:30 - 18:30 (waktu berbuka, traffic tinggi)
+    elif [ $current_total -ge 1050 ] && [ $current_total -le 1110 ]; then
+        echo "maghrib_peak"
+        return 0
+    # Isya: 19:00 - 19:30 (setelah maghrib, masih ramai)
+    elif [ $current_total -ge 1140 ] && [ $current_total -le 1170 ]; then
+        echo "isya_peak"
+        return 0
+    # Normal: di luar jam-jam tersebut
+    else
+        echo "normal"
+        return 1
+    fi
+}
+
+# Fungsi untuk mendapatkan status circuit breaker (SEDERHANA)
+check_circuit_breaker() {
+    init_gemini_stats
+    
+    local failure_count=$(cat "$GEMINI_FAILURE_COUNTER" 2>/dev/null || echo "0")
+    local last_failure=$(cat "$GEMINI_LAST_FAILURE" 2>/dev/null || echo "0")
+    local now=$(date +%s)
+    
+    # Reset counter jika sudah lebih dari 1 jam
+    if [ $((now - last_failure)) -gt 3600 ]; then
+        echo "0" > "$GEMINI_FAILURE_COUNTER"
+        echo "0" > "$GEMINI_SUCCESS_COUNTER"
+        failure_count=0
+    fi
+    
+    # Jika 2 kegagalan beruntun dalam 10 menit, aktifkan circuit breaker
+    if [ $failure_count -ge 2 ] && [ $((now - last_failure)) -lt 600 ]; then
+        log "WARNING" "⚠️ Circuit breaker activated: $failure_count consecutive failures"
+        return 0  # Circuit breaker aktif
+    fi
+    
+    return 1  # Circuit breaker tidak aktif
+}
+
+# Fungsi untuk mencatat keberhasilan/kegagalan (SEDERHANA)
+record_gemini_result() {
+    local success=$1  # 1 untuk sukses, 0 untuk gagal
+    
+    init_gemini_stats
+    
+    local now=$(date +%s)
+    
+    if [ "$success" = "1" ]; then
+        # Catat keberhasilan (reset failure counter)
+        echo "0" > "$GEMINI_FAILURE_COUNTER"
+        local current_success=$(cat "$GEMINI_SUCCESS_COUNTER" 2>/dev/null || echo "0")
+        echo $((current_success + 1)) > "$GEMINI_SUCCESS_COUNTER"
+    else
+        # Catat kegagalan
+        local current_failure=$(cat "$GEMINI_FAILURE_COUNTER" 2>/dev/null || echo "0")
+        echo $((current_failure + 1)) > "$GEMINI_FAILURE_COUNTER"
+        echo "$now" > "$GEMINI_LAST_FAILURE"
+    fi
+}
+
+# Fungsi untuk mendapatkan timeout berdasarkan jam (SEDERHANA)
+get_gemini_timeout() {
+    local text="$1"
+    local attempt="$2"
+    local text_length=${#text}
+    
+    local peak_type=$(detect_peak_hours)
+    
+    # Base timeout berdasarkan panjang teks
+    if [ $text_length -gt 400 ]; then
+        base_timeout=30
+    elif [ $text_length -gt 300 ]; then
+        base_timeout=25
+    else
+        base_timeout=20
+    fi
+    
+    # Tambahan untuk peak hours
+    case "$peak_type" in
+        "subuh_peak"|"maghrib_peak"|"isya_peak")
+            base_timeout=$((base_timeout + 10))
+            ;;
+    esac
+    
+    # Tambahan per attempt
+    base_timeout=$((base_timeout + (attempt - 1) * 5))
+    
+    echo "$base_timeout"
+}
+
+# Fungsi untuk mendapatkan max attempts
+get_max_attempts() {
+    local peak_type=$(detect_peak_hours)
+    
+    if [ "$peak_type" != "normal" ]; then
+        echo "3"  # Peak hours: 3 attempts
+    else
+        echo "2"  # Normal: 2 attempts
+    fi
+}
+
+# Fungsi untuk mendapatkan initial delay
+get_initial_delay() {
+    local peak_type=$(detect_peak_hours)
+    
+    if [ "$peak_type" != "normal" ]; then
+        echo "2"  # Peak hours: delay 2 detik
+    else
+        echo "0"  # Normal: no delay
+    fi
+}
+
 # Fungsi untuk memutar TTS menggunakan Gemini dengan pengulangan
+# Version: 3.1 - Dengan circuit breaker sederhana dan adaptive timeout
 play_gemini_tts_with_repeat() {
     local text="$1"
     local salat_name="$2"
@@ -3440,9 +4515,6 @@ play_gemini_tts_with_repeat() {
         return $?
     fi
     
-    # Tentukan maksimal percobaan jika gagal
-    local max_attempts=2  # Kurangi jadi 2 percobaan untuk respons lebih cepat
-    
     # Ambil konfigurasi Gemini dari UCI
     local gemini_api_key=$(uci -q get jsholat.sound.gemini_api_key || echo "")
     local gemini_model=$(uci -q get jsholat.sound.gemini_model || echo "gemini-2.5-flash-preview-tts")
@@ -3456,8 +4528,14 @@ play_gemini_tts_with_repeat() {
         return $?
     fi
     
-    # Persiapan file temporary dengan prefix unik untuk memudahkan cleanup
-    local temp_prefix="/tmp/gemini_tts_${salat_name}_$(date +%s)_$$"
+    # Log panjang teks untuk informasi
+    local text_length=${#text}
+    log "INFO" "📏 Panjang teks: $text_length karakter"
+    
+    # Persiapan file temporary dengan prefix unik
+    local timestamp=$(date +%s)
+    local pid=$$
+    local temp_prefix="/tmp/gemini_tts_${salat_name}_${timestamp}_${pid}"
     local OUT_JSON="${temp_prefix}.json"
     local OUT_B64="${temp_prefix}.b64"
     local OUT_RAW="${temp_prefix}.raw"
@@ -3467,10 +4545,38 @@ play_gemini_tts_with_repeat() {
     local downloaded_file=""
     local http_code=""
     
+    # ===== ADAPTIVE CONFIGURATION =====
+    local peak_type=$(detect_peak_hours)
+    local max_attempts=$(get_max_attempts)
+    local initial_delay=$(get_initial_delay)
+    
+    log "INFO" "🔧 Gemini Configuration: peak=$peak_type, max_attempts=$max_attempts"
+    
+    # Cek circuit breaker
+    local circuit_active=false
+    if check_circuit_breaker; then
+        circuit_active=true
+        log "WARNING" "⚠️ Circuit breaker ACTIVE - akan fallback lebih cepat jika gagal"
+    fi
+    
+    # Initial delay untuk peak hours
+    if [ $initial_delay -gt 0 ]; then
+        log "INFO" "⏳ Initial delay $initial_delay detik untuk peak hours"
+        sleep $initial_delay
+    fi
+    
     # ===== BAGIAN 1: GENERATE AUDIO dengan Gemini =====
     local generate_attempt=1
+    local total_start_time=$(date +%s%N)
+    
     while [ $generate_attempt -le $max_attempts ] && [ -z "$downloaded_file" ]; do
         log "INFO" "🔧 REMINDER SUARA: Mencoba generate ke-$generate_attempt/$max_attempts untuk $salat_name menggunakan Gemini (Voice: $gemini_voice)"
+        
+        # Dapatkan timeout untuk attempt ini
+        local request_timeout=$(get_gemini_timeout "$text" "$generate_attempt")
+        local connect_timeout=10
+        
+        log "INFO" "⏱️ Attempt $generate_attempt: timeout=${request_timeout}s"
         
         # Buat payload JSON untuk request Gemini
         local json_payload=$(jq -n \
@@ -3494,16 +4600,27 @@ play_gemini_tts_with_repeat() {
                 }
             }')
         
-        # Panggil API Gemini
+        # Catat waktu mulai untuk mengukur response time
+        local attempt_start=$(date +%s%N)
+        
+        # Panggil API Gemini dengan timeout adaptif
         http_code=$(curl -s -w "%{http_code}" -X POST \
             "https://generativelanguage.googleapis.com/v1beta/models/${gemini_model}:generateContent?key=${gemini_api_key}" \
             -H "Content-Type: application/json" \
             -d "$json_payload" \
             -o "$OUT_JSON" \
-            --max-time 15 2>/dev/null)
+            --connect-timeout ${connect_timeout} \
+            --max-time ${request_timeout} \
+            2>/dev/null)
+        
+        local curl_exit=$?
+        local attempt_end=$(date +%s%N)
+        local attempt_duration=$(( (attempt_end - attempt_start) / 1000000 )) # dalam milidetik
+        
+        log "INFO" "⏱️ Attempt $generate_attempt completed in ${attempt_duration}ms with HTTP ${http_code}"
         
         # Cek HTTP status code
-        if [ "$http_code" = "200" ]; then
+        if [ "$http_code" = "200" ] && [ $curl_exit -eq 0 ]; then
             # Proses response sukses
             if [ -f "$OUT_JSON" ] && [ -s "$OUT_JSON" ] && ! grep -q '"error"' "$OUT_JSON"; then
                 # Ambil base64 audio dari response
@@ -3524,46 +4641,90 @@ play_gemini_tts_with_repeat() {
                         fi
                         
                         if [ -f "$OUT_WAV" ] && [ -s "$OUT_WAV" ]; then
-                            log "INFO" "✅ REMINDER SUARA: Gemini TTS berhasil digenerate"
+                            local wav_size=$(wc -c < "$OUT_WAV")
+                            log "INFO" "✅ REMINDER SUARA: Gemini TTS berhasil digenerate (size: ${wav_size} bytes)"
                             downloaded_file="$OUT_WAV"
                             success=1
                             
-                            # HAPUS FILE CACHE (JSON, B64, RAW) - HANYA SISAKAN WAV
+                            # Catat keberhasilan
+                            record_gemini_result 1
+                            
+                            # HAPUS FILE CACHE (JSON, B64, RAW)
                             rm -f "$OUT_JSON" "$OUT_B64" "$OUT_RAW" 2>/dev/null
                             [ "$DEBUG_MODE" = "1" ] && log "DEBUG" "🧹 File cache dibersihkan: JSON, B64, RAW"
                             break
+                        else
+                            log "ERROR" "❌ File WAV kosong atau gagal dibuat"
                         fi
+                    else
+                        log "ERROR" "❌ Raw audio kosong"
                     fi
+                else
+                    log "ERROR" "❌ Base64 data kosong"
                 fi
+            else
+                # Cek error message dari JSON
+                local error_msg=$(jq -r '.error.message // "Unknown error"' "$OUT_JSON" 2>/dev/null)
+                log "ERROR" "❌ Gemini API error: $error_msg"
             fi
         else
-            log "WARNING" "⚠️ Gemini API gagal (HTTP $http_code) pada attempt $generate_attempt"
+            # HTTP error atau curl error
+            if [ $curl_exit -ne 0 ]; then
+                log "WARNING" "⚠️ Curl error (${curl_exit}) pada attempt $generate_attempt"
+            else
+                log "WARNING" "⚠️ HTTP error ${http_code} pada attempt $generate_attempt"
+            fi
             
-            # HAPUS FILE CACHE YANG MUNGKIN TERBUAT
+            # Catat kegagalan
+            record_gemini_result 0
+            
+            # Jika circuit breaker aktif dan ini attempt pertama, langsung fallback
+            if [ "$circuit_active" = true ] && [ $generate_attempt -eq 1 ]; then
+                log "WARNING" "⚠️ Circuit breaker active, falling back immediately after first failure"
+                rm -f "$OUT_JSON" "$OUT_B64" "$OUT_RAW" "$OUT_WAV" 2>/dev/null
+                add_global_failed_method "gemini"
+                try_tts_fallback "gemini" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "gemini"
+                return $?
+            fi
+        fi
+        
+        # HAPUS FILE CACHE YANG MUNGKIN TERBUAT
+        if [ -z "$downloaded_file" ]; then
             rm -f "$OUT_JSON" "$OUT_B64" "$OUT_RAW" "$OUT_WAV" 2>/dev/null
         fi
         
-        # PASTIKAN FILE CACHE DIBERSIHKAN DI SETIAP ITERASI (kecuali WAV yang sukses)
-        if [ -z "$downloaded_file" ]; then
-            rm -f "$OUT_JSON" "$OUT_B64" "$OUT_RAW" "$OUT_WAV" 2>/dev/null
+        # Jika ini attempt terakhir, break
+        if [ $generate_attempt -eq $max_attempts ] && [ -z "$downloaded_file" ]; then
+            log "ERROR" "❌ Gagal generate audio dengan Gemini setelah $max_attempts percobaan"
+            break
         fi
         
         # Exponential backoff untuk retry
         if [ -z "$downloaded_file" ] && [ $generate_attempt -lt $max_attempts ]; then
             local wait_time=$((generate_attempt * 2))
-            log "INFO" "⏳ Menunggu $wait_time detik sebelum retry Gemini..."
+            
+            # Tambahan untuk peak hours
+            if [ "$peak_type" != "normal" ]; then
+                wait_time=$((wait_time + 1))
+            fi
+            
+            log "INFO" "⏳ Menunggu $wait_time detik sebelum retry Gemini (attempt $((generate_attempt + 1))/$max_attempts)..."
             sleep $wait_time
         fi
         
         generate_attempt=$((generate_attempt + 1))
     done
     
+    local total_end_time=$(date +%s%N)
+    local total_duration=$(( (total_end_time - total_start_time) / 1000000 ))
+    
     # Jika semua percobaan gagal
     if [ -z "$downloaded_file" ]; then
-        log "ERROR" "❌ Gagal generate audio dengan Gemini setelah $max_attempts percobaan"
+        log "ERROR" "❌ Gagal generate audio dengan Gemini setelah $max_attempts percobaan (total time: ${total_duration}ms)"
         
         # PASTIKAN SEMUA FILE CACHE TERHAPUS
         rm -f "$OUT_JSON" "$OUT_B64" "$OUT_RAW" "$OUT_WAV" 2>/dev/null
+        rm -f "${temp_prefix}"* 2>/dev/null
         
         # TAMBAHKAN KE GLOBAL FAILED METHODS
         add_global_failed_method "gemini"
@@ -3572,6 +4733,8 @@ play_gemini_tts_with_repeat() {
         try_tts_fallback "gemini" "$text" "$salat_name" "$prayer_time" "$lokasi" "$timezone" "gemini"
         return $?
     fi
+    
+    log "INFO" "✅ Gemini TTS berhasil dalam ${total_duration}ms setelah $generate_attempt percobaan"
     
     # ===== BAGIAN 2: PUTAR AUDIO (jika Gemini berhasil) =====
     local repeat_success=0
@@ -3603,7 +4766,7 @@ play_gemini_tts_with_repeat() {
             sleep 1
         fi
         
-        # Tunggu sebelum pengulangan berikutnya
+        # Tunggu sebelum pengulangan berikutnya (kecuali untuk Imsyak)
         if [ $current_repeat -lt $repeat_count ] && [ "$salat_name" != "Imsyak" ]; then
             local repeat_wait=$(uci -q get jsholat.sound.reminder_repeat_interval || echo "5")
             log "INFO" "⏳ REMINDER SUARA: Menunggu $repeat_wait detik sebelum pengulangan berikutnya..."
@@ -3614,8 +4777,6 @@ play_gemini_tts_with_repeat() {
     # HAPUS FILE WAV DAN SEMUA SISA FILE CACHE (cleanup final)
     log "INFO" "🧹 Membersihkan semua file temporary Gemini..."
     rm -f "$downloaded_file" "$OUT_JSON" "$OUT_B64" "$OUT_RAW" 2>/dev/null
-    
-    # PASTIKAN TIDAK ADA FILE DENGAN PREFIX YANG SAMA TERSISA
     rm -f "${temp_prefix}"* 2>/dev/null
     
     if [ $repeat_success -eq 1 ]; then
@@ -3967,10 +5128,7 @@ check_gemini_dependencies() {
     return 0
 }
 
-# =============================================
-# FUNGSI REMINDER BEFORE PRAYER - FIXED VERSION
-# =============================================
-
+# FUNGSI REMINDER BEFORE PRAYER 
 # Fungsi Peringatan Sebelum Waktu Sholat
 reminder_before_prayer() {
     local salat_name="$1"
@@ -3983,6 +5141,10 @@ reminder_before_prayer() {
     local telegram_enabled=$(uci -q get jsholat.service.telegram_enabled || echo "1")
     local reminder_sound_enabled=$(uci -q get jsholat.sound.reminder_sound_enabled || echo "0")
     local tts_method=$(uci -q get jsholat.sound.tts_method || echo "google")
+    
+    # Escape lokasi dan province untuk keamanan
+    local safe_lokasi=$(escape_html "$LOKASI")
+    local safe_province=$(escape_html "$PROVINCE")
     
     # Validasi 1: Reminder dinonaktifkan
     if [ "$reminder_mins" = "0" ]; then
@@ -4021,79 +5183,158 @@ reminder_before_prayer() {
     if [ "$current_sec" -ge "$reminder_sec" ] && [ "$current_sec" -lt "$prayer_sec" ]; then
         log "INFO" "🔔 REMINDER: Waktu $salat_name akan tiba dalam $reminder_mins menit ($prayer_time $timezone) untuk wilayah $LOKASI"
 
-        # ========== BAGIAN 1: KIRIM NOTIFIKASI TELEGRAM ==========
+        # ========== BAGIAN 1: KIRIM NOTIFIKASI TELEGRAM UTAMA DENGAN HTML ==========
         if [ "$telegram_enabled" = "1" ]; then
             local timezone_display=""
             [ -n "$timezone" ] && timezone_display=" $timezone"
             
-            # Format pesan Telegram berdasarkan kondisi
+            # Buat pesan Telegram berdasarkan kondisi dengan format HTML
             local reminder_message=""
             
             # KHUSUS IMSYAK
             if [ "$salat_name" = "Imsyak" ]; then
                 if is_ramadhan; then
-                    reminder_message="🌙 *PENGINGAT IMSYAK RAMADHAN* 🌙
+                    reminder_message="<b>🌙 PENGINGAT IMSYAK RAMADHAN</b> 🌙
                     
-Waktu *Imsyak* akan tiba dalam *$reminder_mins menit*!  
+Waktu <b>Imsyak</b> akan tiba dalam <b>$reminder_mins menit</b>!  
 🕒 Pukul: $prayer_time$timezone_display
-📍 Wilayah: *$LOKASI${PROVINCE:+, $PROVINCE}* dan sekitarnya.
+📍 Wilayah: <b>$safe_lokasi${safe_province:+, $safe_province}</b> dan sekitarnya.
 
-*Segera akhiri sahur*
-*Persiapkan diri untuk sholat Subuh*
-*Perbanyak doa di sisa malam ini*
+<i>Segera akhiri sahur</i>
+<i>Persiapkan diri untuk sholat Subuh</i>
+<i>Perbanyak doa di sisa malam ini</i>
 
-🤲 *Ramadhan Mubarak, semoga Allah menerima amal ibadah kita*"
+<b>🤲 Ramadhan Mubarak, semoga Allah menerima amal ibadah kita</b>"
                 else
-                    reminder_message="🔔 *PENGINGAT IMSYAK*
+                    reminder_message="<b>🔔 PENGINGAT IMSYAK</b>
                     
-Waktu *Imsyak* akan tiba dalam *$reminder_mins menit*!  
+Waktu <b>Imsyak</b> akan tiba dalam <b>$reminder_mins menit</b>!  
 🕒 Pukul: $prayer_time$timezone_display
-📍 Wilayah: *$LOKASI${PROVINCE:+, $PROVINCE}* dan sekitarnya.
+📍 Wilayah: <b>$safe_lokasi${safe_province:+, $safe_province}</b> dan sekitarnya.
 
-*Siapkan diri untuk sholat Subuh*
-*Jangan lupa wudhu* 💧"
+<i>Siapkan diri untuk sholat Subuh</i>
+<i>Jangan lupa wudhu</i> 💧"
                 fi
             
-            # KHUSUS ISYA DI BULAN RAMADHAN (dengan notifikasi Tarawih)
+            # KHUSUS ISYA DI BULAN RAMADHAN
             elif [ "$salat_name" = "Isya" ] && is_ramadhan; then
-                reminder_message="🌙 *PENGINGAT SHOLAT ISYA & TARAWIH* 🌙
+                reminder_message="<b>🌙 PENGINGAT SHOLAT ISYA & TARAWIH</b> 🌙
                     
-Waktu *Sholat Isya* akan tiba dalam *$reminder_mins menit*!  
+Waktu <b>Sholat Isya</b> akan tiba dalam <b>$reminder_mins menit</b>!  
 🕒 Pukul: $prayer_time$timezone_display
-📍 Wilayah: *$LOKASI${PROVINCE:+, $PROVINCE}* dan sekitarnya.
+📍 Wilayah: <b>$safe_lokasi${safe_province:+, $safe_province}</b> dan sekitarnya.
 
-*Marilah kita persiapkan diri untuk:*
+<i>Marilah kita persiapkan diri untuk:</i>
 ✅ Sholat Isya berjamaah
 ✅ Sholat Tarawih
 ✅ Sholat Witir
 
-*Keutamaan Sholat Tarawih:*
-\"Barangsiapa melaksanakan sholat malam (Tarawih) di bulan Ramadhan karena iman dan mengharap pahala, maka diampuni dosa-dosanya yang telah lalu.\" 
+<b>🌙 Keutamaan Sholat Tarawih:</b>
+<code>مَنْ قَامَ رَمَضَانَ إِيمَانًا وَاحْتِسَابًا غُفِرَ لَهُ مَا تَقَدَّمَ مِنْ ذَنْبِهِ</code>
+<code>Barangsiapa melaksanakan sholat malam (Tarawih) di bulan Ramadhan karena iman dan mengharap pahala, maka diampuni dosa-dosanya yang telah lalu.</code> 
 (HR. Bukhari dan Muslim)
 
-🤲 *Semoga Allah menerima amal ibadah kita di bulan Ramadhan*"
+<b>🤲 Semoga Allah menerima amal ibadah kita di bulan Ramadhan</b>"
+            
+            # KHUSUS SUBUH DI BULAN RAMADHAN
+            elif [ "$salat_name" = "Subuh" ] && is_ramadhan; then
+                reminder_message="<b>🌙 PENGINGAT SHOLAT SUBUH RAMADHAN</b> 🌙
+                    
+Waktu <b>Sholat Subuh</b> akan tiba dalam <b>$reminder_mins menit</b>!  
+🕒 Pukul: $prayer_time$timezone_display
+📍 Wilayah: <b>$safe_lokasi${safe_province:+, $safe_province}</b> dan sekitarnya.
+
+<code>الصَّلَاةُ خَيْرٌ مِنَ النَّوْمِ</code>
+<i>\"Ash-shalatu khairum minan-naum\"</i>
+(Sholat itu lebih baik dari pada tidur)
+
+<i>Marilah kita sholat Subuh berjamaah</i>
+<i>Lanjutkan puasa dengan penuh semangat</i>
+
+<b>🤲 Semoga Allah menerima puasa dan ibadah kita</b>"
+            
+            # KHUSUS MAGHRIB DI BULAN RAMADHAN
+            elif [ "$salat_name" = "Maghrib" ] && is_ramadhan; then
+                reminder_message="<b>🌙 PENGINGAT BERBUKA PUASA & SHOLAT MAGHRIB</b> 🌙
+                    
+Waktu <b>Berbuka Puasa & Sholat Maghrib</b> akan tiba dalam <b>$reminder_mins menit</b>!  
+🕒 Pukul: $prayer_time$timezone_display
+📍 Wilayah: <b>$safe_lokasi${safe_province:+, $safe_province}</b> dan sekitarnya.
+
+<b>Doa Berbuka Puasa:</b>
+<code>اللَّهُمَّ لَكَ صُمْتُ وَعَلَى رِزْقِكَ أَفْطَرْتُ</code>
+<code>Allahumma laka shumtu wa 'ala rizqika afthartu</code>
+(Ya Allah, untuk-Mu aku berpuasa dan dengan rezeki-Mu aku berbuka)
+
+<i>Marilah kita sholat Maghrib berjamaah</i>
+<i>Segera berbuka dengan yang manis</i>
+
+<b>🤲 Selamat berbuka puasa</b>"
             
             # SHOLAT WAJIB LAINNYA (termasuk Isya di luar Ramadhan)
             else
-                reminder_message="🔔 *PENGINGAT SHOLAT*
+                reminder_message="<b>🔔 PENGINGAT SHOLAT ${salat_name}</b>
                     
-Waktu *$salat_name* akan tiba dalam *$reminder_mins menit*!  
+Waktu <b>${salat_name}</b> akan tiba dalam <b>$reminder_mins menit</b>!  
 🕒 Pukul: $prayer_time$timezone_display
-📍 Wilayah: *$LOKASI${PROVINCE:+, $PROVINCE}* dan sekitarnya.
+📍 Wilayah: <b>$safe_lokasi${safe_province:+, $safe_province}</b> dan sekitarnya.
 
-*Siapkan diri untuk sholat*
-*Jangan lupa wudhu* 💧"
+<i>Siapkan diri untuk sholat</i>
+<i>Jangan lupa wudhu</i> 💧"
             fi
             
-            # Kirim notifikasi Telegram (background process)
-            send_telegram "$reminder_message" &
+            # Kirim notifikasi Telegram UTAMA (background process)
+            if [ -n "$reminder_message" ]; then
+                send_telegram "$reminder_message" &
+                log "INFO" "📤 Notifikasi Telegram utama untuk $salat_name telah dikirim"
+                # Tunggu sebentar untuk rate limiting
+                sleep 1
+            fi
 
+            # ========== BAGIAN PENGIRIMAN AYAT ACAK (DIPERBAIKI) ==========
             # Kirim ayat acak jika fitur aktif (kecuali Imsyak)
             if [ "$ayat_enabled" = "1" ] && [ "$salat_name" != "Imsyak" ]; then
-                local random_ayat=$(get_random_ayat)
-                if [ -n "$random_ayat" ]; then
-                    send_telegram "$(printf "💫 *Ayat Pilihan Hari Ini*\n%s" "$random_ayat")" &
-                fi
+                (
+                    # Ambil ayat acak dari API
+                    local random_ayat=$(get_random_ayat)
+                    
+                    if [ -n "$random_ayat" ] && [ "$random_ayat" != "" ]; then
+                        # Untuk pesan di bulan Ramadhan, tambahkan nuansa Ramadhan
+                        if is_ramadhan; then
+                            # Format pesan dengan nuansa Ramadhan
+                            local ayat_message="*📖 AYAT PILIHAN RAMADHAN*
+
+${random_ayat}
+
+_“Bulan Ramadhan adalah (bulan) yang di dalamnya diturunkan Al-Qur'an sebagai petunjuk bagi manusia dan penjelasan-penjelasan mengenai petunjuk itu serta pembeda (antara yang hak dan yang batil).”_
+(QS. Al-Baqarah: 185)
+
+✨ _Semoga kita termasuk hamba yang memahami dan mengamalkan Al-Qur'an_"
+                            
+                            # Escape konten untuk keamanan (random_ayat sudah dalam format Markdown, jadi perlu hati-hati)
+                            # Karena random_ayat mengandung karakter Markdown (* dan _), kita kirim dengan mode Markdown
+                            send_telegram "$ayat_message" "markdown" &
+                        else
+                            # Format pesan biasa
+                            local ayat_message="*💫 AYAT PILIHAN HARI INI*
+
+${random_ayat}
+
+_“Dan bacalah Al-Qur'an itu dengan perlahan-lahan (tartil).”_
+(QS. Al-Muzzammil: 4)
+
+✨ _Semoga menjadi penyemangat dalam beribadah_"
+                            
+                            send_telegram "$ayat_message" "markdown" &
+                        fi
+                        
+                        log "INFO" "📤 Ayat acak telah dikirim untuk $salat_name"
+                    else
+                        log "WARNING" "⚠️ Gagal mendapatkan ayat acak untuk $salat_name"
+                    fi
+                ) &
+                # Tunggu sebentar untuk rate limiting
+                sleep 1
             fi
         fi
 
@@ -4119,59 +5360,95 @@ Waktu *$salat_name* akan tiba dalam *$reminder_mins menit*!
 
         # ========== BAGIAN 3: NOTIFIKASI TAMBAHAN UNTUK ISYA RAMADHAN ==========
         if [ "$salat_name" = "Isya" ] && is_ramadhan; then
-            log "INFO" "🌙 Memproses notifikasi tambahan untuk Sholat Tarawih"
+            log "INFO" "🌙 Memproses notifikasi TAMBAHAN untuk Sholat Tarawih"
             
-            # Kirim notifikasi Tarawih tambahan via Telegram (jika diinginkan)
-            if [ "$telegram_enabled" = "1" ] && [ "$(uci -q get jsholat.service.tarawih_notification || echo "1")" = "1" ]; then
-                local tarawih_message="🌙 *SHOLAT TARAWIH* 🌙
-                    
-Setelah Sholat Isya berjamaah, 
-jangan lupa untuk melaksanakan *Sholat Tarawih* 
-dan *Sholat Witir* secara berjamaah.
-
-*Niat Sholat Tarawih:*
-اُصَلِّى سُنَّةَ التَّرَاوِيْحِ رَكْعَتَيْنِ مَأْمُوْمًا ِللهِ تَعَالَى
-\"Aku niat sholat sunnah Tarawih dua rakaat sebagai makmum karena Allah Ta'ala.\"
-
-*Niat Sholat Witir:*
-اُصَلِّى سُنَّةَ الْوِتْرِ رَكْعَةً مَأْمُوْمًا ِللهِ تَعَالَى
-\"Aku niat sholat sunnah Witir satu rakaat sebagai makmum karena Allah Ta'ala.\"
-
-🤲 *Selamat menunaikan ibadah sholat Tarawih*"
-                
-                send_telegram "$tarawih_message" &
-            fi
-            
-            # Putar TTS khusus untuk Tarawih jika fitur diaktifkan
-            if [ "$(uci -q get jsholat.sound.tarawih_tts_enabled || echo "0")" = "1" ]; then
-                local tarawih_text="🌙 Marhaban ya Ramadhan. Mari kita laksanakan sholat Isya berjamaah, dilanjutkan sholat Tarawih dan Witir. Semoga Allah menerima amal ibadah kita."
-                
-                # Gunakan metode TTS yang sama atau berbeda
-                local tarawih_tts_method=$(uci -q get jsholat.sound.tarawih_tts_method || echo "$tts_method")
-                
-                log "INFO" "🔊 Memutar TTS khusus untuk Tarawih"
-                
-                # Panggil fungsi TTS dengan teks khusus (background)
+            # Kirim notifikasi Tarawih TAMBAHAN via Telegram
+            local tarawih_notification_enabled=$(uci -q get jsholat.service.tarawih_notification || echo "1")
+            if [ "$telegram_enabled" = "1" ] && [ "$tarawih_notification_enabled" = "1" ]; then
                 (
-                    case "$tarawih_tts_method" in
-                        "gemini") play_gemini_tts_with_repeat "$tarawih_text" "Tarawih" "$prayer_time" "$LOKASI" "$timezone" ;;
-                        "edge") play_edge_tts_with_repeat "$tarawih_text" "Tarawih" "$prayer_time" "$LOKASI" "$timezone" ;;
-                        "google") play_google_tts_with_repeat "$tarawih_text" "Tarawih" "$prayer_time" "$LOKASI" "$timezone" ;;
-                        "espeak") play_espeak_tts_with_repeat "$tarawih_text" "Tarawih" "$prayer_time" "$LOKASI" "$timezone" ;;
-                        "murf") play_murf_tts_with_repeat "$tarawih_text" "Tarawih" "$prayer_time" "$LOKASI" "$timezone" ;;
-                    esac
+                    sleep 2
+                    
+                    local tarawih_message="<b>🌙 PANDUAN SHOLAT TARAWIH</b> 🌙
+                    
+<b>Niat Sholat Tarawih (sendiri/berjamaah sebagai imam):</b>
+<code>اُصَلِّى سُنَّةَ التَّرَاوِيْحِ رَكْعَتَيْنِ مُسْتَقْبِلَ الْقِبْلَةِ أَدَاءً لِلَّهِ تَعَالَى</code>
+<code>Ushalli sunnatat tarawihi rak'ataini mustaqbilal qiblati ada'an lillahi ta'ala</code>
+(Aku niat sholat sunnah Tarawih dua rakaat menghadap kiblat karena Allah Ta'ala)
+
+<b>Niat Sholat Tarawih (sebagai makmum):</b>
+<code>اُصَلِّى سُنَّةَ التَّرَاوِيْحِ رَكْعَتَيْنِ مَأْمُوْمًا لِلَّهِ تَعَالَى</code>
+<code>Ushalli sunnatat tarawihi rak'ataini ma'muman lillahi ta'ala</code>
+(Aku niat sholat sunnah Tarawih dua rakaat sebagai makmum karena Allah Ta'ala)
+
+<b>Niat Sholat Witir:</b>
+<code>اُصَلِّى سُنَّةَ الْوِتْرِ رَكْعَةً مَأْمُوْمًا لِلَّهِ تَعَالَى</code>
+<code>Ushalli sunnatal witri rak'atan ma'muman lillahi ta'ala</code>
+(Aku niat sholat sunnah Witir satu rakaat sebagai makmum karena Allah Ta'ala)
+
+<b>Jumlah Rakaat:</b>
+• 8 rakaat + 3 witir
+• Atau 20 rakaat + 3 witir
+• Dilakukan 2 rakaat sekali salam
+
+<b>Doa Setelah Sholat Tarawih:</b>
+<code>اللَّهُمَّ إِنَّكَ عَفُوٌّ تُحِبُّ الْعَفْوَ فَاعْفُ عَنِّي</code>
+<code>Allahumma innaka 'afuwwun tuhibbul 'afwa fa'fu 'anni</code>
+(Ya Allah, Engkau Maha Pengampun dan menyukai pengampunan, maka ampunilah aku)
+
+<b>🤲 Selamat menunaikan ibadah sholat Tarawih</b>"
+                    
+                    send_telegram "$tarawih_message"
+                    log "INFO" "📤 Notifikasi TAMBAHAN Tarawih telah dikirim"
                 ) &
-            fi
-            
-            # Putar audio Tarawih jika file tersedia
-            local tarawih_audio_file=$(uci -q get jsholat.sound.tarawih_audio_file || echo "/usr/share/jsholat/sounds/tarawih.mp3")
-            if [ -f "$tarawih_audio_file" ] && [ "$(uci -q get jsholat.sound.tarawih_audio_enabled || echo "0")" = "1" ]; then
-                log "INFO" "🔊 Memutar audio Tarawih"
-                play_audio_file "$tarawih_audio_file" "Audio Tarawih" &
             fi
         fi
 
-        # ========== BAGIAN 4: TANDAI REMINDER SUDAH DIKIRIM ==========
+        # ========== BAGIAN 4: NOTIFIKASI KHUSUS 10 MALAM TERAKHIR RAMADHAN ==========
+        if is_ramadhan && [ "$salat_name" = "Isya" ] && is_last_10_days && [ "$telegram_enabled" = "1" ]; then
+            local lailatul_qadr_enabled=$(uci -q get jsholat.service.lailatul_qadr_notification || echo "1")
+            if [ "$lailatul_qadr_enabled" = "1" ]; then
+                (
+                    sleep 4
+                    
+                    local lailatul_qadr_message="<b>🌟 10 MALAM TERAKHIR RAMADHAN</b> 🌟
+
+✨ <b>CARILAH LAILATUL QADR</b> ✨
+
+<code>إِنَّا أَنْزَلْنَاهُ فِي لَيْلَةِ الْقَدْرِ - وَمَا أَدْرَاكَ مَا لَيْلَةُ الْقَدْرِ - لَيْلَةُ الْقَدْرِ خَيْرٌ مِنْ أَلْفِ شَهْرٍ</code>
+<code>Inna anzalnahu fi lailatil qadr. Wa ma adraka ma lailatul qadr. Lailatul qadri khairum min alfi syahr.</code>
+<i>\"Sesungguhnya Kami telah menurunkannya (Al-Qur'an) pada malam Lailatul Qadar. Dan tahukah kamu apakah malam Lailatul Qadar itu? Malam Lailatul Qadar itu lebih baik dari seribu bulan.\"</i>
+(QS. Al-Qadr: 1-3)
+
+Rasulullah ﷺ bersabda:
+<code>تَحَرَّوْا لَيْلَةَ الْقَدْرِ فِي الْوِتْرِ مِنَ الْعَشْرِ الْأَوَاخِرِ مِنْ رَمَضَانَ</code>
+<code>Carilah Lailatul Qadar di malam ganjil pada 10 malam terakhir bulan Ramadhan.</code>
+(HR. Bukhari)
+
+<b>Tanda-tanda Lailatul Qadar:</b>
+• Udara yang tenang dan sejuk
+• Matahari terbit putih tidak menyilaukan
+• Malam yang terang, tidak panas tidak dingin
+
+<b>Amalan yang dianjurkan:</b>
+• Perbanyak sholat malam
+• Perbanyak membaca Al-Qur'an
+• Perbanyak istigfar dan doa
+
+<b>Doa yang diajarkan Aisyah:</b>
+<code>اللَّهُمَّ إِنَّكَ عَفُوٌّ تُحِبُّ الْعَفْوَ فَاعْفُ عَنِّي</code>
+<code>Allahumma innaka 'afuwwun tuhibbul 'afwa fa'fu 'anni</code>
+(Ya Allah, Engkau Maha Pengampun dan menyukai pengampunan, maka ampunilah aku)
+
+✨ <b>Jangan sia-siakan malam-malam ini</b> ✨
+🌙 <b>Malam ke-21, 23, 25, 27, 29</b> 🌙"
+                    
+                    send_telegram "$lailatul_qadr_message"
+                    log "INFO" "🌟 Mengirim notifikasi 10 malam terakhir Ramadhan"
+                ) &
+            fi
+        fi
+
+        # ========== BAGIAN 5: TANDAI REMINDER SUDAH DIKIRIM ==========
         case "$salat_name" in
             "Imsyak") REMINDER_IMSYAK=1 ;;
             "Subuh") REMINDER_SUBUH=1 ;;
@@ -4216,11 +5493,27 @@ run_service() {
     # Panggil get_hijri_date sekali di awal untuk memastikan cache terisi
     local hijri_date_info=$(get_hijri_date)
     
+    # === TAMPILKAN INFO TANGGAL HIJRIYAH DI AWAL SERVICE ===
+    # Ambil detail tanggal Hijriyah dari cache
+    local hijri_day=$(jq -r '.hijri_date.day // ""' "$HIJRI_CACHE_FILE" 2>/dev/null)
+    local hijri_month=$(jq -r '.hijri_date.month // ""' "$HIJRI_CACHE_FILE" 2>/dev/null)
+    local hijri_month_name=$(jq -r '.hijri_date.monthName // ""' "$HIJRI_CACHE_FILE" 2>/dev/null)
+    local hijri_year=$(jq -r '.hijri_date.year // ""' "$HIJRI_CACHE_FILE" 2>/dev/null)
+    local gregorian_date=$(date +"%d-%m-%Y")
+    
+    if [ -n "$hijri_day" ] && [ "$hijri_day" != "null" ] && [ -n "$hijri_month_name" ] && [ "$hijri_month_name" != "null" ]; then
+        log "INFO" "📅 TANGGAL HIJRIYAH: $hijri_day $hijri_month_name $hijri_year"
+        log "INFO" "📅 TANGGAL MASEHI: $gregorian_date"
+    else
+        # Fallback jika cache tidak lengkap
+        local hijri_display=$(get_hijri_date_formatted)
+        if [ -n "$hijri_display" ]; then
+            log "INFO" "📅 TANGGAL HIJRIYAH: $hijri_display"
+        fi
+    fi
+    
     # === CEK STATUS RAMADHAN ===
     if is_ramadhan; then
-        local hijri_year=$(jq -r '.hijri_date.year // ""' "$HIJRI_CACHE_FILE" 2>/dev/null)
-        local hijri_month_name=$(jq -r '.hijri_date.monthName // ""' "$HIJRI_CACHE_FILE" 2>/dev/null)
-        
         if [ -n "$hijri_year" ] && [ "$hijri_year" != "null" ]; then
             log "INFO" "🌙🌙🌙 SELAMAT MENUNAIKAN IBADAH PUASA RAMADHAN ${hijri_year} 🌙🌙🌙"
         else
@@ -4510,7 +5803,35 @@ run_service() {
 			#Load global failed methods tts
 			load_global_failed_methods
             LAST_DATE="$TODAY"
-            log "INFO" "📅 Hari berganti ke: $TODAY"
+            
+            # === TAMPILKAN INFO TANGGAL HIJRIYAH SETIAP PERGANTIAN HARI ===
+            # Refresh cache tanggal Hijriyah
+            local hijri_date_info=$(get_hijri_date)
+            
+            # Ambil detail tanggal Hijriyah dari cache
+            local hijri_day=$(jq -r '.hijri_date.day // ""' "$HIJRI_CACHE_FILE" 2>/dev/null)
+            local hijri_month=$(jq -r '.hijri_date.month // ""' "$HIJRI_CACHE_FILE" 2>/dev/null)
+            local hijri_month_name=$(jq -r '.hijri_date.monthName // ""' "$HIJRI_CACHE_FILE" 2>/dev/null)
+            local hijri_year=$(jq -r '.hijri_date.year // ""' "$HIJRI_CACHE_FILE" 2>/dev/null)
+            
+            if [ -n "$hijri_day" ] && [ "$hijri_day" != "null" ] && [ -n "$hijri_month_name" ] && [ "$hijri_month_name" != "null" ]; then
+                log "INFO" "📅 PERGANTIAN HARI: $TODAY Masehi | $hijri_day $hijri_month_name $hijri_year"
+                
+                # Info tambahan jika Ramadhan
+                if is_ramadhan; then
+                    # Hitung hari ke berapa Ramadhan
+                    local ramadhan_day=$hijri_day
+                    log "INFO" "🌙 RAMADHAN HARI KE-$ramadhan_day - Semoga diberi kekuatan menjalankan ibadah puasa"
+                fi
+            else
+                # Fallback
+                local hijri_display=$(get_hijri_date_formatted)
+                if [ -n "$hijri_display" ]; then
+                    log "INFO" "📅 PERGANTIAN HARI: $TODAY Masehi | Hijriyah: $hijri_display"
+                else
+                    log "INFO" "📅 Hari berganti ke: $TODAY"
+                fi
+            fi
         fi
         
         # Update jadwal jika hari berganti atau jadwal belum terisi
@@ -4601,33 +5922,38 @@ run_service() {
         
         # === CEK WAKTU SHOLAT ===
         if [ "$CURRENT_TIME" = "$IMSYAK" ]; then
-            log "INFO" "⏰ Waktu menunjukkan $CURRENT_TIME - Imsyak"
+            log "INFO" "⏰ Waktu menunjukkan $CURRENT_TIME - Saatnya memasuki waktu Imsyak untuk wilayah $LOKASI, $PROVINCE"
+            # Tampilkan info Hijriyah saat adzan Imsyak
+            local hijri_display=$(get_hijri_date_formatted)
+            if [ -n "$hijri_display" ]; then
+                log "INFO" "📅 Tanggal Hijriyah: $hijri_display"
+            fi
             play_adzan "$FILE_IMSYAK" "Imsyak" "$IMSYAK"
             sleep 61
             continue
         elif [ "$CURRENT_TIME" = "$SHUBUH" ]; then
-            log "INFO" "⏰ Waktu menunjukkan $CURRENT_TIME - Subuh"
+            log "INFO" "⏰ Waktu menunjukkan $CURRENT_TIME - Saatnya memasuki waktu Subuh  untuk wilayah $LOKASI, $PROVINCE"
             play_adzan "$FILE_ADZAN_SHUBUH" "Subuh" "$SHUBUH"
             sleep 61
             continue
         elif [ "$CURRENT_TIME" = "$DZUHUR" ]; then
             local nama_sholat=$(get_salat_name "Dzuhur")
-            log "INFO" "⏰ Waktu menunjukkan $CURRENT_TIME - $nama_sholat"
+            log "INFO" "⏰ Waktu menunjukkan $CURRENT_TIME - Saatnya memasuki waktu sholat $nama_sholat untuk wilayah $LOKASI, $PROVINCE"
             play_adzan "$FILE_ADZAN" "$nama_sholat" "$DZUHUR"
             sleep 61
             continue
         elif [ "$CURRENT_TIME" = "$ASHAR" ]; then
-            log "INFO" "⏰ Waktu menunjukkan $CURRENT_TIME - Ashar"
+            log "INFO" "⏰ Waktu menunjukkan $CURRENT_TIME - Saatnya memasuki waktu Ashar untuk wilayah $LOKASI, $PROVINCE"
             play_adzan "$FILE_ADZAN" "Ashar" "$ASHAR"
             sleep 61
             continue
         elif [ "$CURRENT_TIME" = "$MAGHRIB" ]; then
-            log "INFO" "⏰ Waktu menunjukkan $CURRENT_TIME - Maghrib"
+            log "INFO" "⏰ Waktu menunjukkan $CURRENT_TIME - Saatnya memasuki waktu Maghrib untuk wilayah $LOKASI, $PROVINCE"
             play_adzan "$FILE_ADZAN" "Maghrib" "$MAGHRIB"
             sleep 61
             continue
         elif [ "$CURRENT_TIME" = "$ISYA" ]; then
-            log "INFO" "⏰ Waktu menunjukkan $CURRENT_TIME - Isya"
+            log "INFO" "⏰ Waktu menunjukkan $CURRENT_TIME - Saatnya memasuki waktu Isya untuk wilayah $LOKASI, $PROVINCE"
             play_adzan "$FILE_ADZAN" "Isya" "$ISYA"
             sleep 61
             continue
@@ -5068,21 +6394,29 @@ EOF
         echo "     /etc/init.d/jsholat restart"
         echo ""
         echo "============================================="
+        ;;
+    "sahur-config")
+        sahur_config
+        ;;
+    "test-sahur")
+        test_sahur_alarm
         ;;		
     *)
-        echo "Usage: $0 {install|uninstall|run|info|status|tts-test|reminder-config|tarhim-config|gemini-config|edge-config}"
+        echo "Usage: $0 {install|uninstall|run|info|status|tts-test|reminder-config|tarhim-config|gemini-config|edge-config|sahur-config|test-sahur}"
         echo ""
         echo "Commands:"
-        echo "  install        - Install service jsholat"
-        echo "  uninstall      - Hapus service jsholat"
-        echo "  run            - Jalankan service secara langsung"
-        echo "  status         - Tampilkan status service"
-        echo "  info           - Tampilkan info service dalam format JSON"
-        echo "  tts-test       - Untuk tes suara TTS (Suara pengingat sebelum waktu sholat)"
+        echo "  install         - Install service jsholat"
+        echo "  uninstall       - Hapus service jsholat"
+        echo "  run             - Jalankan service secara langsung"
+        echo "  status          - Tampilkan status service"
+        echo "  info            - Tampilkan info service dalam format JSON"
+        echo "  tts-test        - Untuk tes suara TTS (Suara pengingat sebelum waktu sholat)"
         echo "  reminder-config - Konfigurasi reminder/pengingat sebelum waktu sholat"
-        echo "  tarhim-config  - Konfigurasi tarhim imsyak"
-        echo "  gemini-config  - Konfigurasi Gemini TTS"
-        echo "  edge-config    - Konfigurasi Edge-TTS"
+        echo "  tarhim-config   - Konfigurasi tarhim imsyak"
+        echo "  sahur-config    - Untuk tes suara dan notifikasi sahur"
+        echo "  test-sahur      - Konfigurasi alarm Sahur"
+        echo "  gemini-config   - Konfigurasi Gemini TTS"
+        echo "  edge-config     - Konfigurasi Edge-TTS"
         exit 1
         ;;
 esac
